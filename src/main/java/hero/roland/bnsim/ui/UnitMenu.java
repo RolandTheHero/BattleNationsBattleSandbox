@@ -172,7 +172,7 @@ public class UnitMenu extends JPanel {
 	private static boolean matches(Unit u, String q) {
 		return contains(u.getName(), q)
 				|| contains(u.getShortName(), q)
-				|| contains(u.getTag(), q);
+				|| contains(u.getId(), q);
 	}
 
 	private static boolean contains(String value, String q) {

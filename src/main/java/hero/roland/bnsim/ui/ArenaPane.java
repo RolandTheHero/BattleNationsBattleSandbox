@@ -12,6 +12,7 @@ import javax.swing.JButton;
 import javax.swing.JLabel;
 import javax.swing.JLayeredPane;
 import javax.swing.JPanel;
+import javax.swing.JSlider;
 import javax.swing.JToggleButton;
 
 import hero.roland.bnsim.Ability;
@@ -19,6 +20,7 @@ import hero.roland.bnsim.BattleSimulator;
 import hero.roland.bnsim.GameFiles;
 import hero.roland.bnsim.MusicPlayer;
 import hero.roland.bnsim.PlacedUnit;
+import hero.roland.bnsim.SoundPlayer;
 import hero.roland.bnsim.Unit;
 
 /**
@@ -33,6 +35,8 @@ public class ArenaPane extends JLayeredPane {
 	private final JButton startButton = new JButton("Start Battle");
 	private final JButton endButton = new JButton("End Battle");
 	private final JPanel attackPanel = new JPanel();
+	private final JPanel volumePanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 4, 0));
+	private final JSlider volumeSlider = new JSlider(0, 100, 100);
 	private final MusicPlayer music = new MusicPlayer();
 
 	private Consumer<Boolean> onBattleModeChanged;
@@ -52,6 +56,15 @@ public class ArenaPane extends JLayeredPane {
 		attackPanel.setBorder(BorderFactory.createLineBorder(new Color(54, 66, 96)));
 		attackPanel.setVisible(false);
 		add(attackPanel, JLayeredPane.PALETTE_LAYER);
+
+		// Master-volume slider (top-right), always visible.
+		volumeSlider.setPreferredSize(new Dimension(120, 20));
+		volumeSlider.setOpaque(false);
+		volumeSlider.addChangeListener(e -> SoundPlayer.setVolume(volumeSlider.getValue() / 100f));
+		volumePanel.setOpaque(false);
+		volumePanel.add(new JLabel("Volume"));
+		volumePanel.add(volumeSlider);
+		add(volumePanel, JLayeredPane.PALETTE_LAYER);
 
 		field.setAttackerSelectedListener(this::showAttacks);
 	}
@@ -138,6 +151,9 @@ public class ArenaPane extends JLayeredPane {
 
 		Dimension end = endButton.getPreferredSize();
 		endButton.setBounds(16, 16, end.width, end.height);
+
+		Dimension vol = volumePanel.getPreferredSize();
+		volumePanel.setBounds(w - vol.width - 16, 12, vol.width, vol.height);
 
 		if (attackPanel.isVisible()) {
 			Dimension ap = attackPanel.getPreferredSize();

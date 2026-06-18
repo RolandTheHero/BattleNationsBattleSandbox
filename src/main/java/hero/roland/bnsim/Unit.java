@@ -18,10 +18,11 @@ public class Unit implements Comparable<Unit> {
 	private static Map<String, Unit> units;
 
     private int blocking;
-	private String tag, name, shortName, side;
+	private String id, name, shortName, side;
 	private String backAnimName, frontAnimName;
 	private Rank[] ranks;
 	private Weapon[] weapons;
+    private UnitTag[] tags;
 
 	public static void load() throws IOException {
 		units = new HashMap<String, Unit>();
@@ -36,8 +37,8 @@ public class Unit implements Comparable<Unit> {
 		}
 	}
 
-	public static Unit get(String tag) {
-		return units.get(tag);
+	public static Unit get(String id) {
+		return units.get(id);
 	}
 
 	public static Unit[] getAll() {
@@ -46,10 +47,10 @@ public class Unit implements Comparable<Unit> {
 		return array;
 	}
 
-	private Unit(String tag, JSONObject json) {
-		this.tag = tag;
+	private Unit(String id, JSONObject json) {
+		this.id = id;
 		name = Text.get(json.optString("name", null));
-		if (name == null) name = tag;
+		if (name == null) name = id;
 		if (name.startsWith("Speciment ")) // fix game file typo
 			name = "Specimen" + name.substring(9);
 		shortName = Text.get(json.optString("shortName", null));
@@ -60,6 +61,12 @@ public class Unit implements Comparable<Unit> {
         blocking = json.optInt("blocking", NONE);
 		initWeapons(json.optJSONObject("weapons"));
 		initRanks(json.getJSONArray("stats"));
+        JSONArray tags = json.optJSONArray("tags");
+        if (tags != null) {
+            this.tags = new UnitTag[tags.length()];
+            for (int i = 0; i < tags.length(); i++)
+                this.tags[i] = UnitTag.fromString(tags.getString(i));
+        }
 	}
 
 	private void initRanks(JSONArray json) {
@@ -91,8 +98,8 @@ public class Unit implements Comparable<Unit> {
 			this.weapons[i] = weapons.get(names[i]);
 	}
 
-	public String getTag() {
-		return tag;
+	public String getId() {
+		return id;
 	}
 
 	public String getName() {
@@ -117,6 +124,15 @@ public class Unit implements Comparable<Unit> {
 		return blocking;
 	}
 
+	/** Whether this unit has the given tag (e.g. {@link UnitTag#METAL}). */
+	public boolean hasTag(UnitTag tag) {
+		if (tags != null)
+			for (UnitTag t : tags)
+				if (t == tag)
+					return true;
+		return false;
+	}
+
 	public Animation getBackAnimation() throws IOException {
 		return Animation.get(backAnimName);
 	}
@@ -137,7 +153,7 @@ public class Unit implements Comparable<Unit> {
 	public int compareTo(Unit that) {
 		int cmp = this.name.compareTo(that.name);
 		if (cmp == 0)
-			cmp = this.tag.compareTo(that.tag);
+			cmp = this.id.compareTo(that.id);
 		return cmp;
 	}
 
@@ -152,6 +168,46 @@ public class Unit implements Comparable<Unit> {
 	public int getPower(int rank) {
 		return ranks[rank-1].power();
 	}
+
+    public enum UnitTag {
+        DEFENSE("Defense"),
+        METAL("Metal"),
+        SOLDIER("Soldier"),
+        VEHICLE("Vehicle"),
+        FAST("Fast"),
+        ZOMBIE_CANDIDATE("ZombieCandidate"),
+        GUNBOAT("Gunboat"),
+        TANK("Tank"),
+        SRB("SRB"),
+        FIGHTER("Fighter"),
+        VRB("VRB"),
+        HELICOPTER("Helicopter"),
+        BATTLESHIP("Battleship"),
+        SHIP("Ship"),
+        CRITTER("Critter"),
+        CIVILIAN("Civilian"),
+        SNIPER("Sniper"),
+        IGNORABLE("Ignorable"),
+        SPIDERWASP("Spiderwasp"),
+        INFECTED("Infected"),
+        AIR("Air"),
+        OTHER("Other");
+
+        private final String tagName;
+        UnitTag(String tagName) {
+            this.tagName = tagName;
+        }
+
+        public static UnitTag fromString(String str) {
+            for (UnitTag tag : values()) {
+                if (tag.tagName.equalsIgnoreCase(str)) {
+                    return tag;
+                }
+            }
+            System.out.println(str);
+            return OTHER;
+        }
+    }
 
 	public class Rank {
 		private int power;
@@ -216,6 +272,7 @@ public class Unit implements Comparable<Unit> {
 		private int hitDelay;
 		private int minDamage, maxDamage;
 		private int rangeBonus;
+        private String firesound;
 		protected Weapon() {
 			name = "(None)";
 			tag = "none";
@@ -229,6 +286,7 @@ public class Unit implements Comparable<Unit> {
 			backAnimationName = json.optString("backattackAnimation", null);
 			hitDelay = json.optInt("damageAnimationDelay", 0)
 					+ json.optInt("firesoundFrame", 0);
+            firesound = json.optString("firesound", null);
 			initStats(json.optJSONObject("stats"));
 			JSONArray abilities = json.getJSONArray("abilities");
 			attacks = new Attack[abilities.length()];
@@ -263,6 +321,9 @@ public class Unit implements Comparable<Unit> {
 		public int getHitDelay() {
 			return hitDelay;
 		}
+        public String firesound() {
+            return firesound;
+        }
 		public int getMinDamage() {
 			return minDamage;
 		}

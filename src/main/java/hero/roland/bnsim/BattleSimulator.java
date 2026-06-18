@@ -1,6 +1,7 @@
 package hero.roland.bnsim;
 
 import java.awt.geom.Point2D;
+import java.io.File;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.EnumMap;
@@ -116,6 +117,29 @@ public class BattleSimulator {
 	public void clearSide(Side side) {
 		for (PlacedUnit[] column : grids.get(side))
 			Arrays.fill(column, null);
+	}
+
+	/**
+	 * Plays a sound effect by name from the bundle folder (e.g. an ability's
+	 * hit sound). The name may include its extension, or {@code .mp3}/{@code .wav}
+	 * is tried. Missing files are ignored.
+	 */
+	public void playSound(String name) {
+		System.out.println("Playing sound: " + name);
+		if (name == null || name.isBlank())
+			return;
+		File file = GameFiles.file(name);
+		if (!file.isFile()) {
+			for (String ext : new String[] { ".mp3", ".wav" }) {
+				File candidate = GameFiles.file(name + ext);
+				if (candidate.isFile()) {
+					file = candidate;
+					break;
+				}
+			}
+		}
+		System.out.println("Playing sound: " + file.getName());
+		SoundPlayer.play(file);
 	}
 
 	// --- Combat ------------------------------------------------------------

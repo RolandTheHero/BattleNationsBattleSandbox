@@ -274,6 +274,14 @@ public class BattleField extends JComponent {
 		Animation anim = loadAttackAnimation(attacker, attack);
 		attacker.startAttack(anim, tick);
 
+		// Play the weapon's fire sound for the attacking unit.
+		sim.playSound(attack.getWeapon().firesound());
+
+		// Play the ability's hit sound, picking the variant for the target type.
+		PlacedUnit aimTarget = sim.unitAt(BattleSimulator.opponentOf(attacker.getSide()), aim);
+		boolean metal = aimTarget != null && aimTarget.getUnit().hasTag(Unit.UnitTag.METAL);
+		sim.playSound(attack.getAbility().getHitSound(metal));
+
 		int base = tick + Math.max(0, attack.getHitDelay());
 		int lastHit = 0;
 		for (BattleSimulator.Hit hit : sim.resolveHits(attacker, attack, aim)) {

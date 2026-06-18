@@ -27,6 +27,7 @@ public class Ability {
 	private boolean capture;
 	private int aoeDelay;
 	private String targetType;
+    private String infantryHitSound, vehicleHitSound;
     private DamageType damageType;
     private AttackDirection attackDirection;
 	private boolean randomTarget;
@@ -95,8 +96,8 @@ public class Ability {
 		}
         armorPiercingRate = stats.optDouble("armorPiercingPercent", 0);
 
-        //infantryHitSound = stats.optString("inf_hitsound", null);
-        //vehicleHitSound = stats.optString("veh_hitsound", null);
+        infantryHitSound = stats.optString("inf_hitsound", null);
+        vehicleHitSound = stats.optString("veh_hitsound", null);
 	}
 
 	// private void initPrereqs(JSONObject json) {
@@ -194,6 +195,21 @@ public class Ability {
 	public String getTargetType() {
 		return targetType;
 	}
+
+    public String getInfantryHitSound() {
+        return infantryHitSound;
+    }
+
+    public String getVehicleHitSound() {
+        return vehicleHitSound;
+    }
+
+    /** The hit sound for the target type ({@code metal} = vehicle), with a
+     * fallback to the other if one is missing. */
+    public String getHitSound(boolean metal) {
+        String sound = metal ? vehicleHitSound : infantryHitSound;
+        return sound != null ? sound : (metal ? infantryHitSound : vehicleHitSound);
+    }
 
     public DamageType getDamageType() {
         return damageType;

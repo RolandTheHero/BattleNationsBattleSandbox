@@ -5,17 +5,15 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.InputStream;
 
-import javazoom.jl.player.Player;
-
 /**
- * Plays an MP3 file on a background daemon thread, looping until stopped.
- * Used for the battle background music. All playback is best-effort: a missing
- * or unreadable file simply results in silence rather than an error.
+ * Plays an MP3 file on a background daemon thread, looping until stopped, at the
+ * shared {@link SoundPlayer} master volume. Used for the battle background
+ * music. Playback is best-effort: a missing or unreadable file is silently
+ * ignored.
  */
 public class MusicPlayer {
 
 	private final Object lock = new Object();
-	private Player player;
 	private Thread thread;
 	private volatile boolean running;
 
@@ -35,13 +33,7 @@ public class MusicPlayer {
 	private void playLoop(File file) {
 		while (running) {
 			try (InputStream in = new BufferedInputStream(new FileInputStream(file))) {
-				Player p = new Player(in);
-				synchronized (lock) {
-					if (!running)
-						break;
-					player = p;
-				}
-				p.play(); // blocks until the track ends or the player is closed
+				SoundPlayer.streamMp3(in, () -> running);
 			} catch (Exception e) {
 				break; // unreadable/undecodable file: give up silently
 			}
@@ -52,10 +44,6 @@ public class MusicPlayer {
 	public void stop() {
 		synchronized (lock) {
 			running = false;
-			if (player != null) {
-				player.close();
-				player = null;
-			}
 			thread = null;
 		}
 	}
