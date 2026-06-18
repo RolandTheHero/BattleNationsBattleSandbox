@@ -150,19 +150,38 @@ public class Unit implements Comparable<Unit> {
 	}
 
 	public int getPower(int rank) {
-		return ranks[rank-1].getPower();
+		return ranks[rank-1].power();
 	}
 
 	public class Rank {
 		private int power;
+        private int accuracy;
+        private int bravery;
+        private int critical;
+        private int defense;
+        private int hp;
+        private int armorHp;
+        private int dodge;
 		//private Prerequisites prereq;
 		protected Rank(JSONObject json) {
 			power = json.optInt("power", 0);
+            accuracy = json.optInt("accuracy", 0);
+            bravery = json.optInt("bravery", 0);
+            critical = json.optInt("critical", 0);
+            defense = json.optInt("defense", 0);
+            hp = json.optInt("hp", 10);
+            armorHp = json.optInt("armorHp", 0);
+            dodge = json.optInt("dodge", 0);
 			//prereq = Prerequisites.create(json.optJSONObject("prereqsForLevel"));
 		}
-		public int getPower() {
-			return power;
-		}
+		public int power() { return power; }
+        public int accuracy() { return accuracy; }
+        public int bravery() { return bravery; }
+        public int critical() { return critical; }
+        public int defense() { return defense; }
+        public int hp() { return hp; }
+        public int armorHp() { return armorHp; }
+        public int dodge() { return dodge; }
 		// public int getMinLevel() {
 		// 	return prereq == null ? 0 : prereq.getMinLevel();
 		// }

@@ -4,7 +4,6 @@ import java.awt.geom.Point2D;
 import java.util.ArrayList;
 import java.util.EnumMap;
 import java.util.HashSet;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
@@ -196,15 +195,17 @@ public class BattleSimulator {
 	}
 
 	/**
-	 * Resolves which enemy cells a fired attack hits when aimed at {@code aim}.
-	 * Each shot picks a target square from the ability's target area (randomly
-	 * by weight if the area is random, otherwise every square is hit once per
-	 * shot); the ability's damage area then spreads each hit to nearby cells.
+	 * Resolves which opposing cells a fired attack hits when aimed at
+	 * {@code aim}, and how much damage each lands. Each shot rolls a damage
+	 * value in [min, max) for the attacker's rank; the damage area then spreads
+	 * each shot to nearby cells, scaled by each square's value multiplier.
 	 */
-	public List<Hit> resolveHits(Unit.Attack attack, Cell aim, Side attackerSide) {
-		if (attack == null || aim == null)
-			return new ArrayList<>();
+	public List<Hit> resolveHits(PlacedUnit attacker, Unit.Attack attack, Cell aim) {
+		List<Hit> result = new ArrayList<>();
+		if (attacker == null || attack == null || aim == null)
+			return result;
 		Ability ability = attack.getAbility();
+		Side targetSide = opponentOf(attacker.getSide());
 		TargetSquare[] targetArea = ability.getTargetArea();
 		TargetSquare[] damageArea = ability.getDamageArea();
 		if (targetArea == null)
@@ -213,11 +214,13 @@ public class BattleSimulator {
 			damageArea = new TargetSquare[] { TargetSquare.SINGLE_TARGET };
 		int shots = Math.max(1, ability.getNumAttacks());
 		int aoeDelay = ability.getAoeDelay();
+		int minDamage = attack.getMinDamage(attacker.getRank());
+		int maxDamage = attack.getMaxDamage(attacker.getRank());
 
 		// Area offsets are authored from the player's perspective: +x is one
 		// tile to the player's right. The enemy faces the opposite way, so its
 		// x is mirrored; y is the same for both sides.
-		int xSign = attackerSide == Side.PLAYER ? 1 : -1;
+		int xSign = attacker.getSide() == Side.PLAYER ? 1 : -1;
 
 		// Each successive tile is staggered by aoeDelay. The ripple sequence is
 		// taken from the squares' "order" when it varies, otherwise from their
@@ -225,26 +228,27 @@ public class BattleSimulator {
 		int[] targetSteps = sequenceSteps(targetArea);
 		int[] damageSteps = sequenceSteps(damageArea);
 
-		Set<Hit> result = new LinkedHashSet<>();
 		if (ability.getRandomTarget()) {
 			for (int shot = 0; shot < shots; shot++) {
 				TargetSquare hit = pickWeighted(targetArea);
 				if (hit != null)
-					addImpact(result, aim, hit, shot, damageArea, damageSteps, aoeDelay, xSign);
+					addImpact(result, targetSide, aim, hit, shot, damageArea,
+							damageSteps, aoeDelay, xSign, rollDamage(minDamage, maxDamage));
 			}
 		} else {
 			for (int t = 0; t < targetArea.length; t++)
 				for (int shot = 0; shot < shots; shot++)
-					addImpact(result, aim, targetArea[t], targetSteps[t],
-							damageArea, damageSteps, aoeDelay, xSign);
+					addImpact(result, targetSide, aim, targetArea[t], targetSteps[t],
+							damageArea, damageSteps, aoeDelay, xSign,
+							rollDamage(minDamage, maxDamage));
 		}
-		return new ArrayList<>(result);
+		return result;
 	}
 
-	/** Adds one impact's damage-area tiles, each staggered by the aoe delay. */
-	private void addImpact(Set<Hit> result, Cell aim, TargetSquare target,
-			int targetStep, TargetSquare[] damageArea, int[] damageSteps,
-			int aoeDelay, int xSign) {
+	/** Adds one shot's damage-area tiles, each staggered by the aoe delay. */
+	private void addImpact(List<Hit> result, Side targetSide, Cell aim,
+			TargetSquare target, int targetStep, TargetSquare[] damageArea,
+			int[] damageSteps, int aoeDelay, int xSign, int baseDamage) {
 		int baseCol = aim.col() + xSign * target.getX();
 		int baseRow = aim.row() - target.getY();
 		for (int d = 0; d < damageArea.length; d++) {
@@ -253,8 +257,14 @@ public class BattleSimulator {
 			if (!GridGeometry.isValid(col, row))
 				continue;
 			int delay = Math.max(0, aoeDelay * (targetStep + damageSteps[d]));
-			result.add(new Hit(new Cell(col, row), delay));
+			int damage = (int) Math.round(baseDamage * damageArea[d].getValue());
+			result.add(new Hit(targetSide, new Cell(col, row), delay, damage));
 		}
+	}
+
+	/** Rolls a damage value in [min, max) (inclusive min, exclusive max). */
+	private int rollDamage(int min, int max) {
+		return max > min ? min + random.nextInt(max - min) : min;
 	}
 
 	/**
@@ -289,11 +299,11 @@ public class BattleSimulator {
 	}
 
 	/**
-	 * A struck cell and the delay, in animation frames from when the attack
-	 * lands, before this tile is hit. Tiles in an area-of-effect ripple
+	 * A struck cell: which side it is on, the delay (in animation frames) before
+	 * it is hit, and the damage it takes. Tiles in an area-of-effect ripple
 	 * outwards using the ability's aoe delay.
 	 */
-	public record Hit(Cell cell, int delayFrames) {
+	public record Hit(Side side, Cell cell, int delayFrames, int damage) {
 	}
 
 	/** All placed units across both sides, in no particular order. */

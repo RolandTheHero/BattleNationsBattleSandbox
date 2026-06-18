@@ -4,6 +4,7 @@ import java.awt.AlphaComposite;
 import java.awt.BasicStroke;
 import java.awt.Color;
 import java.awt.Dimension;
+import java.awt.Font;
 import java.awt.Graphics;
 import java.awt.Graphics2D;
 import java.awt.Point;
@@ -19,6 +20,7 @@ import java.util.Set;
 import java.util.function.Consumer;
 
 import javax.swing.JComponent;
+import javax.swing.SwingUtilities;
 import javax.swing.Timer;
 import javax.swing.event.MouseInputAdapter;
 
@@ -49,6 +51,9 @@ public class BattleField extends JComponent {
 	private static final Color TARGET_HIGHLIGHT = new Color(60, 120, 230, 110);
 	private static final Color SELECT_OUTLINE = new Color(245, 205, 70);
 	private static final Color HIT_COLOR = new Color(225, 40, 40);
+	private static final Color RANK_COLOR = new Color(0, 220, 255);
+	private static final Color HP_COLOR = new Color(70, 210, 60);
+	private static final Color ARMOR_COLOR = new Color(0, 200, 255);
 
 	/** Milliseconds between animation frames (~20 fps). */
 	private static final int FRAME_DELAY = 50;
@@ -93,6 +98,7 @@ public class BattleField extends JComponent {
 
 		animationTimer = new Timer(FRAME_DELAY, e -> {
 			tick++;
+			applyLandedHits();
 			pruneHitMarkers();
 			advanceTurns();
 			repaint();
@@ -103,6 +109,8 @@ public class BattleField extends JComponent {
 			public void mousePressed(java.awt.event.MouseEvent e) {
 				if (battleMode)
 					onBattleClick(e.getPoint());
+				else if (SwingUtilities.isRightMouseButton(e))
+					cycleRank(e.getPoint());
 				else
 					beginDrag(e.getPoint());
 			}
@@ -147,6 +155,9 @@ public class BattleField extends JComponent {
 		dragPoint = null;
 		clearSelection();
 		hitMarkers.clear();
+		if (battle)
+			for (PlacedUnit unit : sim.placedUnits())
+				unit.resetHealth();
 		repaint();
 	}
 
@@ -170,6 +181,15 @@ public class BattleField extends JComponent {
 		dragging = sim.pick(p);
 		dragPoint = p;
 		repaint();
+	}
+
+	/** Right-click during setup: cycle the unit's rank up to its maximum. */
+	private void cycleRank(Point p) {
+		PlacedUnit unit = sim.pick(p);
+		if (unit != null) {
+			unit.cycleRank();
+			repaint();
+		}
 	}
 
 	private void onBattleClick(Point p) {
@@ -227,12 +247,11 @@ public class BattleField extends JComponent {
 		Animation anim = loadAttackAnimation(attacker, attack);
 		attacker.startAttack(anim, tick);
 
-		Side targetSide = BattleSimulator.opponentOf(attacker.getSide());
 		int base = tick + Math.max(0, attack.getHitDelay());
 		int lastHit = 0;
-		for (BattleSimulator.Hit hit : sim.resolveHits(attack, aim, attacker.getSide())) {
+		for (BattleSimulator.Hit hit : sim.resolveHits(attacker, attack, aim)) {
 			int start = base + hit.delayFrames();
-			hitMarkers.add(new HitMarker(targetSide, hit.cell(), start));
+			hitMarkers.add(new HitMarker(hit.side(), hit.cell(), start, hit.damage()));
 			lastHit = Math.max(lastHit, start - tick);
 		}
 
@@ -320,6 +339,7 @@ public class BattleField extends JComponent {
 
 		drawUnits(g2);
 		drawHitMarkers(g2);
+		drawOverlays(g2);
 
 		if (!battleMode && dragging != null && dragPoint != null)
 			drawUnit(g2, dragging, dragPoint.x, dragPoint.y, 0.7f);
@@ -386,6 +406,21 @@ public class BattleField extends JComponent {
 		hitMarkers.removeIf(m -> tick - m.startTick >= HIT_FADE);
 	}
 
+	/** Applies each hit's damage when it lands, removing units killed by it. */
+	private void applyLandedHits() {
+		for (HitMarker marker : hitMarkers) {
+			if (marker.applied || tick < marker.startTick)
+				continue;
+			marker.applied = true;
+			PlacedUnit target = sim.unitAt(marker.side, marker.cell);
+			if (target != null) {
+				target.applyDamage(marker.damage);
+				if (target.isDead())
+					sim.remove(target);
+			}
+		}
+	}
+
 	private void drawUnits(Graphics2D g) {
 		// Painter's order: draw back-to-front so nearer units overlap farther.
 		List<PlacedUnit> units = sim.placedUnits();
@@ -398,6 +433,57 @@ public class BattleField extends JComponent {
 			Point2D c = geometry.cellCentre(unit.getSide(), unit.getCell());
 			drawUnit(g, unit, c.getX(), c.getY(), 1f);
 		}
+	}
+
+	/**
+	 * Per-unit overlays: the rank badge while placing units, and the health bar
+	 * during battle (only when a unit is below full health/armor).
+	 */
+	private void drawOverlays(Graphics2D g) {
+		for (PlacedUnit unit : sim.placedUnits()) {
+			Point2D c = geometry.cellCentre(unit.getSide(), unit.getCell());
+			if (battleMode) {
+				if (!unit.isFullHealth())
+					drawHealthBar(g, unit, c.getX(), c.getY());
+			} else {
+				drawRankBadge(g, unit, c.getX(), c.getY());
+			}
+		}
+	}
+
+	private void drawRankBadge(Graphics2D g, PlacedUnit unit,
+			double centreX, double centreY) {
+		String text = Integer.toString(unit.getRank());
+		Font old = g.getFont();
+		g.setFont(old.deriveFont(Font.BOLD, 14f));
+		int tw = g.getFontMetrics().stringWidth(text);
+		int x = (int) Math.round(centreX - tw / 2.0);
+		int y = (int) Math.round(centreY + 5);
+		g.setColor(new Color(0, 0, 0, 160));
+		g.drawString(text, x + 1, y + 1);
+		g.setColor(RANK_COLOR);
+		g.drawString(text, x, y);
+		g.setFont(old);
+	}
+
+	private void drawHealthBar(Graphics2D g, PlacedUnit unit,
+			double centreX, double centreY) {
+		int maxTotal = unit.getMaxHp() + unit.getMaxArmor();
+		if (maxTotal <= 0)
+			return;
+		int barW = 60, barH = 6;
+		int x = (int) Math.round(centreX - barW / 2.0);
+		int y = (int) Math.round(centreY - GridGeometry.HALF_H - 12);
+
+		int hpLen = (int) Math.round(barW * Math.max(0, unit.getCurrentHp()) / (double) maxTotal);
+		int armorLen = (int) Math.round(barW * Math.max(0, unit.getCurrentArmor()) / (double) maxTotal);
+
+		g.setColor(new Color(20, 20, 20, 200));
+		g.fillRect(x - 1, y - 1, barW + 2, barH + 2);
+		g.setColor(HP_COLOR);
+		g.fillRect(x, y, hpLen, barH);
+		g.setColor(ARMOR_COLOR);
+		g.fillRect(x + hpLen, y, armorLen, barH);
 	}
 
 	private void drawUnit(Graphics2D g, PlacedUnit unit,
@@ -464,16 +550,19 @@ public class BattleField extends JComponent {
 		}
 	}
 
-	/** A struck tile that flashes red and fades out. */
+	/** A struck tile that flashes red, deals its damage on landing, and fades. */
 	private static final class HitMarker {
 		final Side side;
 		final Cell cell;
 		final int startTick;
+		final int damage;
+		boolean applied;
 
-		HitMarker(Side side, Cell cell, int startTick) {
+		HitMarker(Side side, Cell cell, int startTick, int damage) {
 			this.side = side;
 			this.cell = cell;
 			this.startTick = startTick;
+			this.damage = damage;
 		}
 	}
 }

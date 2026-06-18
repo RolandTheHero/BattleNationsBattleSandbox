@@ -17,6 +17,12 @@ public class PlacedUnit {
 	private final Side side;
 	private Cell cell;
 
+	/** Rank (1-based, up to the unit's max rank); set during placement. */
+	private int rank = 1;
+	/** Current health and armor; depleted during battle, reset on rank change. */
+	private int currentHp;
+	private int currentArmor;
+
 	private Animation animation;
 	private boolean animationLoaded;
 
@@ -28,6 +34,7 @@ public class PlacedUnit {
 		this.unit = unit;
 		this.side = side;
 		this.cell = cell;
+		resetHealth();
 	}
 
 	public Unit getUnit() {
@@ -44,6 +51,67 @@ public class PlacedUnit {
 
 	void setCell(Cell cell) {
 		this.cell = cell;
+	}
+
+	// --- Rank and health ---------------------------------------------------
+
+	public int getRank() {
+		return rank;
+	}
+
+	public int getMaxRank() {
+		return Math.max(1, unit.getMaxRank());
+	}
+
+	/** Cycles the rank up by one, wrapping back to 1 after the last rank. */
+	public void cycleRank() {
+		rank = rank % getMaxRank() + 1;
+		resetHealth();
+	}
+
+	/** Restores full health and armor for the current rank. */
+	public void resetHealth() {
+		if (unit.getMaxRank() >= 1) {
+			Unit.Rank stats = unit.getRank(rank);
+			currentHp = stats.hp();
+			currentArmor = stats.armorHp();
+		} else {
+			currentHp = 1;
+			currentArmor = 0;
+		}
+	}
+
+	public int getCurrentHp() {
+		return currentHp;
+	}
+
+	public int getCurrentArmor() {
+		return currentArmor;
+	}
+
+	public int getMaxHp() {
+		return unit.getMaxRank() >= 1 ? unit.getRank(rank).hp() : 1;
+	}
+
+	public int getMaxArmor() {
+		return unit.getMaxRank() >= 1 ? unit.getRank(rank).armorHp() : 0;
+	}
+
+	public boolean isFullHealth() {
+		return currentHp >= getMaxHp() && currentArmor >= getMaxArmor();
+	}
+
+	public boolean isDead() {
+		return currentHp <= 0;
+	}
+
+	/** Applies damage: armor absorbs first, the remainder hits health. */
+	public void applyDamage(int damage) {
+		if (damage <= 0)
+			return;
+		int absorbed = Math.min(currentArmor, damage);
+		currentArmor -= absorbed;
+		currentHp -= (damage - absorbed);
 	}
 
 	/**
