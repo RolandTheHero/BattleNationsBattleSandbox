@@ -1,0 +1,169 @@
+package hero.roland.bnsim.ui;
+
+import java.awt.BorderLayout;
+import java.awt.Dimension;
+import java.awt.FlowLayout;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.function.BiConsumer;
+
+import javax.swing.BorderFactory;
+import javax.swing.Box;
+import javax.swing.BoxLayout;
+import javax.swing.ButtonGroup;
+import javax.swing.DefaultListModel;
+import javax.swing.JButton;
+import javax.swing.JLabel;
+import javax.swing.JList;
+import javax.swing.JPanel;
+import javax.swing.JRadioButton;
+import javax.swing.JScrollPane;
+import javax.swing.JTextField;
+import javax.swing.ListSelectionModel;
+import javax.swing.event.DocumentEvent;
+import javax.swing.event.DocumentListener;
+
+import hero.roland.bnsim.Side;
+import hero.roland.bnsim.Unit;
+
+/**
+ * A collapsible side menu for searching the loaded {@link Unit}s and adding a
+ * selected one to a chosen {@link Side} of the battlefield. The actual
+ * placement is delegated to a {@link BiConsumer} supplied via
+ * {@link #setPlacer}.
+ */
+public class UnitMenu extends JPanel {
+
+	private static final int EXPANDED_WIDTH = 250;
+
+	private final JButton toggle = new JButton("Units ◀");
+	private final JPanel content = new JPanel(new BorderLayout(0, 6));
+
+	private final DefaultListModel<Unit> listModel = new DefaultListModel<>();
+	private final JList<Unit> unitList = new JList<>(listModel);
+	private final JTextField search = new JTextField();
+	private final JRadioButton playerRadio = new JRadioButton("Player", true);
+	private final JRadioButton enemyRadio = new JRadioButton("Enemy");
+
+	private final List<Unit> allUnits = new ArrayList<>();
+
+	private BiConsumer<Unit, Side> placer;
+
+	public UnitMenu() {
+		setLayout(new BorderLayout());
+		setBorder(BorderFactory.createEmptyBorder(6, 6, 6, 6));
+
+		toggle.addActionListener(e -> setExpanded(!content.isVisible()));
+		add(toggle, BorderLayout.NORTH);
+
+		buildContent();
+		add(content, BorderLayout.CENTER);
+
+		loadUnits();
+		filter("");
+	}
+
+	private void buildContent() {
+		// Side selector.
+		ButtonGroup sideGroup = new ButtonGroup();
+		sideGroup.add(playerRadio);
+		sideGroup.add(enemyRadio);
+		JPanel sidePanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
+		sidePanel.add(new JLabel("Side:"));
+		sidePanel.add(playerRadio);
+		sidePanel.add(enemyRadio);
+
+		// Search field.
+		JPanel searchPanel = new JPanel(new BorderLayout(4, 0));
+		searchPanel.add(new JLabel("Search:"), BorderLayout.WEST);
+		searchPanel.add(search, BorderLayout.CENTER);
+		search.getDocument().addDocumentListener(new DocumentListener() {
+			@Override public void insertUpdate(DocumentEvent e) { filter(search.getText()); }
+			@Override public void removeUpdate(DocumentEvent e) { filter(search.getText()); }
+			@Override public void changedUpdate(DocumentEvent e) { filter(search.getText()); }
+		});
+
+		JPanel top = new JPanel();
+		top.setLayout(new BoxLayout(top, BoxLayout.Y_AXIS));
+		sidePanel.setAlignmentX(LEFT_ALIGNMENT);
+		searchPanel.setAlignmentX(LEFT_ALIGNMENT);
+		top.add(sidePanel);
+		top.add(Box.createVerticalStrut(4));
+		top.add(searchPanel);
+
+		// Unit list.
+		unitList.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+		unitList.addMouseListener(new MouseAdapter() {
+			@Override
+			public void mouseClicked(MouseEvent e) {
+				if (e.getClickCount() == 2)
+					placeSelected();
+			}
+		});
+
+		JButton addButton = new JButton("Add to board");
+		addButton.addActionListener(e -> placeSelected());
+
+		content.add(top, BorderLayout.NORTH);
+		content.add(new JScrollPane(unitList), BorderLayout.CENTER);
+		content.add(addButton, BorderLayout.SOUTH);
+	}
+
+	/** Sets the callback invoked when the user adds a unit to the board. */
+	public void setPlacer(BiConsumer<Unit, Side> placer) {
+		this.placer = placer;
+	}
+
+	private void setExpanded(boolean expanded) {
+		content.setVisible(expanded);
+		toggle.setText(expanded ? "Units ◀" : "Units ▶");
+		revalidate();
+		repaint();
+	}
+
+	private void loadUnits() {
+		try {
+			Unit[] units = Unit.getAll();
+			if (units != null)
+				for (Unit u : units)
+					if (u != null)
+						allUnits.add(u);
+		} catch (RuntimeException e) {
+			// Units not loaded yet: leave the list empty.
+		}
+	}
+
+	private void filter(String query) {
+		String q = query == null ? "" : query.trim().toLowerCase();
+		listModel.clear();
+		for (Unit u : allUnits)
+			if (q.isEmpty() || matches(u, q))
+				listModel.addElement(u);
+	}
+
+	private static boolean matches(Unit u, String q) {
+		return contains(u.getName(), q)
+				|| contains(u.getShortName(), q)
+				|| contains(u.getTag(), q);
+	}
+
+	private static boolean contains(String value, String q) {
+		return value != null && value.toLowerCase().contains(q);
+	}
+
+	private void placeSelected() {
+		Unit selected = unitList.getSelectedValue();
+		if (selected != null && placer != null)
+			placer.accept(selected, playerRadio.isSelected() ? Side.PLAYER : Side.ENEMY);
+	}
+
+	@Override
+	public Dimension getPreferredSize() {
+		int width = content.isVisible()
+				? EXPANDED_WIDTH
+				: toggle.getPreferredSize().width + 16;
+		return new Dimension(width, super.getPreferredSize().height);
+	}
+}
