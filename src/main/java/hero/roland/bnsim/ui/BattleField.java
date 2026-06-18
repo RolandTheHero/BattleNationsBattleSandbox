@@ -25,6 +25,7 @@ import javax.swing.SwingUtilities;
 import javax.swing.Timer;
 import javax.swing.event.MouseInputAdapter;
 
+import hero.roland.bnsim.Ability;
 import hero.roland.bnsim.Animation;
 import hero.roland.bnsim.BattleSimulator;
 import hero.roland.bnsim.Cell;
@@ -267,7 +268,8 @@ public class BattleField extends JComponent {
 		int lastHit = 0;
 		for (BattleSimulator.Hit hit : sim.resolveHits(attacker, attack, aim)) {
 			int start = base + hit.delayFrames();
-			hitMarkers.add(new HitMarker(hit.side(), hit.cell(), start, hit.damage()));
+			hitMarkers.add(new HitMarker(hit.side(), hit.cell(), start,
+					hit.rawDamage(), hit.damageType(), hit.armorPiercing()));
 			lastHit = Math.max(lastHit, start - tick);
 		}
 
@@ -489,9 +491,10 @@ public class BattleField extends JComponent {
 			marker.applied = true;
 			PlacedUnit target = sim.unitAt(marker.side, marker.cell);
 			if (target != null) {
-				target.applyDamage(marker.damage);
-				if (marker.damage > 0)
-					spawnDamageNumber(marker.side, marker.cell, marker.damage);
+				int dealt = target.applyDamage(marker.rawDamage,
+						marker.damageType, marker.armorPiercing);
+				if (dealt > 0)
+					spawnDamageNumber(marker.side, marker.cell, dealt);
 				if (target.isDead())
 					sim.remove(target);
 			}
@@ -632,14 +635,19 @@ public class BattleField extends JComponent {
 		final Side side;
 		final Cell cell;
 		final int startTick;
-		final int damage;
+		final double rawDamage;
+		final Ability.DamageType damageType;
+		final double armorPiercing;
 		boolean applied;
 
-		HitMarker(Side side, Cell cell, int startTick, int damage) {
+		HitMarker(Side side, Cell cell, int startTick, double rawDamage,
+				Ability.DamageType damageType, double armorPiercing) {
 			this.side = side;
 			this.cell = cell;
 			this.startTick = startTick;
-			this.damage = damage;
+			this.rawDamage = rawDamage;
+			this.damageType = damageType;
+			this.armorPiercing = armorPiercing;
 		}
 	}
 

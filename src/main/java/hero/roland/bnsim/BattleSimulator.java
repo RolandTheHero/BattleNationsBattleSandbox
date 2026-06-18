@@ -216,6 +216,8 @@ public class BattleSimulator {
 		int aoeDelay = ability.getAoeDelay();
 		int minDamage = attack.getMinDamage(attacker.getRank());
 		int maxDamage = attack.getMaxDamage(attacker.getRank());
+		Ability.DamageType damageType = ability.getDamageType();
+		double armorPiercing = Math.max(0, Math.min(1, ability.getArmorPiercingRate())); // Need to clamp to [0, 1] just in case of bad data??
 
 		// Area offsets are authored from the player's perspective: +x is one
 		// tile to the player's right. The enemy faces the opposite way, so its
@@ -233,14 +235,15 @@ public class BattleSimulator {
 				TargetSquare hit = pickWeighted(targetArea);
 				if (hit != null)
 					addImpact(result, targetSide, aim, hit, shot, damageArea,
-							damageSteps, aoeDelay, xSign, rollDamage(minDamage, maxDamage));
+							damageSteps, aoeDelay, xSign, rollDamage(minDamage, maxDamage),
+							damageType, armorPiercing);
 			}
 		} else {
 			for (int t = 0; t < targetArea.length; t++)
 				for (int shot = 0; shot < shots; shot++)
 					addImpact(result, targetSide, aim, targetArea[t], targetSteps[t],
 							damageArea, damageSteps, aoeDelay, xSign,
-							rollDamage(minDamage, maxDamage));
+							rollDamage(minDamage, maxDamage), damageType, armorPiercing);
 		}
 		return result;
 	}
@@ -248,7 +251,8 @@ public class BattleSimulator {
 	/** Adds one shot's damage-area tiles, each staggered by the aoe delay. */
 	private void addImpact(List<Hit> result, Side targetSide, Cell aim,
 			TargetSquare target, int targetStep, TargetSquare[] damageArea,
-			int[] damageSteps, int aoeDelay, int xSign, int baseDamage) {
+			int[] damageSteps, int aoeDelay, int xSign, int baseDamage,
+			Ability.DamageType damageType, double armorPiercing) {
 		int baseCol = aim.col() + xSign * target.getX();
 		int baseRow = aim.row() - target.getY();
 		for (int d = 0; d < damageArea.length; d++) {
@@ -257,8 +261,9 @@ public class BattleSimulator {
 			if (!GridGeometry.isValid(col, row))
 				continue;
 			int delay = Math.max(0, aoeDelay * (targetStep + damageSteps[d]));
-			int damage = (int) Math.round(baseDamage * damageArea[d].getValue());
-			result.add(new Hit(targetSide, new Cell(col, row), delay, damage));
+			double rawDamage = baseDamage * damageArea[d].getValue();
+			result.add(new Hit(targetSide, new Cell(col, row), delay,
+					rawDamage, damageType, armorPiercing));
 		}
 	}
 
@@ -300,10 +305,12 @@ public class BattleSimulator {
 
 	/**
 	 * A struck cell: which side it is on, the delay (in animation frames) before
-	 * it is hit, and the damage it takes. Tiles in an area-of-effect ripple
-	 * outwards using the ability's aoe delay.
+	 * it is hit, the raw damage before the defender's modifiers, and the
+	 * ability's damage type and armor-piercing fraction. Tiles in an
+	 * area-of-effect ripple outwards using the ability's aoe delay.
 	 */
-	public record Hit(Side side, Cell cell, int delayFrames, int damage) {
+	public record Hit(Side side, Cell cell, int delayFrames, double rawDamage,
+			Ability.DamageType damageType, double armorPiercing) {
 	}
 
 	/** All placed units across both sides, in no particular order. */

@@ -151,13 +151,31 @@ public class PlacedUnit {
 		return currentHp <= 0;
 	}
 
-	/** Applies damage: armor absorbs first, the remainder hits health. */
-	public void applyDamage(int damage) {
-		if (damage <= 0)
-			return;
-		int absorbed = Math.min(currentArmor, damage);
-		currentArmor -= absorbed;
-		currentHp -= (damage - absorbed);
+	/**
+	 * Applies a hit of the given raw damage and type. The armor-piercing
+	 * fraction of the damage goes straight to HP and the rest to armor; each
+	 * part is scaled by this unit's HP / armor damage modifier for the type.
+	 * Damage the armor cannot absorb spills over to HP. Returns the total
+	 * damage dealt (for the floating damage number).
+	 */
+	public int applyDamage(double rawDamage, Ability.DamageType type, double armorPiercing) {
+		if (rawDamage <= 0)
+			return 0;
+		double ap = Math.max(0, Math.min(1, armorPiercing));
+		double hpMod = 1, armorMod = 1;
+		if (unit.getMaxRank() >= 1) {
+			Unit.Rank stats = unit.getRank(rank);
+			hpMod = stats.damageMod(type);
+			armorMod = stats.armorDamageMod(type);
+		}
+		double hpDamage = rawDamage * ap * hpMod;
+		double armorDamage = rawDamage * (1 - ap) * armorMod;
+
+		// The armor portion depletes armor; any excess spills over to HP.
+		double overflow = Math.max(0, armorDamage - currentArmor);
+		currentArmor = (int) Math.round(Math.max(0, currentArmor - armorDamage));
+		currentHp -= (int) Math.round(hpDamage + overflow);
+		return (int) Math.round(hpDamage + armorDamage);
 	}
 
 	/**

@@ -19,6 +19,7 @@ public class Ability {
 	private String tag, name;
 	private String frontAnimationName, backAnimationName;
 	private double damageFromWeapon, damageFromUnit;
+    private double armorPiercingRate;
 	private int damageBonus;
 	private int numAttacks;
 	private int minRange, maxRange;
@@ -26,6 +27,7 @@ public class Ability {
 	private boolean capture;
 	private int aoeDelay;
 	private String targetType;
+    private DamageType damageType;
     private AttackDirection attackDirection;
 	private boolean randomTarget;
 	private TargetSquare[] targetArea, damageArea;
@@ -82,7 +84,7 @@ public class Ability {
         if (attackDirectionStr.equalsIgnoreCase("front"))
             attackDirection = AttackDirection.FRONT;
         else attackDirection = AttackDirection.BACK;
-
+        damageType = DamageType.fromString(stats.getJSONArray("damageType").getString(0));
 		damageArea = initArea(stats.optJSONObject("damageArea"), false);
 		JSONObject targ = stats.optJSONObject("targetArea");
 		if (targ != null) {
@@ -91,6 +93,7 @@ public class Ability {
 			aoeDelay = (int) Math.round(getDouble(targ, "aoeOrderDelay", 0) * 20);
 			targetArea = initArea(targ, randomTarget);
 		}
+        armorPiercingRate = stats.optDouble("armorPiercingPercent", 0);
 	}
 
 	// private void initPrereqs(JSONObject json) {
@@ -188,6 +191,14 @@ public class Ability {
 	public String getTargetType() {
 		return targetType;
 	}
+
+    public DamageType getDamageType() {
+        return damageType;
+    }
+
+    public double getArmorPiercingRate() {
+        return armorPiercingRate;
+    }
 
 	/** Whether range and blocking are measured from the defender's front or back. */
 	public AttackDirection getAttackDirection() {
@@ -295,5 +306,28 @@ public class Ability {
 	}
     public enum AttackDirection {
         FRONT, BACK
+    }
+    public enum DamageType {
+        PIERCING("Piercing"),
+        EXPLOSIVE("Explosive"),
+        FIRE("Fire"),
+        CRUSHING("Crushing"),
+        COLD("Cold"),
+        TORPEDO("Torpedo"),
+        DEPTH_CHARGE("DepthCharge");
+
+        private String name;
+
+        DamageType(String name) {
+            this.name = name;
+        }
+        public static DamageType fromString(String s) {
+            for (DamageType type : DamageType.values()) {
+                if (type.name.equalsIgnoreCase(s)) {
+                    return type;
+                }
+            }
+            throw new IllegalArgumentException("Unknown damage type: " + s);
+        }
     }
 }

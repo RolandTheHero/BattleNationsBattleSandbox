@@ -162,6 +162,8 @@ public class Unit implements Comparable<Unit> {
         private int hp;
         private int armorHp;
         private int dodge;
+        private Map<Ability.DamageType, Double> damageMods = new HashMap<>();
+        private Map<Ability.DamageType, Double> armorDamageMods = new HashMap<>();
 		//private Prerequisites prereq;
 		protected Rank(JSONObject json) {
 			power = json.optInt("power", 0);
@@ -172,6 +174,20 @@ public class Unit implements Comparable<Unit> {
             hp = json.optInt("hp", 10);
             armorHp = json.optInt("armorHp", 0);
             dodge = json.optInt("dodge", 0);
+            JSONObject mods = json.optJSONObject("damageMods");
+            if (mods != null) {
+                for (String key : mods.keySet()) {
+                    Ability.DamageType type = Ability.DamageType.fromString(key);
+                    damageMods.put(type, mods.optDouble(key, 1));
+                }
+            }
+            JSONObject armorMods = json.optJSONObject("armorDamageMods");
+            if (armorMods != null) {
+                for (String key : armorMods.keySet()) {
+                    Ability.DamageType type = Ability.DamageType.fromString(key);
+                    armorDamageMods.put(type, armorMods.optDouble(key, 1));
+                }
+            }
 			//prereq = Prerequisites.create(json.optJSONObject("prereqsForLevel"));
 		}
 		public int power() { return power; }
@@ -182,6 +198,12 @@ public class Unit implements Comparable<Unit> {
         public int hp() { return hp; }
         public int armorHp() { return armorHp; }
         public int dodge() { return dodge; }
+        public double damageMod(Ability.DamageType type) {
+            return damageMods.getOrDefault(type, 1.0);
+        }
+        public double armorDamageMod(Ability.DamageType type) {
+            return armorDamageMods.getOrDefault(type, 1.0);
+        }
 		// public int getMinLevel() {
 		// 	return prereq == null ? 0 : prereq.getMinLevel();
 		// }
