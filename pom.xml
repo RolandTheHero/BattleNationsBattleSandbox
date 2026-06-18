@@ -20,6 +20,12 @@
             <version>20260522</version>
             <scope>compile</scope>
         </dependency>
+        <!-- MP3 decoder for battle music playback. -->
+        <dependency>
+            <groupId>com.googlecode.soundlibs</groupId>
+            <artifactId>jlayer</artifactId>
+            <version>1.0.1.4</version>
+        </dependency>
     </dependencies>
 
 </project>

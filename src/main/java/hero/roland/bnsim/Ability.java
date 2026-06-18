@@ -94,6 +94,9 @@ public class Ability {
 			targetArea = initArea(targ, randomTarget);
 		}
         armorPiercingRate = stats.optDouble("armorPiercingPercent", 0);
+
+        //infantryHitSound = stats.optString("inf_hitsound", null);
+        //vehicleHitSound = stats.optString("veh_hitsound", null);
 	}
 
 	// private void initPrereqs(JSONObject json) {

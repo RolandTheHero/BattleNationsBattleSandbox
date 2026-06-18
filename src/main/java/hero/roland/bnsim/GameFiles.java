@@ -49,6 +49,11 @@ public class GameFiles {
         return new FileInputStream(new File(bundleFolder, filename));
 	}
 
+    /** A file inside the loaded bundle folder (may not exist). */
+    public static File file(String filename) {
+        return new File(bundleFolder, filename);
+    }
+
     public static File[] glob(String pat) {
 		FilenameFilter filter = new GlobFilter(pat);
 		Map<String, File> files = new HashMap<>();

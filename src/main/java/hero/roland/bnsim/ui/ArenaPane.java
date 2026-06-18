@@ -16,6 +16,8 @@ import javax.swing.JToggleButton;
 
 import hero.roland.bnsim.Ability;
 import hero.roland.bnsim.BattleSimulator;
+import hero.roland.bnsim.GameFiles;
+import hero.roland.bnsim.MusicPlayer;
 import hero.roland.bnsim.PlacedUnit;
 import hero.roland.bnsim.Unit;
 
@@ -31,6 +33,7 @@ public class ArenaPane extends JLayeredPane {
 	private final JButton startButton = new JButton("Start Battle");
 	private final JButton endButton = new JButton("End Battle");
 	private final JPanel attackPanel = new JPanel();
+	private final MusicPlayer music = new MusicPlayer();
 
 	private Consumer<Boolean> onBattleModeChanged;
 
@@ -66,8 +69,12 @@ public class ArenaPane extends JLayeredPane {
 		field.setBattleMode(battle);
 		startButton.setVisible(!battle);
 		endButton.setVisible(battle);
-		if (!battle)
+		if (battle)
+			music.loop(GameFiles.file("battle_01.mp3"));
+		else {
+			music.stop();
 			attackPanel.setVisible(false);
+		}
 		if (onBattleModeChanged != null)
 			onBattleModeChanged.accept(battle);
 		revalidate();

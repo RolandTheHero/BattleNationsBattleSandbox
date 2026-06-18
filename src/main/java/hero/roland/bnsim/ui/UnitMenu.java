@@ -3,11 +3,13 @@ package hero.roland.bnsim.ui;
 import java.awt.BorderLayout;
 import java.awt.Dimension;
 import java.awt.FlowLayout;
+import java.awt.GridLayout;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.function.BiConsumer;
+import java.util.function.Consumer;
 
 import javax.swing.BorderFactory;
 import javax.swing.Box;
@@ -50,6 +52,7 @@ public class UnitMenu extends JPanel {
 	private final List<Unit> allUnits = new ArrayList<>();
 
 	private BiConsumer<Unit, Side> placer;
+	private Consumer<Side> sideClearer;
 
 	public UnitMenu() {
 		setLayout(new BorderLayout());
@@ -106,14 +109,37 @@ public class UnitMenu extends JPanel {
 		JButton addButton = new JButton("Add to board");
 		addButton.addActionListener(e -> placeSelected());
 
+		// Clear-side buttons.
+		JButton clearPlayer = new JButton("Clear Player");
+		clearPlayer.addActionListener(e -> clearSide(Side.PLAYER));
+		JButton clearEnemy = new JButton("Clear Enemy");
+		clearEnemy.addActionListener(e -> clearSide(Side.ENEMY));
+		JPanel clearRow = new JPanel(new GridLayout(1, 2, 4, 0));
+		clearRow.add(clearPlayer);
+		clearRow.add(clearEnemy);
+
+		JPanel bottom = new JPanel(new BorderLayout(0, 4));
+		bottom.add(addButton, BorderLayout.NORTH);
+		bottom.add(clearRow, BorderLayout.SOUTH);
+
 		content.add(top, BorderLayout.NORTH);
 		content.add(new JScrollPane(unitList), BorderLayout.CENTER);
-		content.add(addButton, BorderLayout.SOUTH);
+		content.add(bottom, BorderLayout.SOUTH);
 	}
 
 	/** Sets the callback invoked when the user adds a unit to the board. */
 	public void setPlacer(BiConsumer<Unit, Side> placer) {
 		this.placer = placer;
+	}
+
+	/** Sets the callback invoked to clear all units from a side. */
+	public void setSideClearer(Consumer<Side> sideClearer) {
+		this.sideClearer = sideClearer;
+	}
+
+	private void clearSide(Side side) {
+		if (sideClearer != null)
+			sideClearer.accept(side);
 	}
 
 	private void setExpanded(boolean expanded) {

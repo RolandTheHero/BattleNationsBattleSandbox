@@ -2,6 +2,7 @@ package hero.roland.bnsim;
 
 import java.awt.geom.Point2D;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.EnumMap;
 import java.util.HashSet;
 import java.util.List;
@@ -109,6 +110,12 @@ public class BattleSimulator {
 		PlacedUnit[][] grid = grids.get(unit.getSide());
 		if (cell != null && grid[cell.col()][cell.row()] == unit)
 			grid[cell.col()][cell.row()] = null;
+	}
+
+	/** Removes every unit from the given side. */
+	public void clearSide(Side side) {
+		for (PlacedUnit[] column : grids.get(side))
+			Arrays.fill(column, null);
 	}
 
 	// --- Combat ------------------------------------------------------------

@@ -164,6 +164,16 @@ public class BattleField extends JComponent {
 		repaint();
 	}
 
+	/** Removes all units from the given side (setup mode). */
+	public void clearSide(Side side) {
+		sim.clearSide(side);
+		if (dragging != null && dragging.getSide() == side) {
+			dragging = null;
+			dragPoint = null;
+		}
+		repaint();
+	}
+
 	/** Switches between setup mode (drag to place) and battle mode (attack). */
 	public void setBattleMode(boolean battle) {
 		this.battleMode = battle;
