@@ -16,6 +16,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Random;
 import java.util.Set;
 import java.util.function.Consumer;
 
@@ -54,11 +55,22 @@ public class BattleField extends JComponent {
 	private static final Color RANK_COLOR = new Color(0, 220, 255);
 	private static final Color HP_COLOR = new Color(70, 210, 60);
 	private static final Color ARMOR_COLOR = new Color(0, 200, 255);
+	private static final Color DAMAGE_COLOR = new Color(235, 45, 45);
+
+	/** Frames a floating damage number lives, and how far it rises (pixels). */
+	private static final int DAMAGE_FLOAT_FRAMES = 24;
+	private static final int DAMAGE_RISE = 42;
+	/** Frames between successive numbers on one tile, and random spread (px). */
+	private static final int DAMAGE_STAGGER_FRAMES = 8;
+	private static final int DAMAGE_JITTER_X = 26;
+	private static final int DAMAGE_JITTER_Y = 12;
 
 	/** Milliseconds between animation frames (~20 fps). */
 	private static final int FRAME_DELAY = 50;
 	/** Frames a struck tile stays red before fully fading out. */
 	private static final int HIT_FADE = 26;
+	/** Frames for a health bar to finish draining (~1 second). */
+	private static final int BAR_ANIM_FRAMES = 1000 / FRAME_DELAY;
 
 	private final BattleSimulator sim;
 	private final GridGeometry geometry;
@@ -86,6 +98,8 @@ public class BattleField extends JComponent {
 	private Consumer<PlacedUnit> attackerSelectedListener;
 
 	private final List<HitMarker> hitMarkers = new ArrayList<>();
+	private final List<DamageNumber> damageNumbers = new ArrayList<>();
+	private final Random random = new Random();
 
 	public BattleField(BattleSimulator sim) {
 		this.sim = sim;
@@ -99,7 +113,9 @@ public class BattleField extends JComponent {
 		animationTimer = new Timer(FRAME_DELAY, e -> {
 			tick++;
 			applyLandedHits();
+			animateHealthBars();
 			pruneHitMarkers();
+			pruneDamageNumbers();
 			advanceTurns();
 			repaint();
 		});
@@ -340,6 +356,7 @@ public class BattleField extends JComponent {
 		drawUnits(g2);
 		drawHitMarkers(g2);
 		drawOverlays(g2);
+		drawDamageNumbers(g2);
 
 		if (!battleMode && dragging != null && dragPoint != null)
 			drawUnit(g2, dragging, dragPoint.x, dragPoint.y, 0.7f);
@@ -406,6 +423,64 @@ public class BattleField extends JComponent {
 		hitMarkers.removeIf(m -> tick - m.startTick >= HIT_FADE);
 	}
 
+	private void pruneDamageNumbers() {
+		damageNumbers.removeIf(d -> tick - d.startTick >= DAMAGE_FLOAT_FRAMES);
+	}
+
+	/**
+	 * Spawns a floating damage number at a random spot near the tile centre.
+	 * Numbers stacking on the same tile are delayed so they appear one after
+	 * another instead of all at once.
+	 */
+	private void spawnDamageNumber(Side side, Cell cell, int amount) {
+		int slot = countDamageNumbersAt(side, cell);
+		int start = tick + slot * DAMAGE_STAGGER_FRAMES;
+		int dx = random.nextInt(2 * DAMAGE_JITTER_X + 1) - DAMAGE_JITTER_X;
+		int dy = random.nextInt(2 * DAMAGE_JITTER_Y + 1) - DAMAGE_JITTER_Y;
+		damageNumbers.add(new DamageNumber(side, cell, amount, start, dx, dy));
+	}
+
+	/** Eases every unit's health bar toward its real value (~1 second). */
+	private void animateHealthBars() {
+		for (PlacedUnit unit : sim.placedUnits())
+			unit.animateBars(BAR_ANIM_FRAMES);
+	}
+
+	/** How many live damage numbers currently share the given tile. */
+	private int countDamageNumbersAt(Side side, Cell cell) {
+		int count = 0;
+		for (DamageNumber d : damageNumbers)
+			if (d.side == side && d.cell.equals(cell)
+					&& tick - d.startTick < DAMAGE_FLOAT_FRAMES)
+				count++;
+		return count;
+	}
+
+	/** Draws each floating damage number, rising from its tile and fading out. */
+	private void drawDamageNumbers(Graphics2D g) {
+		for (DamageNumber number : damageNumbers) {
+			int elapsed = tick - number.startTick;
+			if (elapsed < 0 || elapsed >= DAMAGE_FLOAT_FRAMES)
+				continue;
+			float t = elapsed / (float) DAMAGE_FLOAT_FRAMES;
+			Point2D c = geometry.cellCentre(number.side, number.cell);
+			String text = Integer.toString(number.amount);
+
+			Graphics2D g2 = (Graphics2D) g.create();
+			g2.setComposite(AlphaComposite.getInstance(
+					AlphaComposite.SRC_OVER, 1f - t));
+			g2.setFont(g2.getFont().deriveFont(Font.BOLD, 26f));
+			int tw = g2.getFontMetrics().stringWidth(text);
+			int x = (int) Math.round(c.getX() - tw / 2.0 + number.dx);
+			int y = (int) Math.round(c.getY() + number.dy - t * DAMAGE_RISE);
+			g2.setColor(Color.BLACK);
+			g2.drawString(text, x + 1, y + 1);
+			g2.setColor(DAMAGE_COLOR);
+			g2.drawString(text, x, y);
+			g2.dispose();
+		}
+	}
+
 	/** Applies each hit's damage when it lands, removing units killed by it. */
 	private void applyLandedHits() {
 		for (HitMarker marker : hitMarkers) {
@@ -415,6 +490,8 @@ public class BattleField extends JComponent {
 			PlacedUnit target = sim.unitAt(marker.side, marker.cell);
 			if (target != null) {
 				target.applyDamage(marker.damage);
+				if (marker.damage > 0)
+					spawnDamageNumber(marker.side, marker.cell, marker.damage);
 				if (target.isDead())
 					sim.remove(target);
 			}
@@ -475,8 +552,8 @@ public class BattleField extends JComponent {
 		int x = (int) Math.round(centreX - barW / 2.0);
 		int y = (int) Math.round(centreY - GridGeometry.HALF_H - 12);
 
-		int hpLen = (int) Math.round(barW * Math.max(0, unit.getCurrentHp()) / (double) maxTotal);
-		int armorLen = (int) Math.round(barW * Math.max(0, unit.getCurrentArmor()) / (double) maxTotal);
+		int hpLen = (int) Math.round(barW * Math.max(0, unit.getDisplayHp()) / maxTotal);
+		int armorLen = (int) Math.round(barW * Math.max(0, unit.getDisplayArmor()) / maxTotal);
 
 		g.setColor(new Color(20, 20, 20, 200));
 		g.fillRect(x - 1, y - 1, barW + 2, barH + 2);
@@ -563,6 +640,25 @@ public class BattleField extends JComponent {
 			this.cell = cell;
 			this.startTick = startTick;
 			this.damage = damage;
+		}
+	}
+
+	/** A red damage number that floats up from a tile and fades out. */
+	private static final class DamageNumber {
+		final Side side;
+		final Cell cell;
+		final int amount;
+		final int startTick;
+		/** Random pixel offset from the tile centre. */
+		final int dx, dy;
+
+		DamageNumber(Side side, Cell cell, int amount, int startTick, int dx, int dy) {
+			this.side = side;
+			this.cell = cell;
+			this.amount = amount;
+			this.startTick = startTick;
+			this.dx = dx;
+			this.dy = dy;
 		}
 	}
 }

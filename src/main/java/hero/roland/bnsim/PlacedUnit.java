@@ -23,6 +23,14 @@ public class PlacedUnit {
 	private int currentHp;
 	private int currentArmor;
 
+	/** Animated bar values that ease toward the current health/armor. */
+	private double displayHp;
+	private double displayArmor;
+	private double hpRate;
+	private double armorRate;
+	private int lastHp = Integer.MIN_VALUE;
+	private int lastArmor = Integer.MIN_VALUE;
+
 	private Animation animation;
 	private boolean animationLoaded;
 
@@ -79,6 +87,44 @@ public class PlacedUnit {
 			currentHp = 1;
 			currentArmor = 0;
 		}
+		// Snap the animated bars to full (no animation on reset).
+		displayHp = lastHp = currentHp;
+		displayArmor = lastArmor = currentArmor;
+		hpRate = armorRate = 0;
+	}
+
+	/**
+	 * Eases the displayed bar values toward the real health/armor. When a value
+	 * changes, the gap is scheduled to close over {@code durationFrames} frames.
+	 */
+	public void animateBars(int durationFrames) {
+		if (lastHp != currentHp) {
+			hpRate = (displayHp - currentHp) / durationFrames;
+			lastHp = currentHp;
+		}
+		displayHp = ease(displayHp, currentHp, hpRate);
+
+		if (lastArmor != currentArmor) {
+			armorRate = (displayArmor - currentArmor) / durationFrames;
+			lastArmor = currentArmor;
+		}
+		displayArmor = ease(displayArmor, currentArmor, armorRate);
+	}
+
+	private static double ease(double display, double target, double rate) {
+		if (display == target || rate == 0)
+			return target;
+		double next = display - rate;
+		boolean passed = rate > 0 ? next <= target : next >= target;
+		return passed ? target : next;
+	}
+
+	public double getDisplayHp() {
+		return displayHp;
+	}
+
+	public double getDisplayArmor() {
+		return displayArmor;
 	}
 
 	public int getCurrentHp() {

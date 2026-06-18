@@ -105,8 +105,7 @@ public class Ability {
 	// 	}
 	// }
 
-	private static TargetSquare[] initArea(JSONObject area,
-			boolean random) {
+	private static TargetSquare[] initArea(JSONObject area, boolean random) {
 		if (area == null) return null;
 		JSONArray data = area.optJSONArray("data");
 		if (data == null) return null;
