@@ -138,7 +138,6 @@ public class BattleSimulator {
 				}
 			}
 		}
-		System.out.println("Playing sound: " + file.getName());
 		SoundPlayer.play(file);
 	}
 
