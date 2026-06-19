@@ -207,6 +207,12 @@ public class Unit implements Comparable<Unit> {
             System.out.println(str);
             return OTHER;
         }
+		public boolean isVehicle() {
+			return this == VEHICLE || this == TANK;
+		}
+		public boolean isInfantry() {
+			return !isVehicle();
+		}
     }
 
 	public class Rank {

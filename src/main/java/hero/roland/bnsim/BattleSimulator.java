@@ -130,7 +130,7 @@ public class BattleSimulator {
 			return;
 		File file = GameFiles.file(name);
 		if (!file.isFile()) {
-			for (String ext : new String[] { ".mp3", ".wav" }) {
+			for (String ext : new String[] { ".mp3", ".wav", ".caf" }) {
 				File candidate = GameFiles.file(name + ext);
 				if (candidate.isFile()) {
 					file = candidate;

@@ -55,6 +55,8 @@ public class Ability {
 		this.tag = tag;
 		name = Text.get(json.optString("name", null));
 		if (name == null) name = tag;
+		infantryHitSound = json.optString("inf_hitsound", null);
+        vehicleHitSound = json.optString("veh_hitsound", null);
 		initAnimation(json, dmgAnim);
 		initStats(json.getJSONObject("stats"));
 		//initPrereqs(json.getJSONObject("reqs"));
@@ -95,9 +97,6 @@ public class Ability {
 			targetArea = initArea(targ, randomTarget);
 		}
         armorPiercingRate = stats.optDouble("armorPiercingPercent", 0);
-
-        infantryHitSound = stats.optString("inf_hitsound", null);
-        vehicleHitSound = stats.optString("veh_hitsound", null);
 	}
 
 	// private void initPrereqs(JSONObject json) {

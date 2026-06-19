@@ -277,17 +277,15 @@ public class BattleField extends JComponent {
 		// Play the weapon's fire sound for the attacking unit.
 		sim.playSound(attack.getWeapon().firesound());
 
-		// Play the ability's hit sound, picking the variant for the target type.
-		PlacedUnit aimTarget = sim.unitAt(BattleSimulator.opponentOf(attacker.getSide()), aim);
-		boolean metal = aimTarget != null && aimTarget.getUnit().hasTag(Unit.UnitTag.METAL);
-		sim.playSound(attack.getAbility().getHitSound(metal));
-
+		// The ability's hit sound is played per struck enemy as each hit lands
+		// (see applyLandedHits), so its variant can match that unit's type.
+		Ability ability = attack.getAbility();
 		int base = tick + Math.max(0, attack.getHitDelay());
 		int lastHit = 0;
 		for (BattleSimulator.Hit hit : sim.resolveHits(attacker, attack, aim)) {
 			int start = base + hit.delayFrames();
 			hitMarkers.add(new HitMarker(hit.side(), hit.cell(), start,
-					hit.rawDamage(), hit.damageType(), hit.armorPiercing()));
+					hit.rawDamage(), hit.damageType(), hit.armorPiercing(), ability));
 			lastHit = Math.max(lastHit, start - tick);
 		}
 
@@ -503,19 +501,25 @@ public class BattleField extends JComponent {
 
 	/** Applies each hit's damage when it lands, removing units killed by it. */
 	private void applyLandedHits() {
+		// One hit sound per enemy struck this frame: several shots landing on the
+		// same tile at once would otherwise stack into a single over-loud sound.
+		Set<Cell> sounded = new HashSet<>();
 		for (HitMarker marker : hitMarkers) {
 			if (marker.applied || tick < marker.startTick)
 				continue;
 			marker.applied = true;
 			PlacedUnit target = sim.unitAt(marker.side, marker.cell);
-			if (target != null) {
-				int dealt = target.applyDamage(marker.rawDamage,
-						marker.damageType, marker.armorPiercing);
-				if (dealt > 0)
-					spawnDamageNumber(marker.side, marker.cell, dealt);
-				if (target.isDead())
-					sim.remove(target);
+			if (target == null) continue;
+			if (marker.ability != null && sounded.add(marker.cell)) {
+				boolean metal = target.getUnit().hasTag(Unit.UnitTag.METAL);
+				sim.playSound(marker.ability.getHitSound(metal));
 			}
+			int dealt = target.applyDamage(marker.rawDamage,
+					marker.damageType, marker.armorPiercing);
+			if (dealt > 0)
+				spawnDamageNumber(marker.side, marker.cell, dealt);
+			if (target.isDead())
+				sim.remove(target);
 		}
 	}
 
@@ -656,16 +660,19 @@ public class BattleField extends JComponent {
 		final double rawDamage;
 		final Ability.DamageType damageType;
 		final double armorPiercing;
+		/** Ability whose hit sound plays when this marker lands; may be null. */
+		final Ability ability;
 		boolean applied;
 
 		HitMarker(Side side, Cell cell, int startTick, double rawDamage,
-				Ability.DamageType damageType, double armorPiercing) {
+				Ability.DamageType damageType, double armorPiercing, Ability ability) {
 			this.side = side;
 			this.cell = cell;
 			this.startTick = startTick;
 			this.rawDamage = rawDamage;
 			this.damageType = damageType;
 			this.armorPiercing = armorPiercing;
+			this.ability = ability;
 		}
 	}
 
