@@ -125,7 +125,6 @@ public class BattleSimulator {
 	 * is tried. Missing files are ignored.
 	 */
 	public void playSound(String name) {
-		System.out.println("Playing sound: " + name);
 		if (name == null || name.isBlank())
 			return;
 		File file = GameFiles.file(name);

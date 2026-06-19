@@ -3,12 +3,19 @@ package hero.roland.bnsim.ui;
 import java.awt.Color;
 import java.awt.Dimension;
 import java.awt.FlowLayout;
+import java.awt.Font;
+import java.awt.FontMetrics;
+import java.awt.Graphics;
+import java.awt.Graphics2D;
+import java.awt.RenderingHints;
 import java.util.function.Consumer;
 
+import javax.swing.Box;
 import javax.swing.BorderFactory;
 import javax.swing.BoxLayout;
 import javax.swing.ButtonGroup;
 import javax.swing.JButton;
+import javax.swing.JComponent;
 import javax.swing.JLabel;
 import javax.swing.JLayeredPane;
 import javax.swing.JPanel;
@@ -105,7 +112,15 @@ public class ArenaPane extends JLayeredPane {
 		}
 
 		attackPanel.setLayout(new BoxLayout(attackPanel, BoxLayout.Y_AXIS));
-		attackPanel.add(new JLabel(unit.getUnit().getName()));
+
+		// Unit name and health/armor bar, both centered at the top of the panel.
+		JLabel name = new JLabel(unit.getUnit().getName(), JLabel.CENTER);
+		name.setAlignmentX(CENTER_ALIGNMENT);
+		name.setMaximumSize(new Dimension(Integer.MAX_VALUE, name.getPreferredSize().height));
+		attackPanel.add(name);
+		attackPanel.add(Box.createVerticalStrut(4));
+		attackPanel.add(new HealthArmorBar(unit));
+		attackPanel.add(Box.createVerticalStrut(6));
 
 		ButtonGroup group = new ButtonGroup();
 		boolean[] selectedFirst = { false };
@@ -160,6 +175,69 @@ public class ArenaPane extends JLayeredPane {
 			int width = Math.min(ap.width, w - 32);
 			attackPanel.setBounds((w - width) / 2, h - ap.height - 64,
 					width, ap.height);
+		}
+	}
+
+	/**
+	 * A large health/armor bar for the selected unit: a green HP segment and a
+	 * cyan armor segment (sized against the combined maximum, matching the
+	 * in-field bars), with the current and maximum values drawn inside.
+	 */
+	private static final class HealthArmorBar extends JComponent {
+		private static final Color HP_COLOR = new Color(70, 210, 60);
+		private static final Color ARMOR_COLOR = new Color(0, 200, 255);
+		private static final Color BACK = new Color(20, 20, 20);
+
+		private final PlacedUnit unit;
+
+		HealthArmorBar(PlacedUnit unit) {
+			this.unit = unit;
+			Dimension size = new Dimension(240, 26);
+			setPreferredSize(size);
+			setMinimumSize(size);
+			setMaximumSize(size);
+			setAlignmentX(CENTER_ALIGNMENT);
+		}
+
+		@Override
+		protected void paintComponent(Graphics g) {
+			Graphics2D g2 = (Graphics2D) g.create();
+			g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING,
+					RenderingHints.VALUE_ANTIALIAS_ON);
+			int w = getWidth(), h = getHeight();
+			int maxHp = unit.getMaxHp(), maxArmor = unit.getMaxArmor();
+			int maxTotal = Math.max(1, maxHp + maxArmor);
+			int curHp = Math.max(0, unit.getCurrentHp());
+			int curArmor = Math.max(0, unit.getCurrentArmor());
+
+			g2.setColor(BACK);
+			g2.fillRoundRect(0, 0, w - 1, h - 1, 8, 8);
+
+			int innerW = w - 4;
+			int hpLen = (int) Math.round(innerW * (double) curHp / maxTotal);
+			int armorLen = (int) Math.round(innerW * (double) curArmor / maxTotal);
+			g2.setColor(HP_COLOR);
+			g2.fillRect(2, 2, hpLen, h - 4);
+			g2.setColor(ARMOR_COLOR);
+			g2.fillRect(2 + hpLen, 2, armorLen, h - 4);
+			// Black divider between the HP and armor segments.
+			if (hpLen > 0 && armorLen > 0) {
+				g2.setColor(Color.BLACK);
+				g2.fillRect(2 + hpLen, 2, 2, h - 4);
+			}
+
+			String text = maxArmor > 0
+					? "HP " + curHp + "/" + maxHp + "    ARM " + curArmor + "/" + maxArmor
+					: "HP " + curHp + "/" + maxHp;
+			g2.setFont(getFont().deriveFont(Font.BOLD, 13f));
+			FontMetrics fm = g2.getFontMetrics();
+			int tx = (w - fm.stringWidth(text)) / 2;
+			int ty = (h - fm.getHeight()) / 2 + fm.getAscent();
+			g2.setColor(Color.BLACK);
+			g2.drawString(text, tx + 1, ty + 1);
+			g2.setColor(Color.WHITE);
+			g2.drawString(text, tx, ty);
+			g2.dispose();
 		}
 	}
 }

@@ -127,6 +127,11 @@ public class PlacedUnit {
 		return displayArmor;
 	}
 
+	/** Whether the animated bars have finished easing to the real health/armor. */
+	public boolean barsSettled() {
+		return displayHp == currentHp && displayArmor == currentArmor;
+	}
+
 	public int getCurrentHp() {
 		return currentHp;
 	}

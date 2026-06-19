@@ -279,6 +279,7 @@ public class Unit implements Comparable<Unit> {
 		private int minDamage, maxDamage;
 		private int rangeBonus;
         private String firesound;
+        private int firesoundFrame;
 		protected Weapon() {
 			name = "(None)";
 			tag = "none";
@@ -290,8 +291,8 @@ public class Unit implements Comparable<Unit> {
 			if (name == null) name = tag;
 			frontAnimationName = json.optString("frontattackAnimation", null);
 			backAnimationName = json.optString("backattackAnimation", null);
-			hitDelay = json.optInt("damageAnimationDelay", 0)
-					+ json.optInt("firesoundFrame", 0);
+			firesoundFrame = json.optInt("firesoundFrame", 0);
+			hitDelay = json.optInt("damageAnimationDelay", 0) + firesoundFrame;
             firesound = json.optString("firesound", null);
 			initStats(json.optJSONObject("stats"));
 			JSONArray abilities = json.getJSONArray("abilities");
@@ -329,6 +330,10 @@ public class Unit implements Comparable<Unit> {
 		}
         public String firesound() {
             return firesound;
+        }
+        /** Frames after the attack starts before the fire sound should play. */
+        public int firesoundFrame() {
+            return firesoundFrame;
         }
 		public int getMinDamage() {
 			return minDamage;

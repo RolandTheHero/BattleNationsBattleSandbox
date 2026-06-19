@@ -100,6 +100,10 @@ public class BattleField extends JComponent {
 
 	private final List<HitMarker> hitMarkers = new ArrayList<>();
 	private final List<DamageNumber> damageNumbers = new ArrayList<>();
+	/** Units removed from the simulation but still on screen while their bar drains. */
+	private final List<PlacedUnit> dyingUnits = new ArrayList<>();
+	/** Sounds queued to play at a future tick (e.g. a weapon's delayed fire sound). */
+	private final List<PendingSound> pendingSounds = new ArrayList<>();
 	private final Random random = new Random();
 
 	public BattleField(BattleSimulator sim) {
@@ -113,8 +117,10 @@ public class BattleField extends JComponent {
 
 		animationTimer = new Timer(FRAME_DELAY, e -> {
 			tick++;
+			playPendingSounds();
 			applyLandedHits();
 			animateHealthBars();
+			updateDyingUnits();
 			pruneHitMarkers();
 			pruneDamageNumbers();
 			advanceTurns();
@@ -182,6 +188,8 @@ public class BattleField extends JComponent {
 		dragPoint = null;
 		clearSelection();
 		hitMarkers.clear();
+		dyingUnits.clear();
+		pendingSounds.clear();
 		if (battle)
 			for (PlacedUnit unit : sim.placedUnits())
 				unit.resetHealth();
@@ -274,8 +282,9 @@ public class BattleField extends JComponent {
 		Animation anim = loadAttackAnimation(attacker, attack);
 		attacker.startAttack(anim, tick);
 
-		// Play the weapon's fire sound for the attacking unit.
-		sim.playSound(attack.getWeapon().firesound());
+		// Queue the weapon's fire sound to play after its fire-sound frame.
+		int fireTick = tick + Math.max(0, attack.getWeapon().firesoundFrame());
+		pendingSounds.add(new PendingSound(attack.getWeapon().firesound(), fireTick));
 
 		// The ability's hit sound is played per struck enemy as each hit lands
 		// (see applyLandedHits), so its variant can match that unit's type.
@@ -464,6 +473,23 @@ public class BattleField extends JComponent {
 			unit.animateBars(BAR_ANIM_FRAMES);
 	}
 
+	/** Drains dying units' bars, dropping each once its drain has finished. */
+	private void updateDyingUnits() {
+		for (PlacedUnit unit : dyingUnits)
+			unit.animateBars(BAR_ANIM_FRAMES);
+		dyingUnits.removeIf(PlacedUnit::barsSettled);
+	}
+
+	/** Plays any queued sounds whose scheduled tick has arrived. */
+	private void playPendingSounds() {
+		for (int i = pendingSounds.size() - 1; i >= 0; i--) {
+			if (tick >= pendingSounds.get(i).playTick) {
+				sim.playSound(pendingSounds.get(i).name);
+				pendingSounds.remove(i);
+			}
+		}
+	}
+
 	/** How many live damage numbers currently share the given tile. */
 	private int countDamageNumbersAt(Side side, Cell cell) {
 		int count = 0;
@@ -518,14 +544,20 @@ public class BattleField extends JComponent {
 					marker.damageType, marker.armorPiercing);
 			if (dealt > 0)
 				spawnDamageNumber(marker.side, marker.cell, dealt);
-			if (target.isDead())
+			if (target.isDead()) {
+				// Take it out of the simulation now (so it cannot be hit or act
+				// again), but keep drawing it until its health bar finishes draining.
 				sim.remove(target);
+				dyingUnits.add(target);
+			}
 		}
 	}
 
 	private void drawUnits(Graphics2D g) {
 		// Painter's order: draw back-to-front so nearer units overlap farther.
+		// Dying units are no longer in the simulation, so add them in explicitly.
 		List<PlacedUnit> units = sim.placedUnits();
+		units.addAll(dyingUnits);
 		units.sort(Comparator.comparingDouble(u ->
 				geometry.cellCentre(u.getSide(), u.getCell()).y));
 
@@ -551,6 +583,12 @@ public class BattleField extends JComponent {
 				drawRankBadge(g, unit, c.getX(), c.getY());
 			}
 		}
+		// Keep showing dying units' bars as they drain to empty.
+		if (battleMode)
+			for (PlacedUnit unit : dyingUnits) {
+				Point2D c = geometry.cellCentre(unit.getSide(), unit.getCell());
+				drawHealthBar(g, unit, c.getX(), c.getY());
+			}
 	}
 
 	private void drawRankBadge(Graphics2D g, PlacedUnit unit,
@@ -575,7 +613,8 @@ public class BattleField extends JComponent {
 			return;
 		int barW = 60, barH = 6;
 		int x = (int) Math.round(centreX - barW / 2.0);
-		int y = (int) Math.round(centreY - GridGeometry.HALF_H - 12);
+		// Sit the bar at the bottom of the tile (its lower diamond vertex).
+		int y = (int) Math.round(centreY + GridGeometry.HALF_H - barH);
 
 		int hpLen = (int) Math.round(barW * Math.max(0, unit.getDisplayHp()) / maxTotal);
 		int armorLen = (int) Math.round(barW * Math.max(0, unit.getDisplayArmor()) / maxTotal);
@@ -586,6 +625,11 @@ public class BattleField extends JComponent {
 		g.fillRect(x, y, hpLen, barH);
 		g.setColor(ARMOR_COLOR);
 		g.fillRect(x + hpLen, y, armorLen, barH);
+		// Black divider between the HP and armor segments.
+		if (hpLen > 0 && armorLen > 0) {
+			g.setColor(Color.BLACK);
+			g.fillRect(x + hpLen, y, 1, barH);
+		}
 	}
 
 	private void drawUnit(Graphics2D g, PlacedUnit unit,
@@ -673,6 +717,17 @@ public class BattleField extends JComponent {
 			this.damageType = damageType;
 			this.armorPiercing = armorPiercing;
 			this.ability = ability;
+		}
+	}
+
+	/** A sound queued to play once the tick counter reaches {@link #playTick}. */
+	private static final class PendingSound {
+		final String name;
+		final int playTick;
+
+		PendingSound(String name, int playTick) {
+			this.name = name;
+			this.playTick = playTick;
 		}
 	}
 
