@@ -11,6 +11,8 @@ import java.awt.Point;
 import java.awt.RenderingHints;
 import java.awt.Stroke;
 import java.awt.geom.Point2D;
+import java.awt.image.BufferedImage;
+import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -20,6 +22,7 @@ import java.util.Random;
 import java.util.Set;
 import java.util.function.Consumer;
 
+import javax.imageio.ImageIO;
 import javax.swing.JComponent;
 import javax.swing.SwingUtilities;
 import javax.swing.Timer;
@@ -30,6 +33,7 @@ import hero.roland.bnsim.Animation;
 import hero.roland.bnsim.BattleSimulator;
 import hero.roland.bnsim.Cell;
 import hero.roland.bnsim.EnemyBehavior;
+import hero.roland.bnsim.GameFiles;
 import hero.roland.bnsim.GridGeometry;
 import hero.roland.bnsim.PlacedUnit;
 import hero.roland.bnsim.RandomEnemyBehavior;
@@ -80,6 +84,9 @@ public class BattleField extends JComponent {
 	private int tick;
 	private boolean battleMode;
 
+	/** Background image scaled to fill the component; null falls back to a colour. */
+	private BufferedImage background;
+
 	/** Whose turn it is, and whether an attack animation is in progress. */
 	private enum Phase { PLAYER, PLAYER_FIRING, ENEMY_FIRING }
 
@@ -114,6 +121,7 @@ public class BattleField extends JComponent {
 		setPreferredSize(new Dimension(
 				GridGeometry.combinedWidth() + 120,
 				GridGeometry.combinedHeight() + 120));
+		setBackgroundImage("BattleMap.png"); // default battlefield background
 
 		animationTimer = new Timer(FRAME_DELAY, e -> {
 			tick++;
@@ -199,6 +207,25 @@ public class BattleField extends JComponent {
 	/** Listener notified when the selected attacker changes (null = cleared). */
 	public void setAttackerSelectedListener(Consumer<PlacedUnit> listener) {
 		this.attackerSelectedListener = listener;
+	}
+
+	/**
+	 * Sets the battlefield background to the named bundle image, scaled to fill
+	 * the component. A null or unreadable file falls back to a plain background.
+	 */
+	public void setBackgroundImage(String name) {
+		background = null;
+		if (name != null) {
+			File file = GameFiles.file(name);
+			if (file.isFile()) {
+				try {
+					background = ImageIO.read(file);
+				} catch (IOException e) {
+					background = null; // best-effort: keep the plain background
+				}
+			}
+		}
+		repaint();
 	}
 
 	/** Sets the attack to aim with, recomputing the targetable tiles. */
@@ -359,8 +386,12 @@ public class BattleField extends JComponent {
 		Graphics2D g2 = (Graphics2D) g.create();
 		g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING,
 				RenderingHints.VALUE_ANTIALIAS_ON);
-		g2.setColor(BACKGROUND);
-		g2.fillRect(0, 0, getWidth(), getHeight());
+		if (background != null) {
+			g2.drawImage(background, 0, 0, getWidth(), getHeight(), null);
+		} else {
+			g2.setColor(BACKGROUND);
+			g2.fillRect(0, 0, getWidth(), getHeight());
+		}
 
 		geometry.setViewport(getWidth(), getHeight());
 

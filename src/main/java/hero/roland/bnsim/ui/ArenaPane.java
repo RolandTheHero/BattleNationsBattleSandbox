@@ -7,14 +7,23 @@ import java.awt.Font;
 import java.awt.FontMetrics;
 import java.awt.Graphics;
 import java.awt.Graphics2D;
+import java.awt.Insets;
 import java.awt.RenderingHints;
+import java.awt.image.BufferedImage;
+import java.io.File;
+import java.io.IOException;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.function.Consumer;
 
+import javax.imageio.ImageIO;
 import javax.swing.Box;
 import javax.swing.BorderFactory;
 import javax.swing.BoxLayout;
 import javax.swing.ButtonGroup;
+import javax.swing.ImageIcon;
 import javax.swing.JButton;
+import javax.swing.JComboBox;
 import javax.swing.JComponent;
 import javax.swing.JLabel;
 import javax.swing.JLayeredPane;
@@ -44,7 +53,11 @@ public class ArenaPane extends JLayeredPane {
 	private final JPanel attackPanel = new JPanel();
 	private final JPanel volumePanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 4, 0));
 	private final JSlider volumeSlider = new JSlider(0, 100, 100);
+	private final JPanel mapPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
+	private final JComboBox<String> mapSelector = new JComboBox<>();
 	private final MusicPlayer music = new MusicPlayer();
+	/** Attack icons loaded during the current battle, cleared when it ends. */
+	private final Map<String, ImageIcon> iconCache = new HashMap<>();
 
 	private Consumer<Boolean> onBattleModeChanged;
 
@@ -73,6 +86,13 @@ public class ArenaPane extends JLayeredPane {
 		volumePanel.add(volumeSlider);
 		add(volumePanel, JLayeredPane.PALETTE_LAYER);
 
+		// Battlefield background selector (top-left), always visible.
+		initMapSelector();
+		mapPanel.setOpaque(false);
+		mapPanel.add(new JLabel("Map"));
+		mapPanel.add(mapSelector);
+		add(mapPanel, JLayeredPane.PALETTE_LAYER);
+
 		field.setAttackerSelectedListener(this::showAttacks);
 	}
 
@@ -94,11 +114,32 @@ public class ArenaPane extends JLayeredPane {
 		else {
 			music.stop();
 			attackPanel.setVisible(false);
+			iconCache.clear(); // battle over: release the cached attack icons
 		}
 		if (onBattleModeChanged != null)
 			onBattleModeChanged.accept(battle);
 		revalidate();
 		repaint();
+	}
+
+	/**
+	 * Populates the background dropdown from the bundle's {@code BattleMap*.png}
+	 * files (with {@code BattleMap.png} as the default), and applies the choice
+	 * to the battlefield when changed.
+	 */
+	private void initMapSelector() {
+		java.util.Set<String> names = new java.util.LinkedHashSet<>();
+		names.add("BattleMap.png"); // default, listed first
+		for (File f : GameFiles.glob("BattleMap*.png"))
+			names.add(f.getName());
+		for (String n : names)
+			mapSelector.addItem(n);
+		mapSelector.setSelectedItem("BattleMap.png");
+		mapSelector.addActionListener(e -> {
+			Object sel = mapSelector.getSelectedItem();
+			if (sel != null)
+				field.setBackgroundImage((String) sel);
+		});
 	}
 
 	/** Rebuilds the attack panel for the selected unit (null clears it). */
@@ -135,7 +176,7 @@ public class ArenaPane extends JLayeredPane {
 				if (attack.getAbility() == Ability.NO_ABILITY)
 					continue;
 				anyAttack = true;
-				JToggleButton button = new JToggleButton(attack.getName());
+				JToggleButton button = makeAttackButton(attack);
 				group.add(button);
 				button.addActionListener(e -> field.setSelectedAttack(attack));
 				if (!selectedFirst[0]) {
@@ -154,6 +195,103 @@ public class ArenaPane extends JLayeredPane {
 		repaint();
 	}
 
+	/** Largest dimension (px) an attack icon is scaled to. */
+	private static final int ICON_SIZE = 44;
+	/** Border shown around the currently selected attack button. */
+	private static final Color SELECT_OUTLINE = new Color(245, 205, 70);
+
+	/**
+	 * Builds the toggle button for an attack, showing the ability's icon (or its
+	 * name if the icon is missing). The button gains a highlighted border while
+	 * selected.
+	 */
+	private JToggleButton makeAttackButton(Unit.Attack attack) {
+		JToggleButton button = new JToggleButton();
+		button.setToolTipText(attack.getName());
+		ImageIcon icon = attackIcon(attack.getAbility());
+		if (icon != null) {
+			button.setIcon(icon);
+			button.setMargin(new Insets(2, 2, 2, 2));
+		} else {
+			button.setText(attack.getName());
+		}
+		// Highlight the selected attack with a coloured border; keep the layout
+		// stable by using a same-thickness empty border when unselected.
+		Runnable applyBorder = () -> button.setBorder(button.isSelected()
+				? BorderFactory.createLineBorder(SELECT_OUTLINE, 3)
+				: BorderFactory.createEmptyBorder(3, 3, 3, 3));
+		button.addItemListener(e -> applyBorder.run());
+		applyBorder.run();
+		return button;
+	}
+
+	/**
+	 * Builds an ability's button icon: its base icon with the damage-type icon
+	 * overlaid in the bottom-right corner. Cached for the battle (see
+	 * {@link #iconCache}); returns null if the base icon cannot be loaded.
+	 */
+	private ImageIcon attackIcon(Ability ability) {
+		String key = ability.getIcon();
+		if (key == null)
+			return null;
+		ImageIcon cached = iconCache.get(key);
+		if (cached != null)
+			return cached;
+		BufferedImage base = loadImage(ability.getIcon(), ICON_SIZE);
+		if (base == null)
+			return null;
+
+		BufferedImage out = base;
+		Ability.DamageType type = ability.getDamageType();
+		BufferedImage badge = (type == null) ? null
+				: loadImage(type.getIcon(), Math.max(1, base.getWidth() * 35 / 100));
+		if (badge != null) {
+			out = new BufferedImage(base.getWidth(), base.getHeight(), BufferedImage.TYPE_INT_ARGB);
+			Graphics2D g = out.createGraphics();
+			g.drawImage(base, 0, 0, null);
+			// Bottom-right corner.
+			g.drawImage(badge, out.getWidth() - badge.getWidth(),
+					out.getHeight() - badge.getHeight(), null);
+			g.dispose();
+		}
+		ImageIcon icon = new ImageIcon(out);
+		iconCache.put(key, icon);
+		return icon;
+	}
+
+	/**
+	 * Loads a bundle image, scaled down so its largest side is at most
+	 * {@code maxSize} (kept as-is if already smaller), as an ARGB
+	 * {@link BufferedImage}, or null if it cannot be read.
+	 */
+	private BufferedImage loadImage(String name, int maxSize) {
+		if (name == null)
+			return null;
+		File file = GameFiles.file(name);
+		if (!file.isFile())
+			return null;
+		try {
+			BufferedImage img = ImageIO.read(file);
+			if (img == null)
+				return null;
+			int max = Math.max(img.getWidth(), img.getHeight());
+			if (max <= maxSize)
+				return img;
+			double scale = (double) maxSize / max;
+			int w = (int) Math.round(img.getWidth() * scale);
+			int h = (int) Math.round(img.getHeight() * scale);
+			BufferedImage scaled = new BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB);
+			Graphics2D g = scaled.createGraphics();
+			g.setRenderingHint(RenderingHints.KEY_INTERPOLATION,
+					RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+			g.drawImage(img, 0, 0, w, h, null);
+			g.dispose();
+			return scaled;
+		} catch (IOException e) {
+			return null;
+		}
+	}
+
 	@Override
 	public void doLayout() {
 		int w = getWidth();
@@ -169,6 +307,10 @@ public class ArenaPane extends JLayeredPane {
 
 		Dimension vol = volumePanel.getPreferredSize();
 		volumePanel.setBounds(w - vol.width - 16, 12, vol.width, vol.height);
+
+		// Map selector centred at the top, clear of the corner controls.
+		Dimension mp = mapPanel.getPreferredSize();
+		mapPanel.setBounds((w - mp.width) / 2, 12, mp.width, mp.height);
 
 		if (attackPanel.isVisible()) {
 			Dimension ap = attackPanel.getPreferredSize();

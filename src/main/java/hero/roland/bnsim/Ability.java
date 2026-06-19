@@ -17,6 +17,7 @@ public class Ability {
 	private static Map<String, Ability> abilities;
 
 	private String tag, name;
+	private String icon;
 	private String frontAnimationName, backAnimationName;
 	private double damageFromWeapon, damageFromUnit;
     private double armorPiercingRate;
@@ -54,6 +55,8 @@ public class Ability {
 	private Ability(String tag, JSONObject json, JSONObject dmgAnim) {
 		this.tag = tag;
 		name = Text.get(json.optString("name", null));
+		icon = json.getString("icon");
+		if (!icon.endsWith(".png")) icon += "@2x.png";
 		if (name == null) name = tag;
 		infantryHitSound = json.optString("inf_hitsound", null);
         vehicleHitSound = json.optString("veh_hitsound", null);
@@ -143,6 +146,11 @@ public class Ability {
 
 	public String getName() {
 		return name;
+	}
+
+	/** Bundle-relative path to this ability's icon image, or {@code null}. */
+	public String getIcon() {
+		return icon;
 	}
 
 	public String toString() {
@@ -326,19 +334,22 @@ public class Ability {
         FRONT, BACK
     }
     public enum DamageType {
-        PIERCING("Piercing"),
-        EXPLOSIVE("Explosive"),
-        FIRE("Fire"),
-        CRUSHING("Crushing"),
-        COLD("Cold"),
-        TORPEDO("Torpedo"),
-        DEPTH_CHARGE("DepthCharge");
+        PIERCING("Piercing", "damageBullet@2x.png"),
+        EXPLOSIVE("Explosive", "damageExplosion@2x.png"),
+        FIRE("Fire", "damagePoison_icon@2x.png"),
+        CRUSHING("Crushing", "damageMelee@2x.png"),
+        COLD("Cold", "damageCold@2x.png"),
+        TORPEDO("Torpedo", "damageTorpedo@2x.png"),
+        DEPTH_CHARGE("DepthCharge", "damageDepthCharge@2x.png");
 
         private String name;
+		private String icon;
 
-        DamageType(String name) {
+        DamageType(String name, String icon) {
             this.name = name;
+            this.icon = icon;
         }
+		public String getIcon() { return icon; }
         public static DamageType fromString(String s) {
             for (DamageType type : DamageType.values()) {
                 if (type.name.equalsIgnoreCase(s)) {
