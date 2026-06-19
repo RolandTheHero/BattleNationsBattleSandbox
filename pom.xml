@@ -26,6 +26,12 @@
             <artifactId>jlayer</artifactId>
             <version>1.0.1.4</version>
         </dependency>
+        <!-- Pure-Java AAC decoder for AAC-encoded .caf sound effects. -->
+        <dependency>
+            <groupId>de.sfuhrm</groupId>
+            <artifactId>jaad</artifactId>
+            <version>0.8.7</version>
+        </dependency>
     </dependencies>
 
 </project>

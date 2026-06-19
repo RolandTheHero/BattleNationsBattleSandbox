@@ -1,11 +1,13 @@
 package hero.roland.bnsim;
 
 import java.io.BufferedInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.InputStream;
 import java.nio.ByteBuffer;
 import java.nio.file.Files;
+import java.util.Arrays;
 import java.util.concurrent.CountDownLatch;
 import java.util.function.BooleanSupplier;
 
@@ -26,10 +28,11 @@ import javazoom.jl.decoder.SampleBuffer;
 /**
  * Plays short one-shot sound effects and (via {@link #streamMp3}) streamed
  * music, each on a daemon thread so several can overlap. MP3 is decoded with
- * JLayer and {@code .caf} (Apple IMA4 ADPCM) with a built-in decoder; both are
- * scaled by the {@linkplain #setVolume master volume} so volume changes apply
- * live. WAV/AU/AIFF use Java Sound. Playback is best-effort: a missing or
- * unsupported file is silently ignored.
+ * JLayer and {@code .caf} files with a built-in decoder: their codec is read
+ * from the CAF audio description, IMA4 ADPCM is decoded in-process and AAC via
+ * JAAD. All decoded audio is scaled by the {@linkplain #setVolume master
+ * volume} so volume changes apply live. WAV/AU/AIFF use Java Sound. Playback is
+ * best-effort: a missing or unsupported file is silently ignored.
  */
 public final class SoundPlayer {
 
@@ -100,60 +103,117 @@ public final class SoundPlayer {
 	private static final int[] INDEX_TABLE = { -1, -1, -1, -1, 2, 4, 6, 8, -1, -1, -1, -1, 2, 4, 6, 8 };
 
 	/**
-	 * Plays an Apple Core Audio Format file containing IMA4 ADPCM, decoding it to
-	 * 16-bit PCM and writing it scaled by the current master volume so volume
-	 * changes apply live. Non-IMA4 {@code .caf} files are ignored (best-effort).
+	 * Plays an Apple Core Audio Format file by reading its codec from the audio
+	 * description and decoding to 16-bit PCM: IMA4 ADPCM in-process, AAC via
+	 * JAAD. Other codecs are ignored (best-effort).
 	 */
 	private static void playCaf(File file) throws Exception {
 		byte[] bytes = Files.readAllBytes(file.toPath());
-		ByteBuffer buf = ByteBuffer.wrap(bytes); // CAF is big-endian
-		if (buf.remaining() < 8 || buf.getInt() != 0x63616666) // "caff"
+		CafInfo caf = parseCaf(bytes);
+		if (caf == null || caf.dataOffset < 0 || caf.channels < 1)
 			return;
-		buf.getShort(); // file version
-		buf.getShort(); // file flags
+		Pcm pcm = decodeCaf(bytes, caf);
+		if (pcm != null && pcm.samples().length > 0)
+			playPcm(pcm);
+	}
 
-		double sampleRate = 0;
-		int formatId = 0, channels = 0, bytesPerPacket = 0, framesPerPacket = 0;
-		int dataOffset = -1, dataLength = 0;
-		while (buf.remaining() >= 12) {
-			int type = buf.getInt();
-			long size = buf.getLong();
-			int body = buf.position();
-			if (type == 0x64657363) { // "desc" — audio description
-				sampleRate = buf.getDouble();
-				formatId = buf.getInt();
-				buf.getInt(); // format flags
-				bytesPerPacket = buf.getInt();
-				framesPerPacket = buf.getInt();
-				channels = buf.getInt();
-			} else if (type == 0x64617461) { // "data"
-				long len = size < 0 ? bytes.length - body : size;
-				dataOffset = body + 4; // skip leading mEditCount
-				dataLength = (int) (len - 4);
-			}
-			if (size < 0)
-				break; // an unbounded chunk runs to EOF, so it must be last
-			buf.position((int) (body + size));
+	/** Decodes a parsed CAF to PCM by codec, or {@code null} if unsupported. */
+	private static Pcm decodeCaf(byte[] bytes, CafInfo caf) throws Exception {
+		switch (caf.formatId) {
+			case 0x696d6134: // "ima4" — IMA ADPCM
+				if (caf.bytesPerPacket < caf.channels)
+					return null;
+				return new Pcm(decodeIma4(bytes, caf.dataOffset, caf.dataLength,
+						caf.channels, caf.bytesPerPacket, caf.framesPerPacket),
+						(float) caf.sampleRate, caf.channels);
+			case 0x61616320: // "aac " — Advanced Audio Coding
+				return decodeAac(bytes, caf);
+			default:
+				return null; // unsupported codec (e.g. lpcm, alac) — silently skipped
 		}
+	}
 
-		if (formatId != 0x696d6134 || dataOffset < 0 || channels < 1 || bytesPerPacket < channels)
-			return; // only IMA4 ADPCM is supported
-
-		short[] pcm = decodeIma4(bytes, dataOffset, dataLength, channels, bytesPerPacket, framesPerPacket);
-		AudioFormat format = new AudioFormat((float) sampleRate, 16, channels, true, false);
+	/** Writes decoded PCM to a line, scaled by the live master volume. */
+	private static void playPcm(Pcm pcm) throws Exception {
+		short[] samples = pcm.samples();
+		AudioFormat format = new AudioFormat(pcm.sampleRate(), 16, pcm.channels(), true, false);
 		SourceDataLine line = AudioSystem.getSourceDataLine(format);
 		try {
 			line.open(format);
 			line.start();
-			for (int i = 0; i < pcm.length; i += 4096) {
-				int len = Math.min(4096, pcm.length - i);
-				byte[] out = scale(pcm, i, len, volume);
+			for (int i = 0; i < samples.length; i += 4096) {
+				int len = Math.min(4096, samples.length - i);
+				byte[] out = scale(samples, i, len, volume);
 				line.write(out, 0, out.length);
 			}
 			line.drain();
 		} finally {
 			line.close();
 		}
+	}
+
+	/**
+	 * Parses a CAF container: its audio description plus the offsets of the
+	 * {@code kuki} (codec config), {@code pakt} (packet table) and {@code data}
+	 * chunks. Returns {@code null} if the file is not a CAF. All values are
+	 * big-endian.
+	 */
+	private static CafInfo parseCaf(byte[] bytes) {
+		ByteBuffer buf = ByteBuffer.wrap(bytes); // CAF is big-endian
+		if (buf.remaining() < 8 || buf.getInt() != 0x63616666) // "caff"
+			return null;
+		buf.getShort(); // file version
+		buf.getShort(); // file flags
+
+		CafInfo caf = new CafInfo();
+		while (buf.remaining() >= 12) {
+			int type = buf.getInt();
+			long size = buf.getLong();
+			int body = buf.position();
+			switch (type) {
+				case 0x64657363 -> { // "desc" — audio description
+					caf.sampleRate = buf.getDouble();
+					caf.formatId = buf.getInt();
+					buf.getInt(); // format flags
+					caf.bytesPerPacket = buf.getInt();
+					caf.framesPerPacket = buf.getInt();
+					caf.channels = buf.getInt();
+				}
+				case 0x6b756b69 -> { // "kuki" — magic cookie (AAC config)
+					caf.kukiOffset = body;
+					caf.kukiLength = (int) size;
+				}
+				case 0x70616b74 -> { // "pakt" — variable packet-size table
+					caf.paktOffset = body;
+					caf.paktLength = (int) size;
+				}
+				case 0x64617461 -> { // "data"
+					long len = size < 0 ? bytes.length - body : size;
+					caf.dataOffset = body + 4; // skip leading mEditCount
+					caf.dataLength = (int) (len - 4);
+				}
+				default -> {
+					// other chunks (info, free, chan, ...) are not needed
+				}
+			}
+			if (size < 0)
+				break; // an unbounded chunk runs to EOF, so it must be last
+			buf.position((int) (body + size));
+		}
+		return caf;
+	}
+
+	/** Parsed CAF container: audio description plus chunk locations. */
+	private static final class CafInfo {
+		double sampleRate;
+		int formatId, channels, bytesPerPacket, framesPerPacket;
+		int kukiOffset = -1, kukiLength;
+		int paktOffset = -1, paktLength;
+		int dataOffset = -1, dataLength;
+	}
+
+	/** Decoded interleaved signed-16-bit PCM, ready to play. */
+	private record Pcm(short[] samples, float sampleRate, int channels) {
 	}
 
 	/**
@@ -203,6 +263,129 @@ public final class SoundPlayer {
 			}
 		}
 		return pcm;
+	}
+
+	/**
+	 * Decodes the AAC packets of a CAF {@code data} chunk to interleaved 16-bit
+	 * PCM with JAAD. The decoder is configured from the AudioSpecificConfig in
+	 * the {@code kuki} chunk (synthesised from the description if absent), and
+	 * each variable-length packet's byte size comes from the {@code pakt} table.
+	 */
+	private static Pcm decodeAac(byte[] bytes, CafInfo caf) throws Exception {
+		byte[] asc = caf.kukiOffset >= 0
+				? extractAudioSpecificConfig(bytes, caf.kukiOffset, caf.kukiLength)
+				: null;
+		if (asc == null)
+			asc = synthesiseAsc(caf.sampleRate, caf.channels);
+		int[] sizes = parsePacketSizes(bytes, caf.paktOffset, caf.paktLength);
+		if (sizes.length == 0)
+			return null;
+
+		net.sourceforge.jaad.aac.Decoder decoder = new net.sourceforge.jaad.aac.Decoder(asc);
+		net.sourceforge.jaad.aac.SampleBuffer buffer = new net.sourceforge.jaad.aac.SampleBuffer();
+		buffer.setBigEndian(false); // little-endian to match the playback format
+		ByteArrayOutputStream pcm = new ByteArrayOutputStream();
+		int offset = caf.dataOffset, end = caf.dataOffset + caf.dataLength;
+		int sampleRate = (int) caf.sampleRate, channels = caf.channels;
+		for (int size : sizes) {
+			if (size <= 0 || offset + size > end)
+				break;
+			decoder.decodeFrame(Arrays.copyOfRange(bytes, offset, offset + size), buffer);
+			byte[] frame = buffer.getData();
+			pcm.write(frame, 0, frame.length);
+			sampleRate = buffer.getSampleRate();
+			channels = buffer.getChannels();
+			offset += size;
+		}
+
+		byte[] data = pcm.toByteArray();
+		short[] samples = new short[data.length / 2];
+		for (int i = 0; i < samples.length; i++)
+			samples[i] = (short) ((data[i * 2] & 0xff) | (data[i * 2 + 1] << 8)); // little-endian
+		return new Pcm(samples, sampleRate, channels);
+	}
+
+	/**
+	 * Reads the per-packet byte sizes from a CAF {@code pakt} chunk. Assumes a
+	 * variable byte size with constant frames per packet (as AAC uses), so each
+	 * table entry is a single base-128 variable-length integer.
+	 */
+	private static int[] parsePacketSizes(byte[] bytes, int paktOffset, int paktLength) {
+		if (paktOffset < 0 || paktLength < 24)
+			return new int[0];
+		ByteBuffer buf = ByteBuffer.wrap(bytes, paktOffset, paktLength); // big-endian
+		int count = (int) buf.getLong(); // mNumberPackets
+		buf.getLong();                    // mNumberValidFrames
+		buf.getInt();                     // mPrimingFrames
+		buf.getInt();                     // mRemainderFrames
+		int[] sizes = new int[Math.max(0, count)];
+		for (int i = 0; i < sizes.length && buf.hasRemaining(); i++) {
+			int value = 0, b;
+			do {
+				b = buf.get() & 0xff;
+				value = (value << 7) | (b & 0x7f);
+			} while ((b & 0x80) != 0 && buf.hasRemaining());
+			sizes[i] = value;
+		}
+		return sizes;
+	}
+
+	/**
+	 * Pulls the AudioSpecificConfig (MPEG-4 DecoderSpecificInfo, tag {@code 0x05})
+	 * out of a CAF {@code kuki} cookie, which holds an ES descriptor tree.
+	 */
+	private static byte[] extractAudioSpecificConfig(byte[] bytes, int offset, int length) {
+		return findDescriptor(bytes, offset, offset + length, 0x05);
+	}
+
+	/** Walks the MPEG-4 descriptor tree, descending containers, for {@code tag}. */
+	private static byte[] findDescriptor(byte[] d, int start, int end, int tag) {
+		int i = start;
+		while (i < end) {
+			int t = d[i++] & 0xff;
+			int size = 0, b, count = 0;
+			do { // expandable size: 7 bits per byte, high bit continues
+				b = d[i++] & 0xff;
+				size = (size << 7) | (b & 0x7f);
+			} while ((b & 0x80) != 0 && ++count < 4 && i < end);
+			int body = i;
+			if (t == tag)
+				return Arrays.copyOfRange(d, body, Math.min(end, body + size));
+			if (t == 0x03) { // ES_Descriptor: ES_ID(2) + flags(1) [+ optional fields]
+				int p = body + 2;
+				int flags = d[p++] & 0xff;
+				if ((flags & 0x80) != 0)
+					p += 2; // dependsOn ES_ID
+				if ((flags & 0x40) != 0)
+					p += 1 + (d[p] & 0xff); // URL string
+				if ((flags & 0x20) != 0)
+					p += 2; // OCR ES_ID
+				byte[] r = findDescriptor(d, p, body + size, tag);
+				if (r != null)
+					return r;
+			} else if (t == 0x04) { // DecoderConfigDescriptor: 13-byte header, then nested
+				byte[] r = findDescriptor(d, body + 13, body + size, tag);
+				if (r != null)
+					return r;
+			}
+			i = body + size;
+		}
+		return null;
+	}
+
+	/** Sample rates for the AAC frequency index, per ISO/IEC 14496-3. */
+	private static final int[] AAC_RATES = {
+			96000, 88200, 64000, 48000, 44100, 32000, 24000, 22050,
+			16000, 12000, 11025, 8000, 7350 };
+
+	/** Builds a 2-byte AAC-LC AudioSpecificConfig as a fallback when no cookie. */
+	private static byte[] synthesiseAsc(double sampleRate, int channels) {
+		int freqIndex = 4; // default to 44100 Hz
+		for (int i = 0; i < AAC_RATES.length; i++)
+			if (AAC_RATES[i] == (int) sampleRate)
+				freqIndex = i;
+		int value = (2 << 11) | (freqIndex << 7) | ((channels & 0x0f) << 3); // AOT 2 = AAC-LC
+		return new byte[] { (byte) (value >> 8), (byte) value };
 	}
 
 	/**
