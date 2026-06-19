@@ -25,6 +25,7 @@ public class BattleFrame extends JFrame {
 		UnitMenu menu = new UnitMenu();
 		menu.setPlacer(arena.getField()::placeUnit);
 		menu.setSideClearer(arena.getField()::clearSide);
+		menu.setBackgroundSelector(arena.getField()::setBackgroundImage);
 
 		arena.setOnBattleModeChanged(battle -> {
 			menu.setVisible(!battle);

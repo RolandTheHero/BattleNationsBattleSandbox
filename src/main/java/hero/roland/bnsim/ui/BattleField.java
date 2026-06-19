@@ -387,7 +387,13 @@ public class BattleField extends JComponent {
 		g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING,
 				RenderingHints.VALUE_ANTIALIAS_ON);
 		if (background != null) {
-			g2.drawImage(background, 0, 0, getWidth(), getHeight(), null);
+			// Scale proportionally to cover the component, cropping the overflow.
+			int cw = getWidth(), ch = getHeight();
+			int iw = background.getWidth(), ih = background.getHeight();
+			double scale = Math.max((double) cw / iw, (double) ch / ih);
+			int sw = (int) Math.ceil(iw * scale);
+			int sh = (int) Math.ceil(ih * scale);
+			g2.drawImage(background, (cw - sw) / 2, (ch - sh) / 2, sw, sh, null);
 		} else {
 			g2.setColor(BACKGROUND);
 			g2.fillRect(0, 0, getWidth(), getHeight());

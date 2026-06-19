@@ -6,8 +6,11 @@ import java.awt.FlowLayout;
 import java.awt.GridLayout;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
+import java.io.File;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 
@@ -17,6 +20,7 @@ import javax.swing.BoxLayout;
 import javax.swing.ButtonGroup;
 import javax.swing.DefaultListModel;
 import javax.swing.JButton;
+import javax.swing.JComboBox;
 import javax.swing.JLabel;
 import javax.swing.JList;
 import javax.swing.JPanel;
@@ -27,6 +31,7 @@ import javax.swing.ListSelectionModel;
 import javax.swing.event.DocumentEvent;
 import javax.swing.event.DocumentListener;
 
+import hero.roland.bnsim.GameFiles;
 import hero.roland.bnsim.Side;
 import hero.roland.bnsim.Unit;
 
@@ -40,7 +45,7 @@ public class UnitMenu extends JPanel {
 
 	private static final int EXPANDED_WIDTH = 250;
 
-	private final JButton toggle = new JButton("Units ◀");
+	private final JComboBox<String> mapSelector = new JComboBox<>();
 	private final JPanel content = new JPanel(new BorderLayout(0, 6));
 
 	private final DefaultListModel<Unit> listModel = new DefaultListModel<>();
@@ -53,13 +58,13 @@ public class UnitMenu extends JPanel {
 
 	private BiConsumer<Unit, Side> placer;
 	private Consumer<Side> sideClearer;
+	private Consumer<String> backgroundSelector;
 
 	public UnitMenu() {
 		setLayout(new BorderLayout());
 		setBorder(BorderFactory.createEmptyBorder(6, 6, 6, 6));
 
-		toggle.addActionListener(e -> setExpanded(!content.isVisible()));
-		add(toggle, BorderLayout.NORTH);
+		add(buildMapSelector(), BorderLayout.NORTH);
 
 		buildContent();
 		add(content, BorderLayout.CENTER);
@@ -142,11 +147,35 @@ public class UnitMenu extends JPanel {
 			sideClearer.accept(side);
 	}
 
-	private void setExpanded(boolean expanded) {
-		content.setVisible(expanded);
-		toggle.setText(expanded ? "Units ◀" : "Units ▶");
-		revalidate();
-		repaint();
+	/**
+	 * Builds the battlefield-background dropdown (shown where the menu toggle used
+	 * to be), listing the bundle's {@code BattleMap*.png} files with
+	 * {@code BattleMap.png} as the default. Selecting one notifies the
+	 * {@linkplain #setBackgroundSelector background selector}.
+	 */
+	private JPanel buildMapSelector() {
+		Set<String> names = new LinkedHashSet<>();
+		names.add("BattleMap.png"); // default, listed first
+		for (File f : GameFiles.glob("BattleMap*.png"))
+			names.add(f.getName());
+		for (String n : names)
+			mapSelector.addItem(n);
+		mapSelector.setSelectedItem("BattleMap.png");
+		mapSelector.addActionListener(e -> {
+			Object sel = mapSelector.getSelectedItem();
+			if (sel != null && backgroundSelector != null)
+				backgroundSelector.accept((String) sel);
+		});
+
+		JPanel panel = new JPanel(new BorderLayout(4, 0));
+		panel.add(new JLabel("Background:"), BorderLayout.WEST);
+		panel.add(mapSelector, BorderLayout.CENTER);
+		return panel;
+	}
+
+	/** Sets the callback invoked when a battlefield background is chosen. */
+	public void setBackgroundSelector(Consumer<String> selector) {
+		this.backgroundSelector = selector;
 	}
 
 	private void loadUnits() {
@@ -187,9 +216,6 @@ public class UnitMenu extends JPanel {
 
 	@Override
 	public Dimension getPreferredSize() {
-		int width = content.isVisible()
-				? EXPANDED_WIDTH
-				: toggle.getPreferredSize().width + 16;
-		return new Dimension(width, super.getPreferredSize().height);
+		return new Dimension(EXPANDED_WIDTH, super.getPreferredSize().height);
 	}
 }

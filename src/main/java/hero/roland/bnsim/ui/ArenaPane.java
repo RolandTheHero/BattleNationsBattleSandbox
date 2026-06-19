@@ -23,7 +23,6 @@ import javax.swing.BoxLayout;
 import javax.swing.ButtonGroup;
 import javax.swing.ImageIcon;
 import javax.swing.JButton;
-import javax.swing.JComboBox;
 import javax.swing.JComponent;
 import javax.swing.JLabel;
 import javax.swing.JLayeredPane;
@@ -53,8 +52,6 @@ public class ArenaPane extends JLayeredPane {
 	private final JPanel attackPanel = new JPanel();
 	private final JPanel volumePanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 4, 0));
 	private final JSlider volumeSlider = new JSlider(0, 100, 100);
-	private final JPanel mapPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
-	private final JComboBox<String> mapSelector = new JComboBox<>();
 	private final MusicPlayer music = new MusicPlayer();
 	/** Attack icons loaded during the current battle, cleared when it ends. */
 	private final Map<String, ImageIcon> iconCache = new HashMap<>();
@@ -86,13 +83,6 @@ public class ArenaPane extends JLayeredPane {
 		volumePanel.add(volumeSlider);
 		add(volumePanel, JLayeredPane.PALETTE_LAYER);
 
-		// Battlefield background selector (top-left), always visible.
-		initMapSelector();
-		mapPanel.setOpaque(false);
-		mapPanel.add(new JLabel("Map"));
-		mapPanel.add(mapSelector);
-		add(mapPanel, JLayeredPane.PALETTE_LAYER);
-
 		field.setAttackerSelectedListener(this::showAttacks);
 	}
 
@@ -120,26 +110,6 @@ public class ArenaPane extends JLayeredPane {
 			onBattleModeChanged.accept(battle);
 		revalidate();
 		repaint();
-	}
-
-	/**
-	 * Populates the background dropdown from the bundle's {@code BattleMap*.png}
-	 * files (with {@code BattleMap.png} as the default), and applies the choice
-	 * to the battlefield when changed.
-	 */
-	private void initMapSelector() {
-		java.util.Set<String> names = new java.util.LinkedHashSet<>();
-		names.add("BattleMap.png"); // default, listed first
-		for (File f : GameFiles.glob("BattleMap*.png"))
-			names.add(f.getName());
-		for (String n : names)
-			mapSelector.addItem(n);
-		mapSelector.setSelectedItem("BattleMap.png");
-		mapSelector.addActionListener(e -> {
-			Object sel = mapSelector.getSelectedItem();
-			if (sel != null)
-				field.setBackgroundImage((String) sel);
-		});
 	}
 
 	/** Rebuilds the attack panel for the selected unit (null clears it). */
@@ -307,10 +277,6 @@ public class ArenaPane extends JLayeredPane {
 
 		Dimension vol = volumePanel.getPreferredSize();
 		volumePanel.setBounds(w - vol.width - 16, 12, vol.width, vol.height);
-
-		// Map selector centred at the top, clear of the corner controls.
-		Dimension mp = mapPanel.getPreferredSize();
-		mapPanel.setBounds((w - mp.width) / 2, 12, mp.width, mp.height);
 
 		if (attackPanel.isVisible()) {
 			Dimension ap = attackPanel.getPreferredSize();
