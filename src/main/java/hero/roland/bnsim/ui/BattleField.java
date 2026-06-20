@@ -387,6 +387,18 @@ public class BattleField extends JComponent {
 	}
 
 	/**
+	 * Skips the player's turn without attacking, handing control straight to the
+	 * enemy. Does nothing outside the player's turn (e.g. while an attack is
+	 * animating or during the enemy's turn).
+	 */
+	public void passTurn() {
+		if (!battleMode || phase != Phase.PLAYER)
+			return;
+		clearSelection();
+		beginEnemyTurn();
+	}
+
+	/**
 	 * Plays an attack: starts the attacker's attack animation, schedules the
 	 * struck tiles, and records when the turn may advance.
 	 */

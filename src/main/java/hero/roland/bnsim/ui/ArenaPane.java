@@ -40,15 +40,16 @@ import hero.roland.bnsim.Unit;
 
 /**
  * Hosts the {@link BattleField} together with the overlaid battle controls:
- * a "Start Battle" button (bottom-right) in setup mode, an "End Battle" button
- * (top-left) in battle mode, and a panel listing the selected unit's attacks
- * grouped by weapon.
+ * a "Start Battle" button (bottom-right) in setup mode, "End Battle" and
+ * "Pass Turn" buttons (top-left) in battle mode, and a panel listing the
+ * selected unit's attacks grouped by weapon.
  */
 public class ArenaPane extends JLayeredPane {
 
 	private final BattleField field;
 	private final JButton startButton = new JButton("Start Battle");
 	private final JButton endButton = new JButton("End Battle");
+	private final JButton passButton = new JButton("Pass Turn");
 	private final JPanel attackPanel = new JPanel();
 	private final JPanel volumePanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 4, 0));
 	private final JSlider volumeSlider = new JSlider(0, 100, 100);
@@ -65,8 +66,11 @@ public class ArenaPane extends JLayeredPane {
 		startButton.addActionListener(e -> setBattleMode(true));
 		endButton.addActionListener(e -> setBattleMode(false));
 		endButton.setVisible(false);
+		passButton.addActionListener(e -> field.passTurn());
+		passButton.setVisible(false);
 		add(startButton, JLayeredPane.PALETTE_LAYER);
 		add(endButton, JLayeredPane.PALETTE_LAYER);
+		add(passButton, JLayeredPane.PALETTE_LAYER);
 
 		attackPanel.setOpaque(true);
 		attackPanel.setBackground(new Color(255, 255, 255, 220));
@@ -99,6 +103,7 @@ public class ArenaPane extends JLayeredPane {
 		field.setBattleMode(battle);
 		startButton.setVisible(!battle);
 		endButton.setVisible(battle);
+		passButton.setVisible(battle);
 		if (battle)
 			music.loop(GameFiles.file("battle_01.mp3"));
 		else {
@@ -274,6 +279,9 @@ public class ArenaPane extends JLayeredPane {
 
 		Dimension end = endButton.getPreferredSize();
 		endButton.setBounds(16, 16, end.width, end.height);
+
+		Dimension pass = passButton.getPreferredSize();
+		passButton.setBounds(16, 16 + end.height + 8, pass.width, pass.height);
 
 		Dimension vol = volumePanel.getPreferredSize();
 		volumePanel.setBounds(w - vol.width - 16, 12, vol.width, vol.height);
