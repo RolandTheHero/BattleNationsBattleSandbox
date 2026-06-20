@@ -6,6 +6,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.EnumMap;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
@@ -231,9 +232,15 @@ public class BattleSimulator {
 	 */
 	public List<Hit> resolveHits(PlacedUnit attacker, Unit.Attack attack, Cell aim) {
 		List<Hit> result = new ArrayList<>();
-		if (attacker == null || attack == null || aim == null)
+		if (attacker == null || attack == null)
 			return result;
 		Ability ability = attack.getAbility();
+		// A WEAPON (fixed) attack ignores the aim: its damage area is anchored on
+		// the attacker's own position (see resolveWeaponHits).
+		if (ability.getTargetType() == Ability.TargetType.WEAPON)
+			return resolveWeaponHits(attacker, attack);
+		if (aim == null)
+			return result;
 		Side targetSide = opponentOf(attacker.getSide());
 		TargetSquare[] targetArea = ability.getTargetArea();
 		TargetSquare[] damageArea = ability.getDamageArea();
@@ -297,6 +304,102 @@ public class BattleSimulator {
 		}
 	}
 
+	/**
+	 * Resolves a WEAPON (fixed) attack: its damage area is anchored on the
+	 * attacker's own cell rather than an aimed tile, so it always strikes the same
+	 * pattern in front of the unit ({@code y = -1} is one tile in front). Tiles may
+	 * land on either side; any that run off the grids are dropped.
+	 */
+	private List<Hit> resolveWeaponHits(PlacedUnit attacker, Unit.Attack attack) {
+		List<Hit> result = new ArrayList<>();
+		Ability ability = attack.getAbility();
+		Side targetSide = opponentOf(attacker.getSide());
+		TargetSquare[] targetArea = ability.getTargetArea();
+		TargetSquare[] damageArea = ability.getDamageArea();
+		if (targetArea == null)
+			targetArea = new TargetSquare[] { TargetSquare.SINGLE_TARGET };
+		if (damageArea == null)
+			damageArea = new TargetSquare[] { TargetSquare.SINGLE_TARGET };
+		int shots = Math.max(1, ability.getNumAttacks());
+		int aoeDelay = ability.getAoeDelay();
+		int minDamage = attack.getMinDamage(attacker.getRank());
+		int maxDamage = attack.getMaxDamage(attacker.getRank());
+		Ability.DamageType damageType = ability.getDamageType();
+		double armorPiercing = Math.max(0, Math.min(1, ability.getArmorPiercingRate()));
+		int xSign = attacker.getSide() == Side.PLAYER ? 1 : -1;
+		int[] targetSteps = sequenceSteps(targetArea);
+		int[] damageSteps = sequenceSteps(damageArea);
+
+		// Each target square is a fixed tile relative to the unit; tiles that stay
+		// on the attacker's own side are skipped. The damage area then splashes
+		// around each tile that lands on the opponent's side.
+		for (int t = 0; t < targetArea.length; t++) {
+			SideCell origin = weaponCell(attacker, targetArea[t].getX(), targetArea[t].getY());
+			if (origin == null)
+				continue;
+			for (int shot = 0; shot < shots; shot++)
+				addImpact(result, targetSide, origin.cell(), TargetSquare.SINGLE_TARGET,
+						targetSteps[t], damageArea, damageSteps, aoeDelay, xSign,
+						rollDamage(minDamage, maxDamage), damageType, armorPiercing);
+		}
+		return result;
+	}
+
+	/**
+	 * The cells a WEAPON (fixed) attack covers, computed from the attacker's own
+	 * position (its target area read from the unit's perspective, then splashed by
+	 * the damage area), for highlighting. Tiles on the attacker's own side or off
+	 * the grids are excluded. Deduplicated.
+	 */
+	public Set<SideCell> weaponAffectedCells(PlacedUnit attacker, Unit.Attack attack) {
+		Set<SideCell> cells = new LinkedHashSet<>();
+		if (attacker == null || attack == null)
+			return cells;
+		Ability ability = attack.getAbility();
+		TargetSquare[] targetArea = ability.getTargetArea();
+		TargetSquare[] damageArea = ability.getDamageArea();
+		if (targetArea == null)
+			targetArea = new TargetSquare[] { TargetSquare.SINGLE_TARGET };
+		if (damageArea == null)
+			damageArea = new TargetSquare[] { TargetSquare.SINGLE_TARGET };
+		Side targetSide = opponentOf(attacker.getSide());
+		int xSign = attacker.getSide() == Side.PLAYER ? 1 : -1;
+		for (TargetSquare target : targetArea) {
+			SideCell origin = weaponCell(attacker, target.getX(), target.getY());
+			if (origin == null)
+				continue;
+			for (TargetSquare d : damageArea) {
+				int col = origin.cell().col() + xSign * d.getX();
+				int row = origin.cell().row() - d.getY();
+				if (GridGeometry.isValid(col, row))
+					cells.add(new SideCell(targetSide, new Cell(col, row)));
+			}
+		}
+		return cells;
+	}
+
+	/**
+	 * The cell struck by a fixed attack's offset relative to the attacker:
+	 * {@code dx} is lateral (the attacker's right is positive) and {@code dy} is
+	 * depth ({@code -1} is one tile in front of the unit). Moving forward crosses
+	 * the front line straight onto the opponent's side (the empty gap row is
+	 * skipped). Returns {@code null} if the tile stays on the attacker's own side
+	 * (those are never affected) or runs off the grids.
+	 */
+	private SideCell weaponCell(PlacedUnit attacker, int dx, int dy) {
+		int forward = -dy;                 // tiles toward the opponent
+		int row = attacker.getCell().row();
+		if (forward <= row)
+			return null; // still on the attacker's own side (or its own tile)
+		Side side = attacker.getSide();
+		int xSign = side == Side.PLAYER ? 1 : -1;
+		int col = attacker.getCell().col() + xSign * dx;
+		int cellRow = forward - row - 1;   // depth into the opponent's side
+		if (!GridGeometry.isValid(col, cellRow))
+			return null;
+		return new SideCell(opponentOf(side), new Cell(col, cellRow));
+	}
+
 	/** Rolls a damage value in [min, max) (inclusive min, exclusive max). */
 	private int rollDamage(int min, int max) {
 		return max > min ? min + random.nextInt(max - min) : min;
@@ -342,6 +445,10 @@ public class BattleSimulator {
 	 */
 	public record Hit(Side side, Cell cell, int delayFrames, double rawDamage,
 			Ability.DamageType damageType, double armorPiercing, double areaValue) {
+	}
+
+	/** A cell together with the side of the battlefield it lies on. */
+	public record SideCell(Side side, Cell cell) {
 	}
 
 	/** All placed units across both sides, in no particular order. */

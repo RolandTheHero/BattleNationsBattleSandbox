@@ -27,9 +27,19 @@ public class RandomEnemyBehavior implements EnemyBehavior {
 				for (Unit.Attack attack : weapon.getAttacks()) {
 					if (attack.getAbility() == Ability.NO_ABILITY)
 						continue;
-					for (Cell cell : sim.targetableCells(unit, attack))
-						if (sim.unitAt(Side.PLAYER, cell) != null)
-							candidates.add(new Move(unit, attack, cell));
+					if (attack.getAbility().getTargetType() == Ability.TargetType.WEAPON) {
+						// Fixed attack: usable if its fixed area covers a player unit.
+						for (BattleSimulator.SideCell sc : sim.weaponAffectedCells(unit, attack))
+							if (sc.side() == Side.PLAYER
+									&& sim.unitAt(Side.PLAYER, sc.cell()) != null) {
+								candidates.add(new Move(unit, attack, unit.getCell()));
+								break;
+							}
+					} else {
+						for (Cell cell : sim.targetableCells(unit, attack))
+							if (sim.unitAt(Side.PLAYER, cell) != null)
+								candidates.add(new Move(unit, attack, cell));
+					}
 				}
 			}
 		}

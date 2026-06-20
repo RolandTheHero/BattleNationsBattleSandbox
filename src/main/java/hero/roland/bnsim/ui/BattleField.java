@@ -59,6 +59,8 @@ public class BattleField extends JComponent {
 	private static final Color ENEMY_TINT = new Color(210, 80, 80);
 	private static final Color DROP_HIGHLIGHT = new Color(120, 200, 120);
 	private static final Color TARGET_HIGHLIGHT = new Color(60, 120, 230, 110);
+	/** Cyan highlight for the fixed tiles a WEAPON (fixed) attack will strike. */
+	private static final Color WEAPON_HIGHLIGHT = new Color(0, 220, 255, 120);
 	private static final Color SELECT_OUTLINE = new Color(245, 205, 70);
 	private static final Color HIT_COLOR = new Color(225, 40, 40);
 	private static final Color RANK_COLOR = new Color(0, 220, 255);
@@ -131,6 +133,8 @@ public class BattleField extends JComponent {
 	private PlacedUnit selectedAttacker;
 	private Unit.Attack selectedAttack;
 	private Set<Cell> targetable = new HashSet<>();
+	/** Fixed tiles a selected WEAPON attack will strike (cyan highlight). */
+	private Set<BattleSimulator.SideCell> weaponAffected = new HashSet<>();
 	private Consumer<PlacedUnit> attackerSelectedListener;
 
 	private final List<HitMarker> hitMarkers = new ArrayList<>();
@@ -268,12 +272,21 @@ public class BattleField extends JComponent {
 		repaint();
 	}
 
-	/** Sets the attack to aim with, recomputing the targetable tiles. */
+	/**
+	 * Sets the attack to aim with, recomputing the highlighted tiles. A normal
+	 * attack highlights its aimable enemy tiles in blue; a WEAPON (fixed) attack
+	 * highlights only the fixed tiles it strikes (from the unit's position) in cyan.
+	 */
 	public void setSelectedAttack(Unit.Attack attack) {
 		this.selectedAttack = attack;
-		targetable = (selectedAttacker != null && attack != null)
-				? sim.targetableCells(selectedAttacker, attack)
-				: new HashSet<>();
+		targetable = new HashSet<>();
+		weaponAffected = new HashSet<>();
+		if (selectedAttacker != null && attack != null) {
+			if (attack.getAbility().getTargetType() == Ability.TargetType.WEAPON)
+				weaponAffected = sim.weaponAffectedCells(selectedAttacker, attack);
+			else
+				targetable = sim.targetableCells(selectedAttacker, attack);
+		}
 		repaint();
 	}
 
@@ -299,19 +312,21 @@ public class BattleField extends JComponent {
 		// animation is playing or during the enemy's turn).
 		if (phase != Phase.PLAYER)
 			return;
-		// Firing at a highlighted enemy tile takes priority.
+		// Firing at a highlighted tile takes priority.
 		if (selectedAttacker != null && selectedAttack != null) {
-			Cell target = geometry.cellAt(Side.ENEMY, p);
-			if (target != null && targetable.contains(target)) {
-				// A stunned/frozen unit may be selected but cannot attack; keep
-				// the selection so the player can choose a different unit.
-				if (selectedAttacker.isActionBlocked()) {
-					showMessage(selectedAttacker.getUnit().getName()
-							+ " is unable to act!");
+			if (selectedAttack.getAbility().getTargetType() == Ability.TargetType.WEAPON) {
+				// Fixed attack: clicking any highlighted tile fires it (its aim is
+				// the attacker's own position, so it is passed unused).
+				if (clickedWeaponTile(p)) {
+					tryFire(selectedAttacker.getCell());
 					return;
 				}
-				playerFire(target);
-				return;
+			} else {
+				Cell target = geometry.cellAt(Side.ENEMY, p);
+				if (target != null && targetable.contains(target)) {
+					tryFire(target);
+					return;
+				}
 			}
 		}
 		// Otherwise (re)select a player unit, or clear the selection.
@@ -322,10 +337,32 @@ public class BattleField extends JComponent {
 			clearSelection();
 	}
 
+	/** Whether the pixel falls on one of the highlighted fixed-attack tiles. */
+	private boolean clickedWeaponTile(Point p) {
+		for (BattleSimulator.SideCell sc : weaponAffected)
+			if (sc.cell().equals(geometry.cellAt(sc.side(), p)))
+				return true;
+		return false;
+	}
+
+	/**
+	 * Fires the selected attack at {@code aim}, unless the attacker is blocked by a
+	 * status effect (then a message is shown and the selection is kept so the
+	 * player can pick a different unit).
+	 */
+	private void tryFire(Cell aim) {
+		if (selectedAttacker.isActionBlocked()) {
+			showMessage(selectedAttacker.getUnit().getName() + " is unable to act!");
+			return;
+		}
+		playerFire(aim);
+	}
+
 	private void selectAttacker(PlacedUnit unit) {
 		selectedAttacker = unit;
 		selectedAttack = null;
 		targetable = new HashSet<>();
+		weaponAffected = new HashSet<>();
 		if (attackerSelectedListener != null)
 			attackerSelectedListener.accept(unit);
 		repaint();
@@ -335,6 +372,7 @@ public class BattleField extends JComponent {
 		selectedAttacker = null;
 		selectedAttack = null;
 		targetable = new HashSet<>();
+		weaponAffected = new HashSet<>();
 		if (attackerSelectedListener != null)
 			attackerSelectedListener.accept(null);
 		repaint();
@@ -570,6 +608,10 @@ public class BattleField extends JComponent {
 		g.setColor(TARGET_HIGHLIGHT);
 		for (Cell cell : targetable)
 			g.fillPolygon(geometry.cellDiamond(Side.ENEMY, cell.col(), cell.row()));
+		// A WEAPON (fixed) attack highlights only the fixed tiles it strikes, cyan.
+		g.setColor(WEAPON_HIGHLIGHT);
+		for (BattleSimulator.SideCell sc : weaponAffected)
+			g.fillPolygon(geometry.cellDiamond(sc.side(), sc.cell().col(), sc.cell().row()));
 	}
 
 	private void drawSelection(Graphics2D g) {
@@ -743,7 +785,7 @@ public class BattleField extends JComponent {
 			double chance = sec.chance() * marker.areaValue;
 			if (random.nextDouble() >= chance)
 				continue;
-			target.applyStatusEffect(new ActiveStatusEffect(effect, dealt));
+			target.applyStatusEffect(new ActiveStatusEffect(effect, dealt, attackAnimEndTick));
 
 			// Show the family's "applied" icon on the tile after the attack ends,
 			// play its sound at the same moment, and hold the turn until that
@@ -906,16 +948,20 @@ public class BattleField extends JComponent {
 
 	/**
 	 * Pulses a translucent tint over each afflicted unit's tile in its status
-	 * family's colour, oscillating at the family's pulse speed.
+	 * family's colour, oscillating at the family's pulse speed. The pulse only
+	 * begins once the effect's apply icon starts playing, and is timed from that
+	 * moment so it eases up from nothing rather than snapping mid-cycle.
 	 */
 	private void drawStatusPulses(Graphics2D g) {
 		for (PlacedUnit unit : sim.placedUnits()) {
-			StatusEffect.StatusFamily family = unit.getPulseFamily();
-			if (family == null)
+			ActiveStatusEffect effect = unit.getPulseEffect(tick);
+			if (effect == null)
 				continue;
+			StatusEffect.StatusFamily family = effect.getEffect().getFamily();
 			double speed = Math.max(0.1, family.getPulseSpeed());     // seconds per pulse
 			double period = speed * 1000.0 / FRAME_DELAY;             // frames per pulse
-			double phase = (tick % period) / period;
+			double elapsed = tick - effect.getDisplayStartTick();
+			double phase = (elapsed % period) / period;
 			float wave = (float) (0.5 - 0.5 * Math.cos(2 * Math.PI * phase));
 			float alpha = PULSE_MIN_ALPHA + wave * (PULSE_MAX_ALPHA - PULSE_MIN_ALPHA);
 

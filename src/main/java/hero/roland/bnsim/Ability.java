@@ -27,7 +27,7 @@ public class Ability {
 	private int lineOfFire;
 	private boolean capture;
 	private int aoeDelay;
-	private String targetType;
+	private TargetType targetType;
     private String infantryHitSound, vehicleHitSound;
     private DamageType damageType;
     private AttackDirection attackDirection;
@@ -94,7 +94,8 @@ public class Ability {
 		damageArea = initArea(stats.optJSONObject("damageArea"), false);
 		JSONObject targ = stats.optJSONObject("targetArea");
 		if (targ != null) {
-			targetType = targ.optString("type", null);
+			String targetTypeStr = targ.optString("type", "Target");
+			targetType = TargetType.fromString(targetTypeStr);
 			randomTarget = targ.getBoolean("random");
 			aoeDelay = (int) Math.round(getDouble(targ, "aoeOrderDelay", 0) * 20);
 			targetArea = initArea(targ, randomTarget);
@@ -212,7 +213,7 @@ public class Ability {
 		return randomTarget;
 	}
 
-	public String getTargetType() {
+	public TargetType getTargetType() {
 		return targetType;
 	}
 
@@ -352,8 +353,18 @@ public class Ability {
     public record StatusEffectChance(StatusEffect effect, double chance) {
     }
 
+	public enum TargetType {
+		TARGET, WEAPON;
+		public static TargetType fromString(String s) {
+			for (TargetType type : TargetType.values()) {
+				if (type.name().equalsIgnoreCase(s))
+					return type;
+			}
+			throw new IllegalArgumentException("Unknown target type: " + s);
+		}
+	}
     public enum AttackDirection {
-        FRONT, BACK
+        FRONT, BACK;
     }
     public enum DamageType {
         PIERCING("Piercing", "damageBullet@2x.png"),

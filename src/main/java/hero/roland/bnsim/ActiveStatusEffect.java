@@ -17,6 +17,9 @@ public class ActiveStatusEffect {
 	private final StatusEffect effect;
 	/** Raw damage of the first tick, before the unit's resistances. */
 	private final double baseDamage;
+	/** Animation tick from which this effect's pulse should be shown (the tick the
+	 * apply icon begins playing); a UI-timing value, unused by the damage logic. */
+	private final int displayStartTick;
 	/** Turns remaining; the effect is removed once this reaches zero. */
 	private int remaining;
 	/** Turns this effect has already ticked, for the diminishing multiplier. */
@@ -26,12 +29,20 @@ public class ActiveStatusEffect {
 	 * @param effect the shared effect definition
 	 * @param damageDealt the damage the triggering hit dealt to the unit, which
 	 *        scales the effect's starting damage
+	 * @param displayStartTick the animation tick the apply icon begins playing,
+	 *        from which the unit's pulse should be shown
 	 */
-	public ActiveStatusEffect(StatusEffect effect, double damageDealt) {
+	public ActiveStatusEffect(StatusEffect effect, double damageDealt, int displayStartTick) {
 		this.effect = effect;
 		this.baseDamage = effect.getAbilityDamageMultiplier() * Math.max(0, damageDealt);
+		this.displayStartTick = displayStartTick;
 		this.remaining = Math.max(1, effect.getDuration());
 		this.ticks = 0;
+	}
+
+	/** The animation tick from which this effect's pulse should be shown. */
+	public int getDisplayStartTick() {
+		return displayStartTick;
 	}
 
 	public StatusEffect getEffect() {

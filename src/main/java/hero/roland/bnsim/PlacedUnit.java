@@ -234,14 +234,17 @@ public class PlacedUnit {
 	}
 
 	/**
-	 * The status family this unit should pulse with (the most recently applied
-	 * effect that has a family), or {@code null} if the unit is unafflicted.
+	 * The effect this unit should pulse with at the given animation tick: the most
+	 * recently applied effect that has a family and whose apply animation has
+	 * already begun ({@code displayStartTick <= tick}), or {@code null} if none
+	 * apply yet. Gating on the display tick keeps the pulse from showing during the
+	 * attack, before the effect's apply icon starts playing.
 	 */
-	public StatusEffect.StatusFamily getPulseFamily() {
+	public ActiveStatusEffect getPulseEffect(int tick) {
 		for (int i = statusEffects.size() - 1; i >= 0; i--) {
-			StatusEffect.StatusFamily family = statusEffects.get(i).getEffect().getFamily();
-			if (family != null)
-				return family;
+			ActiveStatusEffect e = statusEffects.get(i);
+			if (e.getEffect().getFamily() != null && e.getDisplayStartTick() <= tick)
+				return e;
 		}
 		return null;
 	}
