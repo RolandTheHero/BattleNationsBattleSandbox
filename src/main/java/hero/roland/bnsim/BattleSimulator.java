@@ -334,7 +334,8 @@ public class BattleSimulator {
 		// on the attacker's own side are skipped. The damage area then splashes
 		// around each tile that lands on the opponent's side.
 		for (int t = 0; t < targetArea.length; t++) {
-			SideCell origin = weaponCell(attacker, targetArea[t].getX(), targetArea[t].getY());
+			SideCell origin = weaponCell(attacker, ability, targetArea[t].getX(),
+					targetArea[t].getY());
 			if (origin == null)
 				continue;
 			for (int shot = 0; shot < shots; shot++)
@@ -365,7 +366,7 @@ public class BattleSimulator {
 		Side targetSide = opponentOf(attacker.getSide());
 		int xSign = attacker.getSide() == Side.PLAYER ? 1 : -1;
 		for (TargetSquare target : targetArea) {
-			SideCell origin = weaponCell(attacker, target.getX(), target.getY());
+			SideCell origin = weaponCell(attacker, ability, target.getX(), target.getY());
 			if (origin == null)
 				continue;
 			for (TargetSquare d : damageArea) {
@@ -384,9 +385,10 @@ public class BattleSimulator {
 	 * depth ({@code -1} is one tile in front of the unit). Moving forward crosses
 	 * the front line straight onto the opponent's side (the empty gap row is
 	 * skipped). Returns {@code null} if the tile stays on the attacker's own side
-	 * (those are never affected) or runs off the grids.
+	 * (those are never affected), runs off the grids, or is blocked from the
+	 * attacker's line of fire by a unit in front of it.
 	 */
-	private SideCell weaponCell(PlacedUnit attacker, int dx, int dy) {
+	private SideCell weaponCell(PlacedUnit attacker, Ability ability, int dx, int dy) {
 		int forward = -dy;                 // tiles toward the opponent
 		int row = attacker.getCell().row();
 		if (forward <= row)
@@ -397,7 +399,11 @@ public class BattleSimulator {
 		int cellRow = forward - row - 1;   // depth into the opponent's side
 		if (!GridGeometry.isValid(col, cellRow))
 			return null;
-		return new SideCell(opponentOf(side), new Cell(col, cellRow));
+		Side targetSide = opponentOf(side);
+		boolean fromBack = ability.getAttackDirection() == Ability.AttackDirection.BACK;
+		if (isBlocked(targetSide, col, cellRow, ability.getLineOfFire(), fromBack))
+			return null;
+		return new SideCell(targetSide, new Cell(col, cellRow));
 	}
 
 	/** Rolls a damage value in [min, max) (inclusive min, exclusive max). */
