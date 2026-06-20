@@ -10,8 +10,9 @@ import org.json.JSONObject;
 public class StatusEffect {
     private static Map<String, StatusEffect> statusEffects = new HashMap<>();
 
-    private int duration; // How many turns the effect lasts
-    private double durationDamageMultiplier; // Every turn, the damage of the effect is multiplied by this
+    private int duration; // How many turns the effect lasts. The effect is removed after this amount of turns has passed
+    private boolean diminishing; // If true, the damage of the effect is multiplied by 0.5^(n-1) where n is the number of turns this effect has lasted
+    private double abilityDamageMultiplier; // The starting damage of this status effect is this number multiplied by the damage done to the target by the ability
     private double armorPiercingRate; // Proportion of effect's damage goes directly to HP
     private Ability.DamageType damageType; // Type of damage for resistance calculations
     private int bonusDamage; // Flat damage added to each tick of the effect, after all multipliers
@@ -43,12 +44,9 @@ public class StatusEffect {
 
     private StatusEffect(JSONObject stats) {
         duration = stats.optInt("duration", 1);
-        boolean diminishing = stats.optBoolean("dot_Diminishing", true);
-        if (!diminishing) {
-            durationDamageMultiplier = 1.0;
-        } else {
-            durationDamageMultiplier = stats.optDouble("dot_AbilityDamageMult", 0.5);
-        }
+        diminishing = stats.optBoolean("dot_Diminishing", true);
+        abilityDamageMultiplier = stats.optDouble("dot_AbilityDamageMult", 0d);
+        diminishing = stats.optBoolean("dot_Diminishing", true);
         String damageTypeStr = stats.optString("dot_DamageType", null);
         if (damageTypeStr != null) {
             damageType = Ability.DamageType.fromString(damageTypeStr);
@@ -74,6 +72,24 @@ public class StatusEffect {
             }
         }
     }
+
+    public int getDuration() { return duration; }
+    public boolean isDiminishing() { return diminishing; }
+    public double getAbilityDamageMultiplier() { return abilityDamageMultiplier; }
+    public double getArmorPiercingRate() { return armorPiercingRate; }
+    public Ability.DamageType getDamageType() { return damageType; }
+    public int getBonusDamage() { return bonusDamage; }
+    public StatusFamily getFamily() { return family; }
+    public boolean isBlockAction() { return blockAction; }
+    public boolean isBlockMovement() { return blockMovement; }
+
+    /** This effect's HP resistance override for the given damage type, or
+     * {@code null} if it does not change resistance for that type. */
+    public Double getDamageMod(Ability.DamageType type) { return damageMods.get(type); }
+
+    /** This effect's armor resistance override for the given damage type, or
+     * {@code null} if it does not change resistance for that type. */
+    public Double getArmorDamageMod(Ability.DamageType type) { return armorDamageMods.get(type); }
 
     public static class StatusFamily {
         private static Map<String, StatusFamily> families = new HashMap<>();

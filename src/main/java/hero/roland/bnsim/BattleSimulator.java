@@ -290,9 +290,10 @@ public class BattleSimulator {
 			if (!GridGeometry.isValid(col, row))
 				continue;
 			int delay = Math.max(0, aoeDelay * (targetStep + damageSteps[d]));
-			double rawDamage = baseDamage * damageArea[d].getValue();
+			double value = damageArea[d].getValue();
+			double rawDamage = baseDamage * value;
 			result.add(new Hit(targetSide, new Cell(col, row), delay,
-					rawDamage, damageType, armorPiercing));
+					rawDamage, damageType, armorPiercing, value));
 		}
 	}
 
@@ -334,12 +335,13 @@ public class BattleSimulator {
 
 	/**
 	 * A struck cell: which side it is on, the delay (in animation frames) before
-	 * it is hit, the raw damage before the defender's modifiers, and the
-	 * ability's damage type and armor-piercing fraction. Tiles in an
-	 * area-of-effect ripple outwards using the ability's aoe delay.
+	 * it is hit, the raw damage before the defender's modifiers, the ability's
+	 * damage type and armor-piercing fraction, and the damage-area value of this
+	 * tile (which scales both its damage and any status-effect chance). Tiles in
+	 * an area-of-effect ripple outwards using the ability's aoe delay.
 	 */
 	public record Hit(Side side, Cell cell, int delayFrames, double rawDamage,
-			Ability.DamageType damageType, double armorPiercing) {
+			Ability.DamageType damageType, double armorPiercing, double areaValue) {
 	}
 
 	/** All placed units across both sides, in no particular order. */

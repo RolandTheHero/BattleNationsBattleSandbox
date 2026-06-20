@@ -19,6 +19,8 @@ public class RandomEnemyBehavior implements EnemyBehavior {
 		for (PlacedUnit unit : sim.placedUnits()) {
 			if (unit.getSide() != Side.ENEMY)
 				continue;
+			if (unit.isActionBlocked())
+				continue; // stunned/frozen: this unit cannot act this turn
 			for (Unit.Weapon weapon : unit.getUnit().getWeapons()) {
 				if ("none".equals(weapon.getTag()))
 					continue;

@@ -1,6 +1,8 @@
 package hero.roland.bnsim;
 
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * A {@link Unit} placed on the battlefield: which unit, which side, and which
@@ -37,6 +39,9 @@ public class PlacedUnit {
 	/** A one-shot attack animation that temporarily replaces the idle. */
 	private Animation attackAnimation;
 	private int attackStartTick;
+
+	/** Status effects currently afflicting this unit (e.g. poison, stun). */
+	private final List<ActiveStatusEffect> statusEffects = new ArrayList<>();
 
 	public PlacedUnit(Unit unit, Side side, Cell cell) {
 		this.unit = unit;
@@ -91,6 +96,7 @@ public class PlacedUnit {
 		displayHp = lastHp = currentHp;
 		displayArmor = lastArmor = currentArmor;
 		hpRate = armorRate = 0;
+		statusEffects.clear();
 	}
 
 	/**
@@ -167,12 +173,8 @@ public class PlacedUnit {
 		if (rawDamage <= 0)
 			return 0;
 		double ap = Math.max(0, Math.min(1, armorPiercing));
-		double hpMod = 1, armorMod = 1;
-		if (unit.getMaxRank() >= 1) {
-			Unit.Rank stats = unit.getRank(rank);
-			hpMod = stats.damageMod(type);
-			armorMod = stats.armorDamageMod(type);
-		}
+		double hpMod = effectiveDamageMod(type);
+		double armorMod = effectiveArmorDamageMod(type);
 		double hpDamage = rawDamage * ap * hpMod;
 		double armorDamage = rawDamage * (1 - ap) * armorMod;
 
@@ -181,6 +183,93 @@ public class PlacedUnit {
 		currentArmor = (int) Math.round(Math.max(0, currentArmor - armorDamage));
 		currentHp -= (int) Math.round(hpDamage + overflow);
 		return (int) Math.round(hpDamage + armorDamage);
+	}
+
+	/**
+	 * The unit's HP damage modifier for a type, with active status effects taken
+	 * into account: an effect's modifier <em>replaces</em> the unit's own for that
+	 * type, and when several effects modify the same type the highest one applies.
+	 */
+	private double effectiveDamageMod(Ability.DamageType type) {
+		double base = unit.getMaxRank() >= 1 ? unit.getRank(rank).damageMod(type) : 1.0;
+		Double override = null;
+		for (ActiveStatusEffect e : statusEffects) {
+			Double mod = e.getEffect().getDamageMod(type);
+			if (mod != null)
+				override = override == null ? mod : Math.max(override, mod);
+		}
+		return override != null ? override : base;
+	}
+
+	/** As {@link #effectiveDamageMod}, but for armor resistances. */
+	private double effectiveArmorDamageMod(Ability.DamageType type) {
+		double base = unit.getMaxRank() >= 1 ? unit.getRank(rank).armorDamageMod(type) : 1.0;
+		Double override = null;
+		for (ActiveStatusEffect e : statusEffects) {
+			Double mod = e.getEffect().getArmorDamageMod(type);
+			if (mod != null)
+				override = override == null ? mod : Math.max(override, mod);
+		}
+		return override != null ? override : base;
+	}
+
+	// --- Status effects ----------------------------------------------------
+
+	/**
+	 * Afflicts this unit with a status effect. If the unit already has the same
+	 * effect (by definition identity), the old one is removed and replaced by the
+	 * new one, so re-applying refreshes its duration and starting damage.
+	 */
+	public void applyStatusEffect(ActiveStatusEffect effect) {
+		statusEffects.removeIf(e -> e.getEffect() == effect.getEffect());
+		statusEffects.add(effect);
+	}
+
+	/** Whether any active effect prevents this unit from attacking. */
+	public boolean isActionBlocked() {
+		for (ActiveStatusEffect e : statusEffects)
+			if (e.blocksAction())
+				return true;
+		return false;
+	}
+
+	/**
+	 * The status family this unit should pulse with (the most recently applied
+	 * effect that has a family), or {@code null} if the unit is unafflicted.
+	 */
+	public StatusEffect.StatusFamily getPulseFamily() {
+		for (int i = statusEffects.size() - 1; i >= 0; i--) {
+			StatusEffect.StatusFamily family = statusEffects.get(i).getEffect().getFamily();
+			if (family != null)
+				return family;
+		}
+		return null;
+	}
+
+	/**
+	 * Evaluates this unit's status effects for the start of its side's turn: each
+	 * effect deals its damage, ages by one turn, and is removed once expired.
+	 * Returns one {@link StatusTick} per effect that dealt damage, so the UI can
+	 * show a floating number and the effect's icon.
+	 */
+	public List<StatusTick> tickStatusEffects() {
+		List<StatusTick> ticks = new ArrayList<>();
+		for (ActiveStatusEffect e : statusEffects) {
+			StatusEffect def = e.getEffect();
+			double raw = e.nextTickRawDamage();
+			int dealt = raw > 0
+					? applyDamage(raw, def.getDamageType(), def.getArmorPiercingRate())
+					: 0;
+			e.onTurnPassed();
+			if (dealt > 0)
+				ticks.add(new StatusTick(def, dealt));
+		}
+		statusEffects.removeIf(ActiveStatusEffect::isExpired);
+		return ticks;
+	}
+
+	/** One effect's start-of-turn result: the effect and the damage it dealt. */
+	public record StatusTick(StatusEffect effect, int damageDealt) {
 	}
 
 	/**

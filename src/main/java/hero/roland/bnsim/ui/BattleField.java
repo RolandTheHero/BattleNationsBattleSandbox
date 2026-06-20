@@ -16,8 +16,10 @@ import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Random;
 import java.util.Set;
 import java.util.function.Consumer;
@@ -38,6 +40,8 @@ import hero.roland.bnsim.GridGeometry;
 import hero.roland.bnsim.PlacedUnit;
 import hero.roland.bnsim.RandomEnemyBehavior;
 import hero.roland.bnsim.Side;
+import hero.roland.bnsim.StatusEffect;
+import hero.roland.bnsim.ActiveStatusEffect;
 import hero.roland.bnsim.Unit;
 
 /**
@@ -69,6 +73,17 @@ public class BattleField extends JComponent {
 	private static final int DAMAGE_STAGGER_FRAMES = 8;
 	private static final int DAMAGE_JITTER_X = 26;
 	private static final int DAMAGE_JITTER_Y = 12;
+	/** Size (px) of the status icon drawn beside a status-damage number. */
+	private static final int STATUS_NUMBER_ICON = 22;
+
+	/** How far the "effect applied" icon sinks while fading. */
+	private static final int STATUS_APPLY_DROP = 24;
+	/** Largest dimension (px) the "effect applied" icon is drawn at. */
+	private static final int STATUS_APPLY_ICON = 48;
+
+	/** Pulsing affliction tint: alpha swings between these around the unit. */
+	private static final float PULSE_MIN_ALPHA = 0.10f;
+	private static final float PULSE_MAX_ALPHA = 0.42f;
 
 	/** Milliseconds between animation frames (~20 fps). */
 	private static final int FRAME_DELAY = 50;
@@ -76,6 +91,10 @@ public class BattleField extends JComponent {
 	private static final int HIT_FADE = 26;
 	/** Frames for a health bar to finish draining (~1 second). */
 	private static final int BAR_ANIM_FRAMES = 1000 / FRAME_DELAY;
+	/** Frames the "effect applied" icon shows for (~1 second). */
+	private static final int STATUS_APPLY_FRAMES = 1000 / FRAME_DELAY;
+	/** Frames an on-field message stays up (~2.5 seconds). */
+	private static final int MESSAGE_FRAMES = 2500 / FRAME_DELAY;
 
 	private final BattleSimulator sim;
 	private final GridGeometry geometry;
@@ -87,12 +106,21 @@ public class BattleField extends JComponent {
 	/** Background image scaled to fill the component; null falls back to a colour. */
 	private BufferedImage background;
 
-	/** Whose turn it is, and whether an attack animation is in progress. */
-	private enum Phase { PLAYER, PLAYER_FIRING, ENEMY_FIRING }
+	/**
+	 * Turn state. Each side's turn begins with a status-effect step (its effects
+	 * deal damage and the turn waits for that animation), then the action: the
+	 * enemy fires, or the player regains control.
+	 */
+	private enum Phase {
+		PLAYER, PLAYER_FIRING, ENEMY_TURN_STATUS, ENEMY_FIRING, PLAYER_TURN_STATUS
+	}
 
 	private Phase phase = Phase.PLAYER;
-	/** Tick at which the in-progress attack finishes and the turn advances. */
+	/** Tick at which the current phase's animation finishes and the turn advances. */
 	private int attackEndTick;
+	/** Tick at which the attack animation and its hits finish; status-apply icons
+	 * start here, and the turn waits past it for them (via {@link #attackEndTick}). */
+	private int attackAnimEndTick;
 	private final EnemyBehavior enemyBehavior = new RandomEnemyBehavior();
 
 	// Setup-mode drag state.
@@ -111,7 +139,15 @@ public class BattleField extends JComponent {
 	private final List<PlacedUnit> dyingUnits = new ArrayList<>();
 	/** Sounds queued to play at a future tick (e.g. a weapon's delayed fire sound). */
 	private final List<PendingSound> pendingSounds = new ArrayList<>();
+	/** "Effect applied" icons floating down from an afflicted tile. */
+	private final List<StatusApplyVisual> statusApplyVisuals = new ArrayList<>();
+	/** Cache of loaded status icons (effect/ui icons), including null misses. */
+	private final Map<String, BufferedImage> iconCache = new HashMap<>();
 	private final Random random = new Random();
+
+	/** A transient message shown across the field (e.g. "unit is stunned"). */
+	private String message;
+	private int messageEndTick;
 
 	public BattleField(BattleSimulator sim) {
 		this.sim = sim;
@@ -131,6 +167,7 @@ public class BattleField extends JComponent {
 			updateDyingUnits();
 			pruneHitMarkers();
 			pruneDamageNumbers();
+			pruneStatusApplyVisuals();
 			advanceTurns();
 			repaint();
 		});
@@ -198,6 +235,9 @@ public class BattleField extends JComponent {
 		hitMarkers.clear();
 		dyingUnits.clear();
 		pendingSounds.clear();
+		damageNumbers.clear();
+		statusApplyVisuals.clear();
+		message = null;
 		if (battle)
 			for (PlacedUnit unit : sim.placedUnits())
 				unit.resetHealth();
@@ -263,6 +303,13 @@ public class BattleField extends JComponent {
 		if (selectedAttacker != null && selectedAttack != null) {
 			Cell target = geometry.cellAt(Side.ENEMY, p);
 			if (target != null && targetable.contains(target)) {
+				// A stunned/frozen unit may be selected but cannot attack; keep
+				// the selection so the player can choose a different unit.
+				if (selectedAttacker.isActionBlocked()) {
+					showMessage(selectedAttacker.getUnit().getName()
+							+ " is unable to act!");
+					return;
+				}
 				playerFire(target);
 				return;
 			}
@@ -321,13 +368,18 @@ public class BattleField extends JComponent {
 		for (BattleSimulator.Hit hit : sim.resolveHits(attacker, attack, aim)) {
 			int start = base + hit.delayFrames();
 			hitMarkers.add(new HitMarker(hit.side(), hit.cell(), start,
-					hit.rawDamage(), hit.damageType(), hit.armorPiercing(), ability));
+					hit.rawDamage(), hit.damageType(), hit.armorPiercing(),
+					hit.areaValue(), ability));
 			lastHit = Math.max(lastHit, start - tick);
 		}
 
 		int animFrames = (anim != null) ? anim.getEndFrame() : 0;
-		// Advance once the animation has finished and the last tile has landed.
-		attackEndTick = tick + Math.max(1, Math.max(animFrames, lastHit + 4));
+		// The attack animation and last landed tile finish here; status-apply
+		// icons start from this tick.
+		attackAnimEndTick = tick + Math.max(1, Math.max(animFrames, lastHit + 4));
+		// The turn advances when the attack finishes; applying a status effect
+		// extends this to wait for the status-apply animation (see applyStatusEffects).
+		attackEndTick = attackAnimEndTick;
 		repaint();
 	}
 
@@ -350,20 +402,80 @@ public class BattleField extends JComponent {
 	private void advanceTurns() {
 		if (!battleMode || tick < attackEndTick)
 			return;
-		if (phase == Phase.PLAYER_FIRING)
-			startEnemyTurn();
-		else if (phase == Phase.ENEMY_FIRING)
-			phase = Phase.PLAYER;
+		switch (phase) {
+		case PLAYER_FIRING:
+			beginEnemyTurn();
+			break;
+		case ENEMY_TURN_STATUS:
+			enemyAct();
+			break;
+		case ENEMY_FIRING:
+			beginPlayerTurn();
+			break;
+		case PLAYER_TURN_STATUS:
+			phase = Phase.PLAYER; // status damage finished animating; hand control back
+			break;
+		default:
+			break;
+		}
 	}
 
-	private void startEnemyTurn() {
+	/**
+	 * Begins the enemy's turn by evaluating its status effects. The enemy only
+	 * acts once their status-damage animation has finished playing.
+	 */
+	private void beginEnemyTurn() {
+		int frames = tickStatusEffects(Side.ENEMY);
+		phase = Phase.ENEMY_TURN_STATUS;
+		attackEndTick = tick + frames; // wait for the status-damage animation
+	}
+
+	/** The enemy chooses and plays its attack, after its status effects ticked. */
+	private void enemyAct() {
 		EnemyBehavior.Move move = enemyBehavior.decideMove(sim);
 		if (move == null) {
-			phase = Phase.PLAYER; // enemy has no legal move; skip its turn
+			beginPlayerTurn(); // enemy has no legal move; skip to the player's turn
 			return;
 		}
 		executeAttack(move.attacker(), move.attack(), move.target());
 		phase = Phase.ENEMY_FIRING;
+	}
+
+	/**
+	 * Begins the player's turn by evaluating their status effects. The player
+	 * only regains control once their status-damage animation has finished.
+	 */
+	private void beginPlayerTurn() {
+		int frames = tickStatusEffects(Side.PLAYER);
+		phase = Phase.PLAYER_TURN_STATUS;
+		attackEndTick = tick + frames; // wait for the status-damage animation
+	}
+
+	/**
+	 * Evaluates start-of-turn status effects for every unit on the given side:
+	 * each effect deals its damage (shown as a floating number with the effect's
+	 * icon), ages by a turn, and is removed when it expires. Units killed by an
+	 * effect are taken out of the simulation and left to drain on screen. Returns
+	 * the number of frames the turn should wait for the damage animation to finish
+	 * (0 when no effect dealt damage).
+	 */
+	private int tickStatusEffects(Side side) {
+		int endTick = tick;
+		for (PlacedUnit unit : sim.placedUnits()) {
+			if (unit.getSide() != side)
+				continue;
+			for (PlacedUnit.StatusTick st : unit.tickStatusEffects()) {
+				StatusEffect.StatusFamily family = st.effect().getFamily();
+				BufferedImage icon = family != null ? loadIcon(family.getUiIcon()) : null;
+				endTick = Math.max(endTick,
+						spawnDamageNumber(side, unit.getCell(), st.damageDealt(), icon));
+			}
+			if (unit.isDead()) {
+				sim.remove(unit);
+				dyingUnits.add(unit);
+			}
+		}
+		return endTick - tick;
 	}
 
 	// --- Painting ----------------------------------------------------------
@@ -418,9 +530,14 @@ public class BattleField extends JComponent {
 		}
 
 		drawUnits(g2);
+		if (battleMode)
+			drawStatusPulses(g2);
 		drawHitMarkers(g2);
 		drawOverlays(g2);
+		drawStatusApplyVisuals(g2);
 		drawDamageNumbers(g2);
+		if (battleMode)
+			drawMessage(g2);
 
 		if (!battleMode && dragging != null && dragPoint != null)
 			drawUnit(g2, dragging, dragPoint.x, dragPoint.y, 0.7f);
@@ -491,17 +608,29 @@ public class BattleField extends JComponent {
 		damageNumbers.removeIf(d -> tick - d.startTick >= DAMAGE_FLOAT_FRAMES);
 	}
 
+	private void pruneStatusApplyVisuals() {
+		statusApplyVisuals.removeIf(v -> tick - v.startTick >= STATUS_APPLY_FRAMES);
+	}
+
+	/** Spawns a plain (attack) damage number with no status icon. */
+	private int spawnDamageNumber(Side side, Cell cell, int amount) {
+		return spawnDamageNumber(side, cell, amount, null);
+	}
+
 	/**
-	 * Spawns a floating damage number at a random spot near the tile centre.
+	 * Spawns a floating damage number at a random spot near the tile centre,
+	 * optionally with a status icon drawn to its left (for status-effect ticks).
 	 * Numbers stacking on the same tile are delayed so they appear one after
-	 * another instead of all at once.
+	 * another instead of all at once. Returns the tick at which the number
+	 * finishes fading, so callers can wait for the animation.
 	 */
-	private void spawnDamageNumber(Side side, Cell cell, int amount) {
+	private int spawnDamageNumber(Side side, Cell cell, int amount, BufferedImage icon) {
 		int slot = countDamageNumbersAt(side, cell);
 		int start = tick + slot * DAMAGE_STAGGER_FRAMES;
 		int dx = random.nextInt(2 * DAMAGE_JITTER_X + 1) - DAMAGE_JITTER_X;
 		int dy = random.nextInt(2 * DAMAGE_JITTER_Y + 1) - DAMAGE_JITTER_Y;
-		damageNumbers.add(new DamageNumber(side, cell, amount, start, dx, dy));
+		damageNumbers.add(new DamageNumber(side, cell, amount, start, dx, dy, icon));
+		return start + DAMAGE_FLOAT_FRAMES;
 	}
 
 	/** Eases every unit's health bar toward its real value (~1 second). */
@@ -554,6 +683,12 @@ public class BattleField extends JComponent {
 			int tw = g2.getFontMetrics().stringWidth(text);
 			int x = (int) Math.round(c.getX() - tw / 2.0 + number.dx);
 			int y = (int) Math.round(c.getY() + number.dy - t * DAMAGE_RISE);
+			// Status-tick numbers carry the effect's icon to the left of the text.
+			if (number.icon != null) {
+				int iconY = y - STATUS_NUMBER_ICON + 4;
+				g2.drawImage(number.icon, x - STATUS_NUMBER_ICON - 2, iconY,
+						STATUS_NUMBER_ICON, STATUS_NUMBER_ICON, null);
+			}
 			g2.setColor(Color.BLACK);
 			g2.drawString(text, x + 1, y + 1);
 			g2.setColor(DAMAGE_COLOR);
@@ -586,6 +721,42 @@ public class BattleField extends JComponent {
 				// again), but keep drawing it until its health bar finishes draining.
 				sim.remove(target);
 				dyingUnits.add(target);
+			} else if (marker.ability != null) {
+				// A surviving target may be afflicted with the ability's effects.
+				applyStatusEffects(marker, target, dealt);
+			}
+		}
+	}
+
+	/**
+	 * Rolls each of the ability's status effects against the struck unit and
+	 * applies those that succeed. The chance is the effect's base chance scaled
+	 * by this tile's damage-area value; the effect's starting damage scales with
+	 * the damage this hit dealt. A successful application shows the family's
+	 * effect icon on the tile once the attack animation has finished.
+	 */
+	private void applyStatusEffects(HitMarker marker, PlacedUnit target, int dealt) {
+		for (Ability.StatusEffectChance sec : marker.ability.getStatusEffects()) {
+			StatusEffect effect = sec.effect();
+			if (effect == null)
+				continue;
+			double chance = sec.chance() * marker.areaValue;
+			if (random.nextDouble() >= chance)
+				continue;
+			target.applyStatusEffect(new ActiveStatusEffect(effect, dealt));
+
+			// Show the family's "applied" icon on the tile after the attack ends,
+			// play its sound at the same moment, and hold the turn until that
+			// apply animation has finished playing.
+			StatusEffect.StatusFamily family = effect.getFamily();
+			if (family != null) {
+				BufferedImage icon = loadIcon(family.getEffectIcon());
+				statusApplyVisuals.add(new StatusApplyVisual(
+						marker.side, marker.cell, icon, attackAnimEndTick));
+				if (family.getSound() != null)
+					pendingSounds.add(new PendingSound(family.getSound(), attackAnimEndTick));
+				attackEndTick = Math.max(attackEndTick,
+						attackAnimEndTick + STATUS_APPLY_FRAMES);
 			}
 		}
 	}
@@ -733,6 +904,111 @@ public class BattleField extends JComponent {
 		}
 	}
 
+	/**
+	 * Pulses a translucent tint over each afflicted unit's tile in its status
+	 * family's colour, oscillating at the family's pulse speed.
+	 */
+	private void drawStatusPulses(Graphics2D g) {
+		for (PlacedUnit unit : sim.placedUnits()) {
+			StatusEffect.StatusFamily family = unit.getPulseFamily();
+			if (family == null)
+				continue;
+			double speed = Math.max(0.1, family.getPulseSpeed());     // seconds per pulse
+			double period = speed * 1000.0 / FRAME_DELAY;             // frames per pulse
+			double phase = (tick % period) / period;
+			float wave = (float) (0.5 - 0.5 * Math.cos(2 * Math.PI * phase));
+			float alpha = PULSE_MIN_ALPHA + wave * (PULSE_MAX_ALPHA - PULSE_MIN_ALPHA);
+
+			Graphics2D g2 = (Graphics2D) g.create();
+			g2.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, alpha));
+			g2.setColor(parseHexColor(family.getColorHex()));
+			Cell cell = unit.getCell();
+			g2.fillPolygon(geometry.cellDiamond(unit.getSide(), cell.col(), cell.row()));
+			g2.dispose();
+		}
+	}
+
+	/** Draws the "effect applied" icons sinking and fading from afflicted tiles. */
+	private void drawStatusApplyVisuals(Graphics2D g) {
+		for (StatusApplyVisual visual : statusApplyVisuals) {
+			if (visual.icon == null)
+				continue;
+			int elapsed = tick - visual.startTick;
+			if (elapsed < 0 || elapsed >= STATUS_APPLY_FRAMES)
+				continue;
+			float t = elapsed / (float) STATUS_APPLY_FRAMES;
+			Point2D c = geometry.cellCentre(visual.side, visual.cell);
+			int size = STATUS_APPLY_ICON;
+			int x = (int) Math.round(c.getX() - size / 2.0);
+			int y = (int) Math.round(c.getY() - size / 2.0 + t * STATUS_APPLY_DROP);
+
+			Graphics2D g2 = (Graphics2D) g.create();
+			g2.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, 1f - t));
+			g2.drawImage(visual.icon, x, y, size, size, null);
+			g2.dispose();
+		}
+	}
+
+	/** Shows a transient message banner across the field for a short time. */
+	private void showMessage(String text) {
+		message = text;
+		messageEndTick = tick + MESSAGE_FRAMES;
+		repaint();
+	}
+
+	private void drawMessage(Graphics2D g) {
+		if (message == null || tick >= messageEndTick)
+			return;
+		Graphics2D g2 = (Graphics2D) g.create();
+		g2.setFont(g2.getFont().deriveFont(Font.BOLD, 18f));
+		int tw = g2.getFontMetrics().stringWidth(message);
+		int pad = 12;
+		int boxW = tw + pad * 2;
+		int boxH = g2.getFontMetrics().getHeight() + pad;
+		int x = (getWidth() - boxW) / 2;
+		int y = 70;
+		g2.setColor(new Color(20, 20, 20, 200));
+		g2.fillRoundRect(x, y, boxW, boxH, 12, 12);
+		int ty = y + (boxH - g2.getFontMetrics().getHeight()) / 2 + g2.getFontMetrics().getAscent();
+		g2.setColor(Color.WHITE);
+		g2.drawString(message, x + pad, ty);
+		g2.dispose();
+	}
+
+	/**
+	 * Loads a status icon from the bundle, scaled later at draw time. Results are
+	 * cached for the battle, including {@code null} for icons that cannot load.
+	 */
+	private BufferedImage loadIcon(String name) {
+		if (name == null)
+			return null;
+		if (iconCache.containsKey(name))
+			return iconCache.get(name);
+		BufferedImage img = null;
+		File file = GameFiles.file(name);
+		if (file.isFile()) {
+			try {
+				img = ImageIO.read(file);
+			} catch (IOException e) {
+				img = null; // best-effort: a missing icon just isn't drawn
+			}
+		}
+		iconCache.put(name, img);
+		return img;
+	}
+
+	/** Parses an {@code #RRGGBB} (or {@code RRGGBB}) colour, white on failure. */
+	private static Color parseHexColor(String hex) {
+		if (hex == null)
+			return Color.WHITE;
+		String h = hex.startsWith("#") ? hex.substring(1) : hex;
+		try {
+			return new Color(Integer.parseInt(h, 16));
+		} catch (NumberFormatException e) {
+			return Color.WHITE;
+		}
+	}
+
 	/** A struck tile that flashes red, deals its damage on landing, and fades. */
 	private static final class HitMarker {
 		final Side side;
@@ -741,18 +1017,22 @@ public class BattleField extends JComponent {
 		final double rawDamage;
 		final Ability.DamageType damageType;
 		final double armorPiercing;
+		/** This tile's damage-area value, which scales status-effect chance. */
+		final double areaValue;
 		/** Ability whose hit sound plays when this marker lands; may be null. */
 		final Ability ability;
 		boolean applied;
 
 		HitMarker(Side side, Cell cell, int startTick, double rawDamage,
-				Ability.DamageType damageType, double armorPiercing, Ability ability) {
+				Ability.DamageType damageType, double armorPiercing,
+				double areaValue, Ability ability) {
 			this.side = side;
 			this.cell = cell;
 			this.startTick = startTick;
 			this.rawDamage = rawDamage;
 			this.damageType = damageType;
 			this.armorPiercing = armorPiercing;
+			this.areaValue = areaValue;
 			this.ability = ability;
 		}
 	}
@@ -776,14 +1056,34 @@ public class BattleField extends JComponent {
 		final int startTick;
 		/** Random pixel offset from the tile centre. */
 		final int dx, dy;
+		/** Status icon drawn to the left of the number, or null for plain hits. */
+		final BufferedImage icon;
 
-		DamageNumber(Side side, Cell cell, int amount, int startTick, int dx, int dy) {
+		DamageNumber(Side side, Cell cell, int amount, int startTick, int dx, int dy,
+				BufferedImage icon) {
 			this.side = side;
 			this.cell = cell;
 			this.amount = amount;
 			this.startTick = startTick;
 			this.dx = dx;
 			this.dy = dy;
+			this.icon = icon;
+		}
+	}
+
+	/** A status-family icon that appears on a tile when an effect is applied,
+	 * then sinks and fades over about a second. */
+	private static final class StatusApplyVisual {
+		final Side side;
+		final Cell cell;
+		final BufferedImage icon;
+		final int startTick;
+
+		StatusApplyVisual(Side side, Cell cell, BufferedImage icon, int startTick) {
+			this.side = side;
+			this.cell = cell;
+			this.icon = icon;
+			this.startTick = startTick;
 		}
 	}
 }
