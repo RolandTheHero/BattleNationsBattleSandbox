@@ -145,6 +145,8 @@ public class BattleField extends JComponent {
 	private final List<PendingSound> pendingSounds = new ArrayList<>();
 	/** "Effect applied" icons floating down from an afflicted tile. */
 	private final List<StatusApplyVisual> statusApplyVisuals = new ArrayList<>();
+	/** Per-tile status-effect rolls accumulated over an attack, applied once it ends. */
+	private final Map<BattleSimulator.SideCell, StatusAccumulator> pendingStatus = new HashMap<>();
 	/** Cache of loaded status icons (effect/ui icons), including null misses. */
 	private final Map<String, BufferedImage> iconCache = new HashMap<>();
 	private final Random random = new Random();
@@ -167,6 +169,7 @@ public class BattleField extends JComponent {
 			tick++;
 			playPendingSounds();
 			applyLandedHits();
+			applyPendingStatusEffects();
 			animateHealthBars();
 			updateDyingUnits();
 			pruneHitMarkers();
@@ -241,6 +244,7 @@ public class BattleField extends JComponent {
 		pendingSounds.clear();
 		damageNumbers.clear();
 		statusApplyVisuals.clear();
+		pendingStatus.clear();
 		message = null;
 		if (battle)
 			for (PlacedUnit unit : sim.placedUnits())
@@ -775,29 +779,68 @@ public class BattleField extends JComponent {
 				// again), but keep drawing it until its health bar finishes draining.
 				sim.remove(target);
 				dyingUnits.add(target);
+				// Drop any status roll accumulated for this now-dead unit.
+				pendingStatus.remove(new BattleSimulator.SideCell(marker.side, marker.cell));
 			} else if (marker.ability != null) {
-				// A surviving target may be afflicted with the ability's effects.
-				applyStatusEffects(marker, target, dealt);
+				// Record the hit; the ability's status effects are rolled once, after
+				// the whole attack finishes (see applyPendingStatusEffects).
+				accumulateStatus(marker, target, dealt);
 			}
 		}
 	}
 
 	/**
+	 * Records one of an attack's hits on a tile so its ability's status effects can
+	 * be rolled <em>once</em> for the whole attack — after every hit has landed —
+	 * rather than once per hit. The starting damage accumulates across the attack's
+	 * hits on the tile, and the chance uses the strongest area value that struck it.
+	 */
+	private void accumulateStatus(HitMarker marker, PlacedUnit target, int dealt) {
+		if (marker.ability.getStatusEffects().length == 0)
+			return;
+		BattleSimulator.SideCell key = new BattleSimulator.SideCell(marker.side, marker.cell);
+		StatusAccumulator acc = pendingStatus.get(key);
+		if (acc == null) {
+			acc = new StatusAccumulator(marker.side, marker.cell, target, marker.ability);
+			pendingStatus.put(key, acc);
+		}
+		acc.totalDealt += dealt;
+		acc.areaValue = Math.max(acc.areaValue, marker.areaValue);
+	}
+
+	/**
+	 * Once an attack's hits have all landed (at {@link #attackAnimEndTick}), rolls
+	 * each struck tile's status effects a single time and applies those that
+	 * succeed. Doing this here — rather than as each hit lands — means hitting a
+	 * tile several times in one attack no longer multiplies its chance of being
+	 * afflicted. Runs before {@link #advanceTurns}, so a successful application can
+	 * still hold the turn for its apply animation.
+	 */
+	private void applyPendingStatusEffects() {
+		if (pendingStatus.isEmpty() || tick < attackAnimEndTick)
+			return;
+		for (StatusAccumulator acc : pendingStatus.values())
+			rollStatusEffects(acc);
+		pendingStatus.clear();
+	}
+
+	/**
 	 * Rolls each of the ability's status effects against the struck unit and
 	 * applies those that succeed. The chance is the effect's base chance scaled
-	 * by this tile's damage-area value; the effect's starting damage scales with
-	 * the damage this hit dealt. A successful application shows the family's
-	 * effect icon on the tile once the attack animation has finished.
+	 * by the tile's damage-area value; the effect's starting damage scales with the
+	 * total damage the attack dealt to the unit. A successful application shows the
+	 * family's effect icon on the tile once the attack animation has finished.
 	 */
-	private void applyStatusEffects(HitMarker marker, PlacedUnit target, int dealt) {
-		for (Ability.StatusEffectChance sec : marker.ability.getStatusEffects()) {
+	private void rollStatusEffects(StatusAccumulator acc) {
+		for (Ability.StatusEffectChance sec : acc.ability.getStatusEffects()) {
 			StatusEffect effect = sec.effect();
 			if (effect == null)
 				continue;
-			double chance = sec.chance() * marker.areaValue;
+			double chance = sec.chance() * acc.areaValue;
 			if (random.nextDouble() >= chance)
 				continue;
-			target.applyStatusEffect(new ActiveStatusEffect(effect, dealt, attackAnimEndTick));
+			acc.target.applyStatusEffect(
+					new ActiveStatusEffect(effect, acc.totalDealt, attackAnimEndTick));
 
 			// Show the family's "applied" icon on the tile after the attack ends,
 			// play its sound at the same moment, and hold the turn until that
@@ -806,7 +849,7 @@ public class BattleField extends JComponent {
 			if (family != null) {
 				BufferedImage icon = loadIcon(family.getEffectIcon());
 				statusApplyVisuals.add(new StatusApplyVisual(
-						marker.side, marker.cell, icon, attackAnimEndTick));
+						acc.side, acc.cell, icon, attackAnimEndTick));
 				if (family.getSound() != null)
 					pendingSounds.add(new PendingSound(family.getSound(), attackAnimEndTick));
 				attackEndTick = Math.max(attackEndTick,
@@ -1091,6 +1134,28 @@ public class BattleField extends JComponent {
 			this.damageType = damageType;
 			this.armorPiercing = armorPiercing;
 			this.areaValue = areaValue;
+			this.ability = ability;
+		}
+	}
+
+	/**
+	 * Accumulates an attack's hits on a single tile so its status effects can be
+	 * rolled once, after the attack finishes. Sums the damage dealt (which scales
+	 * the effect's starting damage) and keeps the strongest area value that struck
+	 * the tile (which scales the chance).
+	 */
+	private static final class StatusAccumulator {
+		final Side side;
+		final Cell cell;
+		final PlacedUnit target;
+		final Ability ability;
+		int totalDealt;
+		double areaValue;
+
+		StatusAccumulator(Side side, Cell cell, PlacedUnit target, Ability ability) {
+			this.side = side;
+			this.cell = cell;
+			this.target = target;
 			this.ability = ability;
 		}
 	}

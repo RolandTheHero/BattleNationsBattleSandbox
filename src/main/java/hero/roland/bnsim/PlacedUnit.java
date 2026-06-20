@@ -164,10 +164,12 @@ public class PlacedUnit {
 
 	/**
 	 * Applies a hit of the given raw damage and type. The armor-piercing
-	 * fraction of the damage goes straight to HP and the rest to armor; each
-	 * part is scaled by this unit's HP / armor damage modifier for the type.
-	 * Damage the armor cannot absorb spills over to HP. Returns the total
-	 * damage dealt (for the floating damage number).
+	 * fraction of the damage goes straight to HP and the rest to armor. Armor
+	 * damage is scaled by the armor modifier; any raw damage the armor cannot
+	 * absorb spills over to HP, where it (and the piercing fraction) is scaled
+	 * by the HP modifier — so a unit immune to the type (HP mod 0) takes no HP
+	 * damage even when its armor is destroyed. Returns the total damage dealt
+	 * (for the floating damage number).
 	 */
 	public int applyDamage(double rawDamage, Ability.DamageType type, double armorPiercing) {
 		if (rawDamage <= 0)
@@ -175,14 +177,25 @@ public class PlacedUnit {
 		double ap = Math.max(0, Math.min(1, armorPiercing));
 		double hpMod = effectiveDamageMod(type);
 		double armorMod = effectiveArmorDamageMod(type);
-		double hpDamage = rawDamage * ap * hpMod;
-		double armorDamage = rawDamage * (1 - ap) * armorMod;
 
-		// The armor portion depletes armor; any excess spills over to HP.
-		double overflow = Math.max(0, armorDamage - currentArmor);
-		currentArmor = (int) Math.round(Math.max(0, currentArmor - armorDamage));
-		currentHp -= (int) Math.round(hpDamage + overflow);
-		return (int) Math.round(hpDamage + armorDamage);
+		// The armor-piercing fraction is aimed straight at HP; the rest at armor.
+		double rawToHp = rawDamage * ap;
+		double rawToArmor = rawDamage * (1 - ap);
+
+		// Deplete armor, scaled by the armor modifier. The raw damage the armor
+		// could not absorb spills over and is re-aimed at HP.
+		double armorDamage = rawToArmor * armorMod;
+		double armorAbsorbed = Math.min(armorDamage, currentArmor);
+		double rawAbsorbed = armorMod > 0 ? armorAbsorbed / armorMod : rawToArmor;
+		double rawOverflow = rawToArmor - rawAbsorbed;
+
+		// All HP damage — direct piercing plus armor overflow — is scaled by the
+		// HP modifier, so a unit immune to the type (mod 0) takes no HP damage.
+		double hpDamage = (rawToHp + rawOverflow) * hpMod;
+
+		currentArmor = (int) Math.round(currentArmor - armorAbsorbed);
+		currentHp -= (int) Math.round(hpDamage);
+		return (int) Math.round(hpDamage + armorAbsorbed);
 	}
 
 	/**
