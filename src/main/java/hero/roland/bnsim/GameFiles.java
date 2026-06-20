@@ -25,6 +25,8 @@ public class GameFiles {
     public static void load(File folder) throws IOException {
         bundleFolder = folder;
         Text.load();
+		StatusEffect.StatusFamily.load();
+		StatusEffect.load();
         Ability.load();
         Unit.load();
         // Timeline data is loaded lazily, on demand, by Timeline.get(...).

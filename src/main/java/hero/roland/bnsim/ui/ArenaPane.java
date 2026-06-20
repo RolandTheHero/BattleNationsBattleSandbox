@@ -281,8 +281,8 @@ public class ArenaPane extends JLayeredPane {
 		if (attackPanel.isVisible()) {
 			Dimension ap = attackPanel.getPreferredSize();
 			int width = Math.min(ap.width, w - 32);
-			attackPanel.setBounds((w - width) / 2, h - ap.height - 64,
-					width, ap.height);
+			// Bottom-left corner.
+			attackPanel.setBounds(16, h - ap.height - 64, width, ap.height);
 		}
 	}
 

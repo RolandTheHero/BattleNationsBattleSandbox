@@ -204,7 +204,6 @@ public class Unit implements Comparable<Unit> {
                     return tag;
                 }
             }
-            System.out.println(str);
             return OTHER;
         }
 		public boolean isVehicle() {

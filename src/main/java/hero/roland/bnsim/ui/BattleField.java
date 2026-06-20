@@ -545,7 +545,7 @@ public class BattleField extends JComponent {
 				continue;
 			float t = elapsed / (float) DAMAGE_FLOAT_FRAMES;
 			Point2D c = geometry.cellCentre(number.side, number.cell);
-			String text = Integer.toString(number.amount);
+			String text = "-" + number.amount;
 
 			Graphics2D g2 = (Graphics2D) g.create();
 			g2.setComposite(AlphaComposite.getInstance(

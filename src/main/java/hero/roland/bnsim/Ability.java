@@ -33,6 +33,7 @@ public class Ability {
     private AttackDirection attackDirection;
 	private boolean randomTarget;
 	private TargetSquare[] targetArea, damageArea;
+	private StatusEffectChance[] statusEffects;
 	//private Map<String, Prerequisites> prereqs;
 
 	public static void load() throws IOException {
@@ -76,7 +77,6 @@ public class Ability {
 
 	private void initStats(JSONObject stats) {
 		if (stats == null) return;
-
 		damageBonus = stats.optInt("damage", 0);
 		damageFromWeapon = getDouble(stats, "damageFromWeapon", 1);
 		damageFromUnit = getDouble(stats, "damageFromUnit", 1);
@@ -100,6 +100,19 @@ public class Ability {
 			targetArea = initArea(targ, randomTarget);
 		}
         armorPiercingRate = stats.optDouble("armorPiercingPercent", 0);
+		// "statusEffects" maps each effect id to its chance (percent) of applying.
+		JSONObject statusEffectsJSON = stats.optJSONObject("statusEffects");
+		if (statusEffectsJSON == null) {
+			statusEffects = new StatusEffectChance[0];
+		} else {
+			statusEffects = new StatusEffectChance[statusEffectsJSON.length()];
+			int i = 0;
+			for (String effectId : statusEffectsJSON.keySet()) {
+				StatusEffect effect = StatusEffect.get(effectId);
+				double chance = statusEffectsJSON.optDouble(effectId, 0d) / 100.0; // Chance is from 0 to 100, so normalise to 0-1.
+				statusEffects[i++] = new StatusEffectChance(effect, chance);
+			}
+		}
 	}
 
 	// private void initPrereqs(JSONObject json) {
@@ -226,6 +239,11 @@ public class Ability {
         return armorPiercingRate;
     }
 
+    /** The status effects this ability can inflict, each with its chance (percent). */
+    public StatusEffectChance[] getStatusEffects() {
+        return statusEffects.clone();
+    }
+
 	/** Whether range and blocking are measured from the defender's front or back. */
 	public AttackDirection getAttackDirection() {
 		return attackDirection;
@@ -330,6 +348,10 @@ public class Ability {
 			return xMax - xMin + 1;
 		}
 	}
+    /** A status effect this ability can inflict, with its application chance (0-1). */
+    public record StatusEffectChance(StatusEffect effect, double chance) {
+    }
+
     public enum AttackDirection {
         FRONT, BACK
     }
