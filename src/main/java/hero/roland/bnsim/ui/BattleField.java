@@ -129,13 +129,17 @@ public class BattleField extends JComponent {
 	private PlacedUnit dragging;
 	private Point dragPoint;
 
-	// Battle-mode selection state.
+	// Unit selection state. In battle mode the selected player unit fires; in
+	// setup mode (and for enemy units) the selection is view-only: it shows the
+	// unit's info panel and target area but cannot act.
 	private PlacedUnit selectedAttacker;
 	private Unit.Attack selectedAttack;
 	private Set<Cell> targetable = new HashSet<>();
 	/** Fixed tiles a selected WEAPON attack will strike (cyan highlight). */
 	private Set<BattleSimulator.SideCell> weaponAffected = new HashSet<>();
 	private Consumer<PlacedUnit> attackerSelectedListener;
+	/** Battle mode: lets enemy units be selected (view-only) for inspection. */
+	private boolean enemyViewEnabled;
 
 	private final List<HitMarker> hitMarkers = new ArrayList<>();
 	private final List<DamageNumber> damageNumbers = new ArrayList<>();
@@ -201,9 +205,16 @@ public class BattleField extends JComponent {
 			@Override
 			public void mouseReleased(java.awt.event.MouseEvent e) {
 				if (!battleMode && dragging != null) {
-					sim.moveTo(dragging, e.getPoint());
+					boolean onBoard = sim.moveTo(dragging, e.getPoint());
+					PlacedUnit dropped = dragging;
 					dragging = null;
 					dragPoint = null;
+					if (dropped == selectedAttacker) {
+						if (!onBoard)
+							clearSelection(); // dropped off the board: nothing to show
+						else
+							setSelectedAttack(selectedAttack); // recompute area from new cell
+					}
 					repaint();
 				}
 			}
@@ -229,6 +240,8 @@ public class BattleField extends JComponent {
 			dragging = null;
 			dragPoint = null;
 		}
+		if (selectedAttacker != null && selectedAttacker.getSide() == side)
+			clearSelection();
 		repaint();
 	}
 
@@ -238,6 +251,7 @@ public class BattleField extends JComponent {
 		phase = Phase.PLAYER;
 		dragging = null;
 		dragPoint = null;
+		enemyViewEnabled = false;
 		clearSelection();
 		hitMarkers.clear();
 		dyingUnits.clear();
@@ -255,6 +269,18 @@ public class BattleField extends JComponent {
 	/** Listener notified when the selected attacker changes (null = cleared). */
 	public void setAttackerSelectedListener(Consumer<PlacedUnit> listener) {
 		this.attackerSelectedListener = listener;
+	}
+
+	/**
+	 * Battle mode: when enabled, enemy units may be selected to inspect their
+	 * health, abilities and target area (view-only — they cannot be made to act).
+	 * Disabling it clears any enemy unit that is currently selected.
+	 */
+	public void setEnemyViewEnabled(boolean enabled) {
+		this.enemyViewEnabled = enabled;
+		if (!enabled && selectedAttacker != null && selectedAttacker.getSide() == Side.ENEMY)
+			clearSelection();
+		repaint();
 	}
 
 	/**
@@ -299,6 +325,12 @@ public class BattleField extends JComponent {
 	private void beginDrag(Point p) {
 		dragging = sim.pick(p);
 		dragPoint = p;
+		// Picking up a unit also selects it, showing its info panel and target
+		// area (view-only in setup); clicking empty space clears the selection.
+		if (dragging != null)
+			selectAttacker(dragging);
+		else
+			clearSelection();
 		repaint();
 	}
 
@@ -307,6 +339,9 @@ public class BattleField extends JComponent {
 		PlacedUnit unit = sim.pick(p);
 		if (unit != null) {
 			unit.cycleRank();
+			// Refresh the info panel's health display if this unit is selected.
+			if (unit == selectedAttacker && attackerSelectedListener != null)
+				attackerSelectedListener.accept(unit);
 			repaint();
 		}
 	}
@@ -316,8 +351,10 @@ public class BattleField extends JComponent {
 		// animation is playing or during the enemy's turn).
 		if (phase != Phase.PLAYER)
 			return;
-		// Firing at a highlighted tile takes priority.
-		if (selectedAttacker != null && selectedAttack != null) {
+		// Firing at a highlighted tile takes priority, but only for the player's
+		// own units — enemy units are view-only.
+		if (selectedAttacker != null && selectedAttacker.getSide() == Side.PLAYER
+				&& selectedAttack != null) {
 			if (selectedAttack.getAbility().getTargetType() == Ability.TargetType.WEAPON) {
 				// Fixed attack: clicking any highlighted tile fires it (its aim is
 				// the attacker's own position, so it is passed unused).
@@ -333,9 +370,11 @@ public class BattleField extends JComponent {
 				}
 			}
 		}
-		// Otherwise (re)select a player unit, or clear the selection.
+		// Otherwise (re)select a player unit — or an enemy unit when enemy viewing
+		// is enabled (view-only) — or clear the selection.
 		PlacedUnit clicked = sim.pick(p);
-		if (clicked != null && clicked.getSide() == Side.PLAYER)
+		if (clicked != null && (clicked.getSide() == Side.PLAYER
+				|| (enemyViewEnabled && clicked.getSide() == Side.ENEMY)))
 			selectAttacker(clicked);
 		else
 			clearSelection();
@@ -571,10 +610,11 @@ public class BattleField extends JComponent {
 		drawGrid(g2, Side.PLAYER);
 		drawSideLabels(g2);
 
-		if (battleMode) {
-			drawTargetable(g2);
-			drawSelection(g2);
-		} else if (dragging != null && dragPoint != null) {
+		// A selected unit shows its target area and outline in either mode (no-op
+		// when nothing is selected); setup mode also shows the drag-drop highlight.
+		drawTargetable(g2);
+		drawSelection(g2);
+		if (!battleMode && dragging != null && dragPoint != null) {
 			Cell target = geometry.cellAt(dragging.getSide(), dragPoint);
 			if (target != null) {
 				g2.setColor(DROP_HIGHLIGHT);
@@ -621,9 +661,14 @@ public class BattleField extends JComponent {
 	}
 
 	private void drawTargetable(Graphics2D g) {
+		if (selectedAttacker == null)
+			return;
+		// The aimable tiles lie on the side facing the attacker (enemy tiles for a
+		// player unit, player tiles for an enemy unit).
+		Side targetSide = BattleSimulator.opponentOf(selectedAttacker.getSide());
 		g.setColor(TARGET_HIGHLIGHT);
 		for (Cell cell : targetable)
-			g.fillPolygon(geometry.cellDiamond(Side.ENEMY, cell.col(), cell.row()));
+			g.fillPolygon(geometry.cellDiamond(targetSide, cell.col(), cell.row()));
 		// A WEAPON (fixed) attack highlights only the fixed tiles it strikes, cyan.
 		g.setColor(WEAPON_HIGHLIGHT);
 		for (BattleSimulator.SideCell sc : weaponAffected)
@@ -637,7 +682,7 @@ public class BattleField extends JComponent {
 		Stroke old = g.getStroke();
 		g.setStroke(new BasicStroke(3f));
 		g.setColor(SELECT_OUTLINE);
-		g.drawPolygon(geometry.cellDiamond(Side.PLAYER, cell.col(), cell.row()));
+		g.drawPolygon(geometry.cellDiamond(selectedAttacker.getSide(), cell.col(), cell.row()));
 		g.setStroke(old);
 	}
 

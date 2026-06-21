@@ -35,6 +35,7 @@ import hero.roland.bnsim.BattleSimulator;
 import hero.roland.bnsim.GameFiles;
 import hero.roland.bnsim.MusicPlayer;
 import hero.roland.bnsim.PlacedUnit;
+import hero.roland.bnsim.Side;
 import hero.roland.bnsim.SoundPlayer;
 import hero.roland.bnsim.Unit;
 
@@ -50,6 +51,7 @@ public class ArenaPane extends JLayeredPane {
 	private final JButton startButton = new JButton("Start Battle");
 	private final JButton endButton = new JButton("End Battle");
 	private final JButton passButton = new JButton("Pass Turn");
+	private final JToggleButton viewEnemyButton = new JToggleButton("View Enemy");
 	private final JPanel attackPanel = new JPanel();
 	private final JPanel volumePanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 4, 0));
 	private final JSlider volumeSlider = new JSlider(0, 100, 100);
@@ -58,6 +60,8 @@ public class ArenaPane extends JLayeredPane {
 	private final Map<String, ImageIcon> iconCache = new HashMap<>();
 
 	private Consumer<Boolean> onBattleModeChanged;
+	/** Side of the unit shown in the info panel; decides which edge it anchors to. */
+	private Side panelSide = Side.PLAYER;
 
 	public ArenaPane(BattleSimulator sim) {
 		field = new BattleField(sim);
@@ -68,9 +72,15 @@ public class ArenaPane extends JLayeredPane {
 		endButton.setVisible(false);
 		passButton.addActionListener(e -> field.passTurn());
 		passButton.setVisible(false);
+		viewEnemyButton.setToolTipText(
+				"Show enemy units' health, abilities and target area (view-only)");
+		viewEnemyButton.addActionListener(
+				e -> field.setEnemyViewEnabled(viewEnemyButton.isSelected()));
+		viewEnemyButton.setVisible(false);
 		add(startButton, JLayeredPane.PALETTE_LAYER);
 		add(endButton, JLayeredPane.PALETTE_LAYER);
 		add(passButton, JLayeredPane.PALETTE_LAYER);
+		add(viewEnemyButton, JLayeredPane.PALETTE_LAYER);
 
 		attackPanel.setOpaque(true);
 		attackPanel.setBackground(new Color(255, 255, 255, 220));
@@ -104,6 +114,9 @@ public class ArenaPane extends JLayeredPane {
 		startButton.setVisible(!battle);
 		endButton.setVisible(battle);
 		passButton.setVisible(battle);
+		// Enemy viewing starts off each battle (and is hidden outside battle mode).
+		viewEnemyButton.setSelected(false);
+		viewEnemyButton.setVisible(battle);
 		if (battle)
 			music.loop(GameFiles.file("battle_01.mp3"));
 		else {
@@ -127,6 +140,8 @@ public class ArenaPane extends JLayeredPane {
 			return;
 		}
 
+		// Player units anchor the panel to the left edge, enemy units to the right.
+		panelSide = unit.getSide();
 		attackPanel.setLayout(new BoxLayout(attackPanel, BoxLayout.Y_AXIS));
 
 		// Unit name and health/armor bar, both centered at the top of the panel.
@@ -283,14 +298,19 @@ public class ArenaPane extends JLayeredPane {
 		Dimension pass = passButton.getPreferredSize();
 		passButton.setBounds(16, 16 + end.height + 8, pass.width, pass.height);
 
+		Dimension view = viewEnemyButton.getPreferredSize();
+		viewEnemyButton.setBounds(16, 16 + end.height + 8 + pass.height + 8,
+				view.width, view.height);
+
 		Dimension vol = volumePanel.getPreferredSize();
 		volumePanel.setBounds(w - vol.width - 16, 12, vol.width, vol.height);
 
 		if (attackPanel.isVisible()) {
 			Dimension ap = attackPanel.getPreferredSize();
 			int width = Math.min(ap.width, w - 32);
-			// Bottom-left corner.
-			attackPanel.setBounds(16, h - ap.height - 64, width, ap.height);
+			// Player units anchor bottom-left, enemy units bottom-right.
+			int x = (panelSide == Side.ENEMY) ? (w - width - 16) : 16;
+			attackPanel.setBounds(x, h - ap.height - 64, width, ap.height);
 		}
 	}
 
