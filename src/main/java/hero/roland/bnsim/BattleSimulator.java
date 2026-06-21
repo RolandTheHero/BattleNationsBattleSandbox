@@ -270,25 +270,39 @@ public class BattleSimulator {
 			for (int shot = 0; shot < shots; shot++) {
 				TargetSquare hit = pickWeighted(targetArea);
 				if (hit != null)
+					// The picked tile takes full damage: a random area's square value
+					// is its pick probability (consumed by pickWeighted), not a
+					// damage multiplier — so the target contribution here is 1.
 					addImpact(result, targetSide, aim, hit, shot, damageArea,
 							damageSteps, aoeDelay, xSign, rollDamage(minDamage, maxDamage),
-							damageType, armorPiercing);
+							damageType, armorPiercing, 1.0);
 			}
 		} else {
 			for (int t = 0; t < targetArea.length; t++)
 				for (int shot = 0; shot < shots; shot++)
+					// The target square's value is its authored damagePercent; combine
+					// it with the damage area's so a splash authored in either area scales.
 					addImpact(result, targetSide, aim, targetArea[t], targetSteps[t],
 							damageArea, damageSteps, aoeDelay, xSign,
-							rollDamage(minDamage, maxDamage), damageType, armorPiercing);
+							rollDamage(minDamage, maxDamage), damageType, armorPiercing,
+							targetArea[t].getValue());
 		}
 		return result;
 	}
 
-	/** Adds one shot's damage-area tiles, each staggered by the aoe delay. */
+	/**
+	 * Adds one shot's damage-area tiles, each staggered by the aoe delay. A struck
+	 * tile's multiplier is the product of its target-square value and its
+	 * damage-area value (the game authors the per-tile splash percentage in either
+	 * area), so {@code targetValue} is the contribution of the target square — it is
+	 * passed in rather than read from {@code target} because the square used to
+	 * position the impact is not always the one carrying the value (see the random
+	 * and weapon callers).
+	 */
 	private void addImpact(List<Hit> result, Side targetSide, Cell aim,
 			TargetSquare target, int targetStep, TargetSquare[] damageArea,
 			int[] damageSteps, int aoeDelay, int xSign, int baseDamage,
-			Ability.DamageType damageType, double armorPiercing) {
+			Ability.DamageType damageType, double armorPiercing, double targetValue) {
 		int baseCol = aim.col() + xSign * target.getX();
 		int baseRow = aim.row() - target.getY();
 		for (int d = 0; d < damageArea.length; d++) {
@@ -297,7 +311,7 @@ public class BattleSimulator {
 			if (!GridGeometry.isValid(col, row))
 				continue;
 			int delay = Math.max(0, aoeDelay * (targetStep + damageSteps[d]));
-			double value = damageArea[d].getValue();
+			double value = targetValue * damageArea[d].getValue();
 			double rawDamage = baseDamage * value;
 			result.add(new Hit(targetSide, new Cell(col, row), delay,
 					rawDamage, damageType, armorPiercing, value));
@@ -339,9 +353,12 @@ public class BattleSimulator {
 			if (origin == null)
 				continue;
 			for (int shot = 0; shot < shots; shot++)
+				// The impact is positioned at the precomputed origin (SINGLE_TARGET, so
+				// no extra offset), but still scaled by the fixed tile's damagePercent.
 				addImpact(result, targetSide, origin.cell(), TargetSquare.SINGLE_TARGET,
 						targetSteps[t], damageArea, damageSteps, aoeDelay, xSign,
-						rollDamage(minDamage, maxDamage), damageType, armorPiercing);
+						rollDamage(minDamage, maxDamage), damageType, armorPiercing,
+						targetArea[t].getValue());
 		}
 		return result;
 	}

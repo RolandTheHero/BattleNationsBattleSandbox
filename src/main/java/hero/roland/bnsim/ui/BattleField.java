@@ -278,7 +278,10 @@ public class BattleField extends JComponent {
 	 */
 	public void setEnemyViewEnabled(boolean enabled) {
 		this.enemyViewEnabled = enabled;
-		if (!enabled && selectedAttacker != null && selectedAttacker.getSide() == Side.ENEMY)
+		// Only one side is selectable at a time; deselect a unit on the side that
+		// can no longer be picked (the player when enabling, the enemy when not).
+		Side selectableSide = enabled ? Side.ENEMY : Side.PLAYER;
+		if (selectedAttacker != null && selectedAttacker.getSide() != selectableSide)
 			clearSelection();
 		repaint();
 	}
@@ -370,11 +373,12 @@ public class BattleField extends JComponent {
 				}
 			}
 		}
-		// Otherwise (re)select a player unit — or an enemy unit when enemy viewing
-		// is enabled (view-only) — or clear the selection.
+		// Otherwise (re)select a unit, or clear the selection. Only one side is
+		// selectable: enemy units (view-only) while enemy viewing is enabled,
+		// the player's own units otherwise.
+		Side selectableSide = enemyViewEnabled ? Side.ENEMY : Side.PLAYER;
 		PlacedUnit clicked = sim.pick(p);
-		if (clicked != null && (clicked.getSide() == Side.PLAYER
-				|| (enemyViewEnabled && clicked.getSide() == Side.ENEMY)))
+		if (clicked != null && clicked.getSide() == selectableSide)
 			selectAttacker(clicked);
 		else
 			clearSelection();

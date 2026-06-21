@@ -271,7 +271,7 @@ public class Ability {
 		}
 		protected TargetSquare(JSONObject json, double weight) {
 			if (weight == 0) {
-				value = getDouble(json, "damagePercent", 100) / 100;
+				value = getDouble(json, "damagePercent", 100d) / 100;
 				chance = 1;
 				order = json.optInt("order", 0);
 			}
