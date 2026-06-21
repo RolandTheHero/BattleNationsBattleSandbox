@@ -3,7 +3,9 @@ package hero.roland.bnsim;
 import java.io.IOException;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
+import java.util.Set;
 
 import org.json.JSONArray;
 import org.json.JSONException;
@@ -23,6 +25,7 @@ public class Unit implements Comparable<Unit> {
 	private Rank[] ranks;
 	private Weapon[] weapons;
     private UnitTag[] tags;
+	private Set<StatusEffect.StatusFamily> statusEffectImmunities;
 
 	public static void load() throws IOException {
 		units = new HashMap<String, Unit>();
@@ -67,6 +70,11 @@ public class Unit implements Comparable<Unit> {
             for (int i = 0; i < tags.length(); i++)
                 this.tags[i] = UnitTag.fromString(tags.getString(i));
         }
+		JSONArray statusEffectImmunitiesJson = json.optJSONArray("statusEffectImmunities", new JSONArray());
+		statusEffectImmunities = new HashSet<StatusEffect.StatusFamily>();
+		for (int i = 0; i < statusEffectImmunitiesJson.length(); i++) {
+			statusEffectImmunities.add(StatusEffect.StatusFamily.get(statusEffectImmunitiesJson.getString(i)));
+		}
 	}
 
 	private void initRanks(JSONArray json) {
@@ -131,6 +139,14 @@ public class Unit implements Comparable<Unit> {
 				if (t == tag)
 					return true;
 		return false;
+	}
+
+	/**
+	 * Whether this unit is immune to status effects of the given family. A
+	 * {@code null} family is never immune (an effect with no family cannot match).
+	 */
+	public boolean isImmuneTo(StatusEffect.StatusFamily family) {
+		return family != null && statusEffectImmunities.contains(family);
 	}
 
 	public Animation getBackAnimation() throws IOException {

@@ -229,13 +229,19 @@ public class PlacedUnit {
 	// --- Status effects ----------------------------------------------------
 
 	/**
-	 * Afflicts this unit with a status effect. If the unit already has the same
+	 * Afflicts this unit with a status effect, unless the unit is immune to the
+	 * effect's family (then nothing changes). If the unit already has the same
 	 * effect (by definition identity), the old one is removed and replaced by the
-	 * new one, so re-applying refreshes its duration and starting damage.
+	 * new one, so re-applying refreshes its duration and starting damage. Returns
+	 * {@code true} if the effect was applied, {@code false} if it was blocked by
+	 * immunity.
 	 */
-	public void applyStatusEffect(ActiveStatusEffect effect) {
+	public boolean applyStatusEffect(ActiveStatusEffect effect) {
+		if (unit.isImmuneTo(effect.getEffect().getFamily()))
+			return false;
 		statusEffects.removeIf(e -> e.getEffect() == effect.getEffect());
 		statusEffects.add(effect);
+		return true;
 	}
 
 	/** Whether any active effect prevents this unit from attacking. */

@@ -900,8 +900,11 @@ public class BattleField extends JComponent {
 			double chance = sec.chance() * acc.areaValue;
 			if (random.nextDouble() >= chance)
 				continue;
-			acc.target.applyStatusEffect(
-					new ActiveStatusEffect(effect, acc.totalDealt, attackAnimEndTick));
+			// A unit immune to the effect's family is unaffected: nothing is applied
+			// and no apply icon/sound is shown.
+			if (!acc.target.applyStatusEffect(
+					new ActiveStatusEffect(effect, acc.totalDealt, attackAnimEndTick)))
+				continue;
 
 			// Show the family's "applied" icon on the tile after the attack ends,
 			// play its sound at the same moment, and hold the turn until that
