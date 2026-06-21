@@ -560,8 +560,10 @@ public class BattleField extends JComponent {
 			for (PlacedUnit.StatusTick st : unit.tickStatusEffects()) {
 				StatusEffect.StatusFamily family = st.effect().getFamily();
 				BufferedImage icon = family != null ? loadIcon(family.getUiIcon()) : null;
+				// Play the effect's sound as its damage number appears.
+				String sound = family != null ? family.getSound() : null;
 				endTick = Math.max(endTick,
-						spawnDamageNumber(side, unit.getCell(), st.damageDealt(), icon));
+						spawnDamageNumber(side, unit.getCell(), st.damageDealt(), icon, sound));
 			}
 			if (unit.isDead()) {
 				sim.remove(unit);
@@ -717,22 +719,32 @@ public class BattleField extends JComponent {
 
 	/** Spawns a plain (attack) damage number with no status icon. */
 	private int spawnDamageNumber(Side side, Cell cell, int amount) {
-		return spawnDamageNumber(side, cell, amount, null);
+		return spawnDamageNumber(side, cell, amount, null, null);
+	}
+
+	/** Spawns a status-tick damage number with the effect's icon and no sound. */
+	private int spawnDamageNumber(Side side, Cell cell, int amount, BufferedImage icon) {
+		return spawnDamageNumber(side, cell, amount, icon, null);
 	}
 
 	/**
 	 * Spawns a floating damage number at a random spot near the tile centre,
 	 * optionally with a status icon drawn to its left (for status-effect ticks).
 	 * Numbers stacking on the same tile are delayed so they appear one after
-	 * another instead of all at once. Returns the tick at which the number
-	 * finishes fading, so callers can wait for the animation.
+	 * another instead of all at once. When {@code sound} is non-null it is queued
+	 * to play as the number appears (a status effect's sound when its damage
+	 * lands). Returns the tick at which the number finishes fading, so callers can
+	 * wait for the animation.
 	 */
-	private int spawnDamageNumber(Side side, Cell cell, int amount, BufferedImage icon) {
+	private int spawnDamageNumber(Side side, Cell cell, int amount, BufferedImage icon,
+			String sound) {
 		int slot = countDamageNumbersAt(side, cell);
 		int start = tick + slot * DAMAGE_STAGGER_FRAMES;
 		int dx = random.nextInt(2 * DAMAGE_JITTER_X + 1) - DAMAGE_JITTER_X;
 		int dy = random.nextInt(2 * DAMAGE_JITTER_Y + 1) - DAMAGE_JITTER_Y;
 		damageNumbers.add(new DamageNumber(side, cell, amount, start, dx, dy, icon));
+		if (sound != null)
+			pendingSounds.add(new PendingSound(sound, start));
 		return start + DAMAGE_FLOAT_FRAMES;
 	}
 
