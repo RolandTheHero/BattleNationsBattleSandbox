@@ -143,6 +143,8 @@ public class BattleField extends JComponent {
 
 	private final List<HitMarker> hitMarkers = new ArrayList<>();
 	private final List<DamageNumber> damageNumbers = new ArrayList<>();
+	/** Ability impact animations playing on struck tiles. */
+	private final List<DamageAnim> damageAnims = new ArrayList<>();
 	/** Units removed from the simulation but still on screen while their bar drains. */
 	private final List<PlacedUnit> dyingUnits = new ArrayList<>();
 	/** Sounds queued to play at a future tick (e.g. a weapon's delayed fire sound). */
@@ -178,6 +180,7 @@ public class BattleField extends JComponent {
 			updateDyingUnits();
 			pruneHitMarkers();
 			pruneDamageNumbers();
+			pruneDamageAnims();
 			pruneStatusApplyVisuals();
 			advanceTurns();
 			repaint();
@@ -471,9 +474,17 @@ public class BattleField extends JComponent {
 		}
 
 		int animFrames = (anim != null) ? anim.getEndFrame() : 0;
-		// The attack animation and last landed tile finish here; status-apply
+		// Each struck tile plays the ability's impact animation after its hit lands;
+		// the last one finishes at lastHit + impactFrames. Status effects wait until
+		// then so the impact animation fully plays out before the status-apply
+		// animation (and any status damage) begins.
+		Animation impact = loadDamageAnimation(
+				BattleSimulator.opponentOf(attacker.getSide()), ability);
+		int impactFrames = (impact != null) ? impact.getEndFrame() : 0;
+		// The attack animation and last landed tile's impact finish here; status-apply
 		// icons start from this tick.
-		attackAnimEndTick = tick + Math.max(1, Math.max(animFrames, lastHit + 4));
+		attackAnimEndTick = tick + Math.max(1,
+				Math.max(animFrames, lastHit + Math.max(4, impactFrames)));
 		// The turn advances when the attack finishes; applying a status effect
 		// extends this to wait for the status-apply animation (see applyStatusEffects).
 		attackEndTick = attackAnimEndTick;
@@ -490,6 +501,21 @@ public class BattleField extends JComponent {
 			if (anim == null)
 				anim = player ? attack.getBackAnimation() : attack.getFrontAnimation();
 			return anim;
+		} catch (IOException | RuntimeException e) {
+			return null;
+		}
+	}
+
+	/**
+	 * The ability's impact animation for a hit on the given side's tile. Like
+	 * {@link #loadAttackAnimation}, the variant follows the tile's position: the
+	 * player (bottom) uses the back animation, the enemy (top) the front. Returns
+	 * {@code null} when the ability has no damage animation configured.
+	 */
+	private Animation loadDamageAnimation(Side targetSide, Ability ability) {
+		try {
+			return targetSide == Side.PLAYER
+					? ability.getBackAnimation() : ability.getFrontAnimation();
 		} catch (IOException | RuntimeException e) {
 			return null;
 		}
@@ -633,6 +659,7 @@ public class BattleField extends JComponent {
 		if (battleMode)
 			drawStatusPulses(g2);
 		drawHitMarkers(g2);
+		drawDamageAnims(g2);
 		drawOverlays(g2);
 		drawStatusApplyVisuals(g2);
 		drawDamageNumbers(g2);
@@ -715,6 +742,23 @@ public class BattleField extends JComponent {
 
 	private void pruneDamageNumbers() {
 		damageNumbers.removeIf(d -> tick - d.startTick >= DAMAGE_FLOAT_FRAMES);
+	}
+
+	/** Draws each ability impact animation at its struck tile's centre. */
+	private void drawDamageAnims(Graphics2D g) {
+		for (DamageAnim da : damageAnims) {
+			Point2D c = geometry.cellCentre(da.side, da.cell);
+			// Each animation draws on its own copy: Animation.drawFrame translates
+			// the context, which would otherwise shift every later overlay (health
+			// bars, damage numbers) and the next animation in this loop.
+			Graphics2D g2 = (Graphics2D) g.create();
+			drawAnimation(g2, da.animation, tick - da.startTick, c.getX(), c.getY());
+			g2.dispose();
+		}
+	}
+
+	private void pruneDamageAnims() {
+		damageAnims.removeIf(da -> tick - da.startTick >= da.animation.getEndFrame());
 	}
 
 	private void pruneStatusApplyVisuals() {
@@ -830,6 +874,10 @@ public class BattleField extends JComponent {
 			if (marker.ability != null && sounded.add(marker.cell)) {
 				boolean metal = target.getUnit().hasTag(Unit.UnitTag.METAL);
 				sim.playSound(marker.ability.getHitSound(metal));
+				// Play the ability's impact animation on the struck tile.
+				Animation dmgAnim = loadDamageAnimation(marker.side, marker.ability);
+				if (dmgAnim != null)
+					damageAnims.add(new DamageAnim(marker.side, marker.cell, dmgAnim, tick));
 			}
 			int dealt = target.applyDamage(marker.rawDamage,
 					marker.damageType, marker.armorPiercing);
@@ -980,7 +1028,7 @@ public class BattleField extends JComponent {
 		int maxTotal = unit.getMaxHp() + unit.getMaxArmor();
 		if (maxTotal <= 0)
 			return;
-		int barW = 60, barH = 6;
+		int barW = 76, barH = 8;
 		int x = (int) Math.round(centreX - barW / 2.0);
 		// Sit the bar at the bottom of the tile (its lower diamond vertex).
 		int y = (int) Math.round(centreY + GridGeometry.HALF_H - barH);
@@ -1232,6 +1280,21 @@ public class BattleField extends JComponent {
 		PendingSound(String name, int playTick) {
 			this.name = name;
 			this.playTick = playTick;
+		}
+	}
+
+	/** An ability's impact animation playing once on a struck tile. */
+	private static final class DamageAnim {
+		final Side side;
+		final Cell cell;
+		final Animation animation;
+		final int startTick;
+
+		DamageAnim(Side side, Cell cell, Animation animation, int startTick) {
+			this.side = side;
+			this.cell = cell;
+			this.animation = animation;
+			this.startTick = startTick;
 		}
 	}
 
