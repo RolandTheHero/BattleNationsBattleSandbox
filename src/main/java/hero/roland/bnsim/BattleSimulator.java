@@ -120,6 +120,48 @@ public class BattleSimulator {
 			Arrays.fill(column, null);
 	}
 
+	/** Whether the given side has any unit currently placed. */
+	public boolean hasUnits(Side side) {
+		for (PlacedUnit[] column : grids.get(side))
+			for (PlacedUnit unit : column)
+				if (unit != null)
+					return true;
+		return false;
+	}
+
+	/** Whether the side's front line (row 0) is completely unoccupied. */
+	public boolean isFrontRowEmpty(Side side) {
+		PlacedUnit[][] grid = grids.get(side);
+		for (int col = 0; col < GridGeometry.COLS; col++)
+			if (GridGeometry.isValid(col, 0) && grid[col][0] != null)
+				return false;
+		return true;
+	}
+
+	/**
+	 * Moves every unit on the side one row toward the front line (row {@code r} to
+	 * {@code r - 1}), keeping its column. Intended to be called only when the front
+	 * row is empty, so the shift never collides: rows are processed front-first, so
+	 * each row moves into the (now vacated) row ahead of it. Returns {@code true} if
+	 * any unit moved.
+	 */
+	public boolean advanceToFront(Side side) {
+		PlacedUnit[][] grid = grids.get(side);
+		boolean moved = false;
+		for (int row = 1; row < GridGeometry.ROWS; row++) {
+			for (int col = 0; col < GridGeometry.COLS; col++) {
+				PlacedUnit unit = grid[col][row];
+				if (unit == null)
+					continue;
+				grid[col][row] = null;
+				grid[col][row - 1] = unit;
+				unit.setCell(new Cell(col, row - 1));
+				moved = true;
+			}
+		}
+		return moved;
+	}
+
 	/**
 	 * Plays a sound effect by name from the bundle folder (e.g. an ability's
 	 * hit sound). The name may include its extension, or {@code .mp3}/{@code .wav}

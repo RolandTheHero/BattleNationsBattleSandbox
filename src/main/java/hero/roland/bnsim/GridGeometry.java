@@ -111,12 +111,46 @@ public class GridGeometry {
 	/** Outline of a tile, for drawing the grid. */
 	public Polygon cellDiamond(Side side, int col, int row) {
 		Point2D.Double c = cellCentre(side, col, row);
+		return diamondAt(c.x, c.y);
+	}
+
+	/**
+	 * Outline of a tile centred at an arbitrary pixel, for drawing a tile that is
+	 * sliding between cells (e.g. while a side's rows advance toward the front).
+	 */
+	public Polygon diamondAt(double cx, double cy) {
 		Polygon p = new Polygon();
-		p.addPoint((int) Math.round(c.x), (int) Math.round(c.y - HALF_H));
-		p.addPoint((int) Math.round(c.x + HALF_W), (int) Math.round(c.y));
-		p.addPoint((int) Math.round(c.x), (int) Math.round(c.y + HALF_H));
-		p.addPoint((int) Math.round(c.x - HALF_W), (int) Math.round(c.y));
+		p.addPoint((int) Math.round(cx), (int) Math.round(cy - HALF_H));
+		p.addPoint((int) Math.round(cx + HALF_W), (int) Math.round(cy));
+		p.addPoint((int) Math.round(cx), (int) Math.round(cy + HALF_H));
+		p.addPoint((int) Math.round(cx - HALF_W), (int) Math.round(cy));
 		return p;
+	}
+
+	/**
+	 * Outline of a cell's tile collapsed toward its front edge (the edge facing the
+	 * gap) by fraction {@code p} in [0, 1]: the two back-edge vertices slide one
+	 * row forward, so at {@code p == 0} it is the full tile and at {@code p == 1} it
+	 * has flattened onto its front edge. Used to animate a front row shrinking away
+	 * as the rows behind it advance.
+	 */
+	public Polygon frontCollapsedDiamond(Side side, int col, int row, double p) {
+		Point2D.Double c = cellCentre(side, col, row);
+		Point2D.Double behind = cellCentre(side, col, row + 1);
+		double fwdX = c.x - behind.x; // toward the front line / gap
+		double fwdY = c.y - behind.y;
+		double[][] verts = { { 0, -HALF_H }, { HALF_W, 0 }, { 0, HALF_H }, { -HALF_W, 0 } };
+		Polygon poly = new Polygon();
+		for (double[] v : verts) {
+			double ox = v[0], oy = v[1];
+			// A back-edge vertex points away from the front; slide it forward.
+			if (ox * fwdX + oy * fwdY < 0) {
+				ox += p * fwdX;
+				oy += p * fwdY;
+			}
+			poly.addPoint((int) Math.round(c.x + ox), (int) Math.round(c.y + oy));
+		}
+		return poly;
 	}
 
 	/**

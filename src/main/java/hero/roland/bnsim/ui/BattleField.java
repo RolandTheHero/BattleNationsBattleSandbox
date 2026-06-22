@@ -16,6 +16,7 @@ import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -95,6 +96,8 @@ public class BattleField extends JComponent {
 	private static final int BAR_ANIM_FRAMES = 1000 / FRAME_DELAY;
 	/** Frames the "effect applied" icon shows for (~1 second). */
 	private static final int STATUS_APPLY_FRAMES = 1000 / FRAME_DELAY;
+	/** Frames a side's units take to slide one row forward (~1 second). */
+	private static final int ADVANCE_FRAMES = 1000 / FRAME_DELAY;
 	/** Frames an on-field message stays up (~2.5 seconds). */
 	private static final int MESSAGE_FRAMES = 2500 / FRAME_DELAY;
 
@@ -111,10 +114,14 @@ public class BattleField extends JComponent {
 	/**
 	 * Turn state. Each side's turn begins with a status-effect step (its effects
 	 * deal damage and the turn waits for that animation), then the action: the
-	 * enemy fires, or the player regains control.
+	 * enemy fires, or the player regains control. At the very end of each side's
+	 * turn, if the opposing side's front row has been emptied its units advance one
+	 * row toward the front: {@code AWAITING_ADVANCE} first waits for the turn's
+	 * remaining animations to settle, then {@code ADVANCING} plays the slide.
 	 */
 	private enum Phase {
-		PLAYER, PLAYER_FIRING, ENEMY_TURN_STATUS, ENEMY_FIRING, PLAYER_TURN_STATUS
+		PLAYER, PLAYER_FIRING, ENEMY_TURN_STATUS, ENEMY_FIRING, PLAYER_TURN_STATUS,
+		AWAITING_ADVANCE, ADVANCING
 	}
 
 	private Phase phase = Phase.PLAYER;
@@ -124,6 +131,21 @@ public class BattleField extends JComponent {
 	 * start here, and the turn waits past it for them (via {@link #attackEndTick}). */
 	private int attackAnimEndTick;
 	private final EnemyBehavior enemyBehavior = new RandomEnemyBehavior();
+
+	/** Side waiting to advance once the turn's animations settle (null if none). */
+	private Side pendingAdvanceSide;
+	/** Side whose units are sliding forward right now (null when not animating). */
+	private Side advancingSide;
+	/** Tick the current advance slide began at. */
+	private int advanceStartTick;
+	/** The units sliding forward (so dying units on the same side are not moved). */
+	private Set<PlacedUnit> advancingUnits = new HashSet<>();
+	/**
+	 * How many rows each side has advanced. Each advance permanently drops that
+	 * side's back-most row, so its grid keeps the smaller, shifted-forward shape
+	 * instead of springing back to the full depth.
+	 */
+	private final Map<Side, Integer> rowsAdvanced = new EnumMap<>(Side.class);
 
 	// Setup-mode drag state.
 	private PlacedUnit dragging;
@@ -252,6 +274,11 @@ public class BattleField extends JComponent {
 	public void setBattleMode(boolean battle) {
 		this.battleMode = battle;
 		phase = Phase.PLAYER;
+		pendingAdvanceSide = null;
+		advancingSide = null;
+		advancingUnits.clear();
+		for (Side s : Side.values())
+			rowsAdvanced.put(s, 0);
 		dragging = null;
 		dragPoint = null;
 		enemyViewEnabled = false;
@@ -437,15 +464,16 @@ public class BattleField extends JComponent {
 	}
 
 	/**
-	 * Skips the player's turn without attacking, handing control straight to the
-	 * enemy. Does nothing outside the player's turn (e.g. while an attack is
-	 * animating or during the enemy's turn).
+	 * Skips the player's turn without attacking, handing control to the enemy.
+	 * Passing still ends the turn, so the enemy advances first if the player has
+	 * left its front line empty. Does nothing outside the player's turn (e.g. while
+	 * an attack is animating or during the enemy's turn).
 	 */
 	public void passTurn() {
 		if (!battleMode || phase != Phase.PLAYER)
 			return;
 		clearSelection();
-		beginEnemyTurn();
+		endOfTurn(Side.PLAYER);
 	}
 
 	/**
@@ -523,24 +551,154 @@ public class BattleField extends JComponent {
 
 	/** Drives the turn state machine once per frame while in battle mode. */
 	private void advanceTurns() {
-		if (!battleMode || tick < attackEndTick)
+		if (!battleMode)
+			return;
+		// Waiting for the turn's animations to settle before sliding units forward;
+		// this is polled every frame rather than gated on a fixed end tick.
+		if (phase == Phase.AWAITING_ADVANCE) {
+			if (turnVisualsSettled())
+				beginAdvanceSlide();
+			return;
+		}
+		if (tick < attackEndTick)
 			return;
 		switch (phase) {
 		case PLAYER_FIRING:
-			beginEnemyTurn();
+			endOfTurn(Side.PLAYER);
 			break;
 		case ENEMY_TURN_STATUS:
 			enemyAct();
 			break;
 		case ENEMY_FIRING:
-			beginPlayerTurn();
+			endOfTurn(Side.ENEMY);
 			break;
 		case PLAYER_TURN_STATUS:
 			phase = Phase.PLAYER; // status damage finished animating; hand control back
 			break;
+		case ADVANCING:
+			finishAdvance(); // slide finished; hand off to the next turn
+			break;
 		default:
 			break;
 		}
+	}
+
+	/**
+	 * Wraps up {@code actingSide}'s turn. If the opposing side's front line has been
+	 * emptied (and it still has units behind), those units advance one row forward
+	 * before the next turn begins; otherwise the next turn begins immediately. The
+	 * advance is deferred to {@code AWAITING_ADVANCE} so it plays only once this
+	 * turn's attack, damage and death animations have finished.
+	 */
+	private void endOfTurn(Side actingSide) {
+		Side advancing = BattleSimulator.opponentOf(actingSide);
+		if (sim.isFrontRowEmpty(advancing) && sim.hasUnits(advancing)) {
+			pendingAdvanceSide = advancing;
+			phase = Phase.AWAITING_ADVANCE;
+		} else {
+			nextTurnAfter(actingSide);
+		}
+	}
+
+	/** Begins the turn that follows {@code actingSide}'s. */
+	private void nextTurnAfter(Side actingSide) {
+		if (actingSide == Side.PLAYER)
+			beginEnemyTurn();
+		else
+			beginPlayerTurn();
+	}
+
+	/**
+	 * Whether every animation from the turn that just ended has finished, so the
+	 * advance slide can begin on a clean board (no lingering hit flashes, damage
+	 * numbers, impact/status visuals, draining bars or dying units).
+	 */
+	private boolean turnVisualsSettled() {
+		if (!hitMarkers.isEmpty() || !damageNumbers.isEmpty()
+				|| !damageAnims.isEmpty() || !statusApplyVisuals.isEmpty()
+				|| !dyingUnits.isEmpty() || !pendingStatus.isEmpty()
+				|| !pendingSounds.isEmpty())
+			return false;
+		for (PlacedUnit unit : sim.placedUnits())
+			if (!unit.barsSettled())
+				return false;
+		return true;
+	}
+
+	/**
+	 * Applies the pending side's one-row advance to the simulation (so every unit's
+	 * range and targeting immediately use the new cells) and begins the slide
+	 * animation. The units are captured up front so dying units on the same side —
+	 * which keep their last cell while their bars drain — are not dragged along.
+	 */
+	private void beginAdvanceSlide() {
+		Side side = pendingAdvanceSide;
+		pendingAdvanceSide = null;
+		sim.advanceToFront(side);
+		advancingUnits = new HashSet<>();
+		for (PlacedUnit unit : sim.placedUnits())
+			if (unit.getSide() == side)
+				advancingUnits.add(unit);
+		advancingSide = side;
+		advanceStartTick = tick;
+		phase = Phase.ADVANCING;
+		attackEndTick = tick + ADVANCE_FRAMES; // wait for the slide to finish
+		repaint();
+	}
+
+	/** Ends the advance slide and hands control to the next turn. */
+	private void finishAdvance() {
+		Side advanced = advancingSide;
+		Side acting = BattleSimulator.opponentOf(advanced);
+		// Permanently drop the back-most row so the grid keeps its new, smaller
+		// shape; the sliding tiles have already landed on the rows ahead.
+		rowsAdvanced.put(advanced, rowsAdvanced.get(advanced) + 1);
+		advancingSide = null;
+		advancingUnits.clear();
+		nextTurnAfter(acting);
+	}
+
+	/** How many rows the given side has advanced (0 if it never has). */
+	private int rowsAdvanced(Side side) {
+		return rowsAdvanced.getOrDefault(side, 0);
+	}
+
+	/** Number of rows still drawn for the side (it shrinks by one per advance). */
+	private int visibleRows(Side side) {
+		return GridGeometry.ROWS - rowsAdvanced(side);
+	}
+
+	/**
+	 * Whether the side still draws a tile at the given cell after advancing: the row
+	 * must remain, and the column must be valid for the original row it came from
+	 * (so columns trimmed from a narrow row are not highlighted once it advances).
+	 */
+	private boolean isCellVisible(Side side, int col, int row) {
+		return row >= 0 && row < visibleRows(side)
+				&& GridGeometry.isValid(col, row + rowsAdvanced(side));
+	}
+
+	/** Progress (0..1) of the current advance slide; 1 when none is animating. */
+	private double advanceProgress() {
+		if (advancingSide == null)
+			return 1.0;
+		double p = (tick - advanceStartTick) / (double) ADVANCE_FRAMES;
+		return Math.max(0.0, Math.min(1.0, p));
+	}
+
+	/**
+	 * Pixel centre at which to draw a unit. While its side is sliding forward, an
+	 * advancing unit eases from its old row (one behind its current cell) toward its
+	 * new cell; every other unit sits at its cell centre.
+	 */
+	private Point2D.Double unitDrawCentre(PlacedUnit unit) {
+		Cell cell = unit.getCell();
+		Point2D.Double to = geometry.cellCentre(unit.getSide(), cell);
+		if (unit.getSide() != advancingSide || !advancingUnits.contains(unit))
+			return to;
+		double p = advanceProgress();
+		Point2D.Double from = geometry.cellCentre(unit.getSide(), cell.col(), cell.row() + 1);
+		return new Point2D.Double(from.x + p * (to.x - from.x), from.y + p * (to.y - from.y));
 	}
 
 	/**
@@ -557,7 +715,9 @@ public class BattleField extends JComponent {
 	private void enemyAct() {
 		EnemyBehavior.Move move = enemyBehavior.decideMove(sim);
 		if (move == null) {
-			beginPlayerTurn(); // enemy has no legal move; skip to the player's turn
+			// No legal move: the enemy effectively passes, but ending its turn still
+			// lets the player advance if its front line has been emptied.
+			endOfTurn(Side.ENEMY);
 			return;
 		}
 		executeAttack(move.attacker(), move.attack(), move.target());
@@ -674,17 +834,44 @@ public class BattleField extends JComponent {
 
 	private void drawGrid(Graphics2D g, Side side) {
 		g.setColor(GRID_LINE);
-		for (int col = 0; col < GridGeometry.COLS; col++)
-			for (int row = 0; row < GridGeometry.ROWS; row++)
-				if (GridGeometry.isValid(col, row))
+		int advanced = rowsAdvanced(side);
+		// The side has shrunk by one row per advance; only the front rows remain.
+		int visible = GridGeometry.ROWS - advanced;
+		// While the side is sliding, its front row stays put and the rows behind it
+		// flow forward onto the row ahead; the back-most row empties out (and stays
+		// gone, since `advanced` is bumped once the slide finishes).
+		boolean sliding = (side == advancingSide);
+		double p = sliding ? advanceProgress() : 1.0;
+		for (int row = 0; row < visible; row++) {
+			// Each row keeps the width of the original row it advanced from, so a
+			// narrow back row stays narrow as it moves toward the front.
+			int sourceRow = row + advanced;
+			for (int col = 0; col < GridGeometry.COLS; col++) {
+				if (!GridGeometry.isValid(col, sourceRow))
+					continue;
+				if (!sliding) {
 					g.drawPolygon(geometry.cellDiamond(side, col, row));
+				} else if (row == 0) {
+					// The front row shrinks toward the front edge and vanishes as the
+					// rows behind it move forward into its place.
+					g.drawPolygon(geometry.frontCollapsedDiamond(side, col, row, p));
+				} else {
+					Point2D from = geometry.cellCentre(side, col, row);
+					Point2D to = geometry.cellCentre(side, col, row - 1);
+					double cx = from.getX() + p * (to.getX() - from.getX());
+					double cy = from.getY() + p * (to.getY() - from.getY());
+					g.drawPolygon(geometry.diamondAt(cx, cy));
+				}
+			}
+		}
 	}
 
 	private void drawSideLabels(Graphics2D g) {
-		int backRow = GridGeometry.ROWS - 1;
 		int midCol = GridGeometry.COLS / 2;
-		Point2D enemy = geometry.cellCentre(Side.ENEMY, midCol, backRow);
-		Point2D player = geometry.cellCentre(Side.PLAYER, midCol, backRow);
+		// Anchor each label to that side's current back-most row, which moves
+		// toward the front as the side advances.
+		Point2D enemy = geometry.cellCentre(Side.ENEMY, midCol, visibleRows(Side.ENEMY) - 1);
+		Point2D player = geometry.cellCentre(Side.PLAYER, midCol, visibleRows(Side.PLAYER) - 1);
 		g.setColor(ENEMY_TINT);
 		g.drawString("Enemy", (int) enemy.getX() - 16,
 				(int) enemy.getY() - GridGeometry.HALF_H - 8);
@@ -700,12 +887,15 @@ public class BattleField extends JComponent {
 		// player unit, player tiles for an enemy unit).
 		Side targetSide = BattleSimulator.opponentOf(selectedAttacker.getSide());
 		g.setColor(TARGET_HIGHLIGHT);
+		// Skip tiles a side has advanced past — those tiles no longer exist.
 		for (Cell cell : targetable)
-			g.fillPolygon(geometry.cellDiamond(targetSide, cell.col(), cell.row()));
+			if (isCellVisible(targetSide, cell.col(), cell.row()))
+				g.fillPolygon(geometry.cellDiamond(targetSide, cell.col(), cell.row()));
 		// A WEAPON (fixed) attack highlights only the fixed tiles it strikes, cyan.
 		g.setColor(WEAPON_HIGHLIGHT);
 		for (BattleSimulator.SideCell sc : weaponAffected)
-			g.fillPolygon(geometry.cellDiamond(sc.side(), sc.cell().col(), sc.cell().row()));
+			if (isCellVisible(sc.side(), sc.cell().col(), sc.cell().row()))
+				g.fillPolygon(geometry.cellDiamond(sc.side(), sc.cell().col(), sc.cell().row()));
 	}
 
 	private void drawSelection(Graphics2D g) {
@@ -724,6 +914,11 @@ public class BattleField extends JComponent {
 			int elapsed = tick - marker.startTick;
 			if (elapsed < 0)
 				continue; // hit not landed yet (weapon hit delay)
+			// An area-of-effect hit can land on a cell the side has advanced past
+			// (or a column trimmed from a narrow row); don't flash a tile that is
+			// no longer drawn there.
+			if (!isCellVisible(marker.side, marker.cell.col(), marker.cell.row()))
+				continue;
 			float alpha = Math.max(0f, 1f - (float) elapsed / HIT_FADE);
 			if (alpha <= 0f)
 				continue;
@@ -975,13 +1170,12 @@ public class BattleField extends JComponent {
 		// Dying units are no longer in the simulation, so add them in explicitly.
 		List<PlacedUnit> units = sim.placedUnits();
 		units.addAll(dyingUnits);
-		units.sort(Comparator.comparingDouble(u ->
-				geometry.cellCentre(u.getSide(), u.getCell()).y));
+		units.sort(Comparator.comparingDouble(u -> unitDrawCentre(u).y));
 
 		for (PlacedUnit unit : units) {
 			if (unit == dragging)
 				continue; // drawn last, at the cursor
-			Point2D c = geometry.cellCentre(unit.getSide(), unit.getCell());
+			Point2D c = unitDrawCentre(unit);
 			drawUnit(g, unit, c.getX(), c.getY(), 1f);
 		}
 	}
@@ -992,7 +1186,7 @@ public class BattleField extends JComponent {
 	 */
 	private void drawOverlays(Graphics2D g) {
 		for (PlacedUnit unit : sim.placedUnits()) {
-			Point2D c = geometry.cellCentre(unit.getSide(), unit.getCell());
+			Point2D c = unitDrawCentre(unit);
 			if (battleMode) {
 				if (!unit.isFullHealth())
 					drawHealthBar(g, unit, c.getX(), c.getY());
@@ -1003,7 +1197,7 @@ public class BattleField extends JComponent {
 		// Keep showing dying units' bars as they drain to empty.
 		if (battleMode)
 			for (PlacedUnit unit : dyingUnits) {
-				Point2D c = geometry.cellCentre(unit.getSide(), unit.getCell());
+				Point2D c = unitDrawCentre(unit);
 				drawHealthBar(g, unit, c.getX(), c.getY());
 			}
 	}
@@ -1135,8 +1329,8 @@ public class BattleField extends JComponent {
 			Graphics2D g2 = (Graphics2D) g.create();
 			g2.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, alpha));
 			g2.setColor(parseHexColor(family.getColorHex()));
-			Cell cell = unit.getCell();
-			g2.fillPolygon(geometry.cellDiamond(unit.getSide(), cell.col(), cell.row()));
+			Point2D c = unitDrawCentre(unit);
+			g2.fillPolygon(geometry.diamondAt(c.getX(), c.getY()));
 			g2.dispose();
 		}
 	}
