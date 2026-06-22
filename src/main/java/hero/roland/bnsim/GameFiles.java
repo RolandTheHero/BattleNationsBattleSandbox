@@ -22,6 +22,7 @@ import hero.roland.bnsim.util.GlobFilter;
 public class GameFiles {
     private static File BUNDLE_FOLDER;
 	private static File PASS_BUTTON;
+	private static File DO_NOT_TARGET_CIRCLE; // Attacks that don't affect specific targets
 
     public static void load(File folder) throws IOException {
         BUNDLE_FOLDER = folder;
@@ -32,6 +33,7 @@ public class GameFiles {
         Unit.load();
         // Timeline data is loaded lazily, on demand, by Timeline.get(...).
 		PASS_BUTTON = new File(BUNDLE_FOLDER, "button_passInactive@2x.png");
+		DO_NOT_TARGET_CIRCLE = new File(BUNDLE_FOLDER, "doNotTarget_circle@2x.png");
     }
     public static JSONObject readJson(String filename) throws IOException {
         File file = new File(BUNDLE_FOLDER, filename);
@@ -62,6 +64,11 @@ public class GameFiles {
     public static File getPassButton() {
         return PASS_BUTTON;
     }
+
+	/** The image to mark units that cannot be targeted (an {@code @2x} asset; may not exist). */
+	public static File getDoNotTargetCircle() {
+		return DO_NOT_TARGET_CIRCLE;
+	}
 
     public static File[] glob(String pat) {
 		FilenameFilter filter = new GlobFilter(pat);
