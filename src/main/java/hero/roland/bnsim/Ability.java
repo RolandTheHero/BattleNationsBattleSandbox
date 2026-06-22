@@ -22,7 +22,9 @@ public class Ability {
 	private double damageFromWeapon, damageFromUnit;
     private double armorPiercingRate;
 	private int damageBonus;
-	private int numAttacks;
+	/** Shots resolved within one attack; an ability fires {@link #attacksPerUse}
+	 * such attacks in sequence per use. */
+	private int shotsPerAttack, attacksPerUse;
 	private int minRange, maxRange;
 	private int lineOfFire;
 	private boolean capture;
@@ -82,8 +84,8 @@ public class Ability {
 		damageFromUnit = getDouble(stats, "damageFromUnit", 1);
 		minRange = stats.optInt("minRange", 1);
 		maxRange = stats.optInt("maxRange", 1);
-		numAttacks = stats.optInt("shotsPerAttack", 1)
-                        * stats.optInt("attacksPerUse", 1);
+		shotsPerAttack = stats.optInt("shotsPerAttack", 1);
+		attacksPerUse = stats.optInt("attacksPerUse", 1);
 		lineOfFire = stats.optInt("lineOfFire", 0);
 		capture = stats.getBoolean("capture");
         String attackDirectionStr = stats.optString("attackDirection", "front");
@@ -201,8 +203,12 @@ public class Ability {
 		return lineOfFire;
 	}
 
-	public int getNumAttacks() {
-		return numAttacks;
+	public int getShotsPerAttack() {
+		return shotsPerAttack;
+	}
+
+	public int getAttacksPerUse() {
+		return attacksPerUse;
 	}
 
 	public int getAoeDelay() {

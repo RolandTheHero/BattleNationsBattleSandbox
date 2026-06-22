@@ -2,6 +2,7 @@ package hero.roland.bnsim;
 
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 
 /**
@@ -242,6 +243,12 @@ public class PlacedUnit {
 		statusEffects.removeIf(e -> e.getEffect() == effect.getEffect());
 		statusEffects.add(effect);
 		return true;
+	}
+
+	/** A read-only view of the status effects currently afflicting this unit, in
+	 * the order they were applied (oldest first). */
+	public List<ActiveStatusEffect> getActiveStatusEffects() {
+		return Collections.unmodifiableList(statusEffects);
 	}
 
 	/** Whether any active effect prevents this unit from attacking. */

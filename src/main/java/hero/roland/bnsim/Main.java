@@ -31,7 +31,7 @@ public class Main {
     }
 
     private static void start() {
-        JFrame frame = new JFrame("Battle Nations Battle Simulator");
+        JFrame frame = new JFrame("Battle Nations Battle Sandbox");
         frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         frame.setLayout(new BorderLayout());
 

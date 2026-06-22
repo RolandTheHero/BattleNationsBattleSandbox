@@ -84,12 +84,19 @@ public class BattleField extends JComponent {
 	/** Largest dimension (px) the "effect applied" icon is drawn at. */
 	private static final int STATUS_APPLY_ICON = 48;
 
+	/** Size (px) of a status-effect icon drawn in a row above a unit's health bar. */
+	private static final int STATUS_BAR_ICON = 24;
+	/** Horizontal gap (px) between successive status icons above the bar. */
+	private static final int STATUS_BAR_ICON_GAP = 1;
+	/** Gap (px) between the bottom of the status icons and the top of the bar. */
+	private static final int STATUS_BAR_ICON_MARGIN = 2;
+
 	/** Pulsing affliction tint: alpha swings between these around the unit. */
 	private static final float PULSE_MIN_ALPHA = 0.10f;
 	private static final float PULSE_MAX_ALPHA = 0.42f;
 
-	/** Milliseconds between animation frames (~20 fps). */
-	private static final int FRAME_DELAY = 50;
+	/** Milliseconds between animation frames. */
+	private static final int FRAME_DELAY = 32;
 	/** Frames a struck tile stays red before fully fading out. */
 	private static final int HIT_FADE = 26;
 	/** Frames for a health bar to finish draining (~1 second). */
@@ -130,6 +137,18 @@ public class BattleField extends JComponent {
 	/** Tick at which the attack animation and its hits finish; status-apply icons
 	 * start here, and the turn waits past it for them (via {@link #attackEndTick}). */
 	private int attackAnimEndTick;
+	/**
+	 * Multi-attack state. An ability fires {@code attacksPerUse} separate attacks
+	 * in sequence, each playing its full attack and impact animations before the
+	 * next begins (see {@link #fireNextAttack}). The attacker, attack and aim are
+	 * held so each repeat can re-resolve its own hits; {@code attacksRemaining}
+	 * counts those not yet fired. Status effects accumulate across every attack and
+	 * are rolled once, after the last (see {@link #applyPendingStatusEffects}).
+	 */
+	private PlacedUnit firingAttacker;
+	private Unit.Attack firingAttack;
+	private Cell firingAim;
+	private int attacksRemaining;
 	private final EnemyBehavior enemyBehavior = new RandomEnemyBehavior();
 
 	/** Side waiting to advance once the turn's animations settle (null if none). */
@@ -289,6 +308,10 @@ public class BattleField extends JComponent {
 		damageNumbers.clear();
 		statusApplyVisuals.clear();
 		pendingStatus.clear();
+		firingAttacker = null;
+		firingAttack = null;
+		firingAim = null;
+		attacksRemaining = 0;
 		message = null;
 		if (battle)
 			for (PlacedUnit unit : sim.placedUnits())
@@ -477,10 +500,30 @@ public class BattleField extends JComponent {
 	}
 
 	/**
-	 * Plays an attack: starts the attacker's attack animation, schedules the
-	 * struck tiles, and records when the turn may advance.
+	 * Begins an attack: an ability fires {@code attacksPerUse} separate attacks in
+	 * sequence. This sets up the sequence and plays the first; each subsequent
+	 * attack is started by {@link #advanceTurns} once the previous one's animations
+	 * have finished (see {@link #fireNextAttack}).
 	 */
 	private void executeAttack(PlacedUnit attacker, Unit.Attack attack, Cell aim) {
+		firingAttacker = attacker;
+		firingAttack = attack;
+		firingAim = aim;
+		attacksRemaining = Math.max(1, attack.getAbility().getAttacksPerUse());
+		fireNextAttack();
+	}
+
+	/**
+	 * Plays the next attack in the current sequence: starts the attacker's attack
+	 * animation, schedules the struck tiles, and records when the turn may advance.
+	 * Status effects are not rolled here — they accumulate across the sequence and
+	 * are applied once the final attack finishes.
+	 */
+	private void fireNextAttack() {
+		attacksRemaining--;
+		PlacedUnit attacker = firingAttacker;
+		Unit.Attack attack = firingAttack;
+		Cell aim = firingAim;
 		Animation anim = loadAttackAnimation(attacker, attack);
 		attacker.startAttack(anim, tick);
 
@@ -564,13 +607,21 @@ public class BattleField extends JComponent {
 			return;
 		switch (phase) {
 		case PLAYER_FIRING:
-			endOfTurn(Side.PLAYER);
+			// Play the ability's remaining attacks before ending the turn; status
+			// effects (rolled in applyPendingStatusEffects) wait for the last one.
+			if (attacksRemaining > 0)
+				fireNextAttack();
+			else
+				endOfTurn(Side.PLAYER);
 			break;
 		case ENEMY_TURN_STATUS:
 			enemyAct();
 			break;
 		case ENEMY_FIRING:
-			endOfTurn(Side.ENEMY);
+			if (attacksRemaining > 0)
+				fireNextAttack();
+			else
+				endOfTurn(Side.ENEMY);
 			break;
 		case PLAYER_TURN_STATUS:
 			phase = Phase.PLAYER; // status damage finished animating; hand control back
@@ -1121,6 +1172,10 @@ public class BattleField extends JComponent {
 	 * still hold the turn for its apply animation.
 	 */
 	private void applyPendingStatusEffects() {
+		// An ability's attacks accumulate status rolls across the whole sequence;
+		// hold off until the final attack so each effect is rolled once per use.
+		if (attacksRemaining > 0)
+			return;
 		if (pendingStatus.isEmpty() || tick < attackAnimEndTick)
 			return;
 		for (StatusAccumulator acc : pendingStatus.values())
@@ -1190,6 +1245,7 @@ public class BattleField extends JComponent {
 			if (battleMode) {
 				if (!unit.isFullHealth())
 					drawHealthBar(g, unit, c.getX(), c.getY());
+				drawStatusIcons(g, unit, c.getX(), c.getY());
 			} else {
 				drawRankBadge(g, unit, c.getX(), c.getY());
 			}
@@ -1241,6 +1297,54 @@ public class BattleField extends JComponent {
 			g.setColor(Color.BLACK);
 			g.fillRect(x + hpLen, y, 1, barH);
 		}
+	}
+
+	/**
+	 * Draws a unit's active status-effect icons in a row just above where its
+	 * health bar sits, the first one flush with the bar's right edge and each
+	 * further effect stepping leftwards. A small number on each icon shows how
+	 * many turns that effect has left. Does nothing when the unit has no effects.
+	 */
+	private void drawStatusIcons(Graphics2D g, PlacedUnit unit,
+			double centreX, double centreY) {
+		List<ActiveStatusEffect> effects = unit.getActiveStatusEffects();
+		if (effects.isEmpty())
+			return;
+		// Mirror drawHealthBar's geometry so the icons line up with the bar's
+		// right edge and sit just above it.
+		int barW = 76, barH = 8;
+		int barX = (int) Math.round(centreX - barW / 2.0);
+		int barY = (int) Math.round(centreY + GridGeometry.HALF_H - barH);
+		int size = STATUS_BAR_ICON;
+		int iconY = barY - size - STATUS_BAR_ICON_MARGIN;
+		int rightEdge = barX + barW; // first icon's right edge sits on the bar's
+		for (ActiveStatusEffect effect : effects) {
+			StatusEffect.StatusFamily family = effect.getEffect().getFamily();
+			if (family == null)
+				continue;
+			BufferedImage icon = loadIcon(family.getUiIcon());
+			if (icon == null)
+				continue;
+			int iconX = rightEdge - size;
+			g.drawImage(icon, iconX, iconY, size, size, null);
+			drawTurnCount(g, effect.getRemaining(), iconX, iconY, size);
+			rightEdge -= size + STATUS_BAR_ICON_GAP;
+		}
+	}
+
+	/** Draws the remaining-turns number in the lower-right corner of an icon. */
+	private void drawTurnCount(Graphics2D g, int turns, int iconX, int iconY, int size) {
+		String text = Integer.toString(turns);
+		Font old = g.getFont();
+		g.setFont(old.deriveFont(Font.BOLD, 14f));
+		int tw = g.getFontMetrics().stringWidth(text);
+		int tx = iconX + size - tw;
+		int ty = iconY + size; // baseline near the icon's bottom edge
+		g.setColor(Color.BLACK);
+		g.drawString(text, tx + 1, ty + 1);
+		g.setColor(Color.WHITE);
+		g.drawString(text, tx, ty);
+		g.setFont(old);
 	}
 
 	private void drawUnit(Graphics2D g, PlacedUnit unit,

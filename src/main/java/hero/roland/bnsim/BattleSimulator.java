@@ -290,7 +290,10 @@ public class BattleSimulator {
 			targetArea = new TargetSquare[] { TargetSquare.SINGLE_TARGET };
 		if (damageArea == null)
 			damageArea = new TargetSquare[] { TargetSquare.SINGLE_TARGET };
-		int shots = Math.max(1, ability.getNumAttacks());
+		// One call resolves a single attack; its shots are the ability's
+		// shotsPerAttack. The attacksPerUse separate attacks are sequenced by the
+		// battlefield, which calls this once per attack.
+		int shots = Math.max(1, ability.getShotsPerAttack());
 		int aoeDelay = ability.getAoeDelay();
 		int minDamage = attack.getMinDamage(attacker.getRank());
 		int maxDamage = attack.getMaxDamage(attacker.getRank());
@@ -376,7 +379,9 @@ public class BattleSimulator {
 			targetArea = new TargetSquare[] { TargetSquare.SINGLE_TARGET };
 		if (damageArea == null)
 			damageArea = new TargetSquare[] { TargetSquare.SINGLE_TARGET };
-		int shots = Math.max(1, ability.getNumAttacks());
+		// A single attack's shots; the attacksPerUse repeats are sequenced by the
+		// battlefield (see resolveHits).
+		int shots = Math.max(1, ability.getShotsPerAttack());
 		int aoeDelay = ability.getAoeDelay();
 		int minDamage = attack.getMinDamage(attacker.getRank());
 		int maxDamage = attack.getMaxDamage(attacker.getRank());
