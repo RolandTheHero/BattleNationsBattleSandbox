@@ -36,6 +36,9 @@ public class Ability {
 	private boolean randomTarget;
 	private TargetSquare[] targetArea, damageArea;
 	private StatusEffectChance[] statusEffects;
+	private double baseCritical;
+	/** Extra critical chance (0-1) added when the target has the keyed unit type. */
+	private Map<String, Double> criticalBonuses;
 	//private Map<String, Prerequisites> prereqs;
 
 	public static void load() throws IOException {
@@ -115,6 +118,18 @@ public class Ability {
 				double chance = statusEffectsJSON.optDouble(effectId, 0d) / 100.0; // Chance is from 0 to 100, so normalise to 0-1.
 				statusEffects[i++] = new StatusEffectChance(effect, chance);
 			}
+		}
+		// Base critical-hit chance, stored 0-1 (authored as a percent). "criticalBonuses"
+		// maps a unit-type name (a UnitTag, e.g. "Tank") to extra chance (percent) added
+		// when the target has that tag — see getCriticalRate. How these ultimately combine
+		// isn't settled yet; for now matching bonuses are summed onto the base.
+		baseCritical = stats.optDouble("criticalHitPercent", 5d) / 100;
+		criticalBonuses = new HashMap<>();
+		JSONObject criticalBonusesJson = stats.optJSONObject("criticalBonuses");
+		if (criticalBonusesJson != null) {
+			for (String key : criticalBonusesJson.keySet())
+				criticalBonuses.put(key.toLowerCase(),
+						criticalBonusesJson.getDouble(key) / 100);
 		}
 	}
 
@@ -245,6 +260,28 @@ public class Ability {
     public double getArmorPiercingRate() {
         return armorPiercingRate;
     }
+
+	/** This ability's base critical-hit chance (0-1), before any per-target bonus. */
+	public double getBaseCritical() {
+		return baseCritical;
+	}
+
+	/**
+	 * This ability's critical-hit chance (0-1) against {@code target}: the base
+	 * chance plus any "criticalBonuses" configured for unit types the target has.
+	 * A {@code null} target (e.g. an empty splash tile) gets just the base chance.
+	 * The bonus rules aren't finalised; matching bonuses are summed for now.
+	 */
+	public double getCriticalRate(Unit target) {
+		double rate = baseCritical;
+		if (target != null && criticalBonuses != null) {
+			for (Map.Entry<String, Double> bonus : criticalBonuses.entrySet()) {
+				if (target.hasTag(Unit.UnitTag.fromString(bonus.getKey())))
+					rate += bonus.getValue();
+			}
+		}
+		return rate;
+	}
 
     /** The status effects this ability can inflict, each with its chance (percent). */
     public StatusEffectChance[] getStatusEffects() {

@@ -29,6 +29,7 @@ import javax.swing.JLayeredPane;
 import javax.swing.JPanel;
 import javax.swing.JSlider;
 import javax.swing.JToggleButton;
+import javax.swing.SwingConstants;
 
 import hero.roland.bnsim.Ability;
 import hero.roland.bnsim.BattleSimulator;
@@ -71,6 +72,7 @@ public class ArenaPane extends JLayeredPane {
 		endButton.addActionListener(e -> setBattleMode(false));
 		endButton.setVisible(false);
 		passButton.addActionListener(e -> field.passTurn());
+		stylePassButton();
 		passButton.setVisible(false);
 		viewEnemyButton.setToolTipText(
 				"Show enemy units' health, abilities and target area (view-only)");
@@ -254,6 +256,82 @@ public class ArenaPane extends JLayeredPane {
 	 * {@code maxSize} (kept as-is if already smaller), as an ARGB
 	 * {@link BufferedImage}, or null if it cannot be read.
 	 */
+	/**
+	 * Gives the Pass button the {@link GameFiles#getPassButton()} image as its
+	 * background, with "Pass" centred on top of it and the default button chrome
+	 * removed. Falls back to the plain "Pass Turn" text button if the image is
+	 * missing.
+	 */
+	private void stylePassButton() {
+		BufferedImage img = loadPassButtonImage();
+		if (img == null)
+			return;
+		passButton.setText("Pass");
+		passButton.setIcon(new ImageIcon(img));
+		// Darken the image while the button is held down for press feedback.
+		passButton.setPressedIcon(new ImageIcon(darken(img, 0.7f)));
+		passButton.setHorizontalTextPosition(SwingConstants.CENTER);
+		passButton.setVerticalTextPosition(SwingConstants.CENTER);
+		passButton.setBorderPainted(false);
+		passButton.setContentAreaFilled(false);
+		passButton.setFocusPainted(false);
+		passButton.setBorder(BorderFactory.createEmptyBorder());
+		passButton.setMargin(new Insets(0, 0, 0, 0));
+		// Size the label to fill most of the button face (leaving a margin for the
+		// image's border) rather than using a fixed point size.
+		Font base = passButton.getFont().deriveFont(Font.BOLD);
+		passButton.setFont(fitFont(base, "Pass",
+				Math.round(img.getWidth() * 0.7f), Math.round(img.getHeight() * 0.5f)));
+	}
+
+	/**
+	 * The given font scaled so {@code text} fits within {@code maxWidth} by
+	 * {@code maxHeight} pixels (using its cap height for the vertical extent).
+	 */
+	private Font fitFont(Font base, String text, int maxWidth, int maxHeight) {
+		FontMetrics fm = passButton.getFontMetrics(base);
+		int width = fm.stringWidth(text);
+		int height = fm.getAscent();
+		if (width <= 0 || height <= 0)
+			return base;
+		float scale = Math.min(maxWidth / (float) width, maxHeight / (float) height);
+		return base.deriveFont(base.getSize2D() * scale);
+	}
+
+	/**
+	 * A copy of {@code src} with its colours multiplied by {@code factor}
+	 * (&lt; 1 darkens), leaving each pixel's alpha untouched so transparent areas
+	 * stay transparent.
+	 */
+	private static BufferedImage darken(BufferedImage src, float factor) {
+		int w = src.getWidth();
+		int h = src.getHeight();
+		BufferedImage out = new BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB);
+		for (int y = 0; y < h; y++) {
+			for (int x = 0; x < w; x++) {
+				int argb = src.getRGB(x, y);
+				int a = (argb >>> 24) & 0xFF;
+				int r = Math.min(255, (int) (((argb >> 16) & 0xFF) * factor));
+				int g = Math.min(255, (int) (((argb >> 8) & 0xFF) * factor));
+				int b = Math.min(255, (int) ((argb & 0xFF) * factor));
+				out.setRGB(x, y, (a << 24) | (r << 16) | (g << 8) | b);
+			}
+		}
+		return out;
+	}
+
+	/** Loads the Pass button image at its native size, or null if it can't be read. */
+	private BufferedImage loadPassButtonImage() {
+		File file = GameFiles.getPassButton();
+		if (file == null || !file.isFile())
+			return null;
+		try {
+			return ImageIO.read(file);
+		} catch (IOException e) {
+			return null;
+		}
+	}
+
 	private BufferedImage loadImage(String name, int maxSize) {
 		if (name == null)
 			return null;

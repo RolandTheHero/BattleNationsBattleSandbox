@@ -20,19 +20,21 @@ import hero.roland.bnsim.util.FileFormatException;
 import hero.roland.bnsim.util.GlobFilter;
 
 public class GameFiles {
-    private static File bundleFolder;
+    private static File BUNDLE_FOLDER;
+	private static File PASS_BUTTON;
 
     public static void load(File folder) throws IOException {
-        bundleFolder = folder;
+        BUNDLE_FOLDER = folder;
         Text.load();
 		StatusEffect.StatusFamily.load();
 		StatusEffect.load();
         Ability.load();
         Unit.load();
         // Timeline data is loaded lazily, on demand, by Timeline.get(...).
+		PASS_BUTTON = new File(BUNDLE_FOLDER, "button_passInactive@2x.png");
     }
     public static JSONObject readJson(String filename) throws IOException {
-        File file = new File(bundleFolder, filename);
+        File file = new File(BUNDLE_FOLDER, filename);
         String content = Files.readString(file.toPath());
         return new JSONObject(content);
     }
@@ -48,18 +50,23 @@ public class GameFiles {
 	}
 
     public static FileInputStream open(String filename) throws IOException {
-        return new FileInputStream(new File(bundleFolder, filename));
+        return new FileInputStream(new File(BUNDLE_FOLDER, filename));
 	}
 
     /** A file inside the loaded bundle folder (may not exist). */
     public static File file(String filename) {
-        return new File(bundleFolder, filename);
+        return new File(BUNDLE_FOLDER, filename);
+    }
+
+    /** The "Pass" button background image (an {@code @2x} asset; may not exist). */
+    public static File getPassButton() {
+        return PASS_BUTTON;
     }
 
     public static File[] glob(String pat) {
 		FilenameFilter filter = new GlobFilter(pat);
 		Map<String, File> files = new HashMap<>();
-		addFiles(files, bundleFolder.listFiles(filter));
+		addFiles(files, BUNDLE_FOLDER.listFiles(filter));
 		//addFiles(files, updateDir.listFiles(filter));
 		String[] names = new String[files.size()];
 		names = files.keySet().toArray(names);

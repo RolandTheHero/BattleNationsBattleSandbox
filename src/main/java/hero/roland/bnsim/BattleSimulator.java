@@ -185,6 +185,9 @@ public class BattleSimulator {
 
 	// --- Combat ------------------------------------------------------------
 
+	/** Damage multiplier applied to a shot that rolls a critical hit. */
+	private static final double CRIT_MULTIPLIER = 1.8;
+
 	private final Random random = new Random();
 
 	/**
@@ -314,23 +317,31 @@ public class BattleSimulator {
 		if (ability.getRandomTarget()) {
 			for (int shot = 0; shot < shots; shot++) {
 				TargetSquare hit = pickWeighted(targetArea);
-				if (hit != null)
+				if (hit != null) {
+					// Each shot rolls its own crit against the unit on its target tile.
+					boolean crit = rollCritical(attacker, ability, targetSide,
+							aim.col() + xSign * hit.getX(), aim.row() - hit.getY());
 					// The picked tile takes full damage: a random area's square value
 					// is its pick probability (consumed by pickWeighted), not a
 					// damage multiplier — so the target contribution here is 1.
 					addImpact(result, targetSide, aim, hit, shot, damageArea,
 							damageSteps, aoeDelay, xSign, rollDamage(minDamage, maxDamage),
-							damageType, armorPiercing, 1.0);
+							damageType, armorPiercing, 1.0, crit);
+				}
 			}
 		} else {
 			for (int t = 0; t < targetArea.length; t++)
-				for (int shot = 0; shot < shots; shot++)
+				for (int shot = 0; shot < shots; shot++) {
+					boolean crit = rollCritical(attacker, ability, targetSide,
+							aim.col() + xSign * targetArea[t].getX(),
+							aim.row() - targetArea[t].getY());
 					// The target square's value is its authored damagePercent; combine
 					// it with the damage area's so a splash authored in either area scales.
 					addImpact(result, targetSide, aim, targetArea[t], targetSteps[t],
 							damageArea, damageSteps, aoeDelay, xSign,
 							rollDamage(minDamage, maxDamage), damageType, armorPiercing,
-							targetArea[t].getValue());
+							targetArea[t].getValue(), crit);
+				}
 		}
 		return result;
 	}
@@ -347,9 +358,13 @@ public class BattleSimulator {
 	private void addImpact(List<Hit> result, Side targetSide, Cell aim,
 			TargetSquare target, int targetStep, TargetSquare[] damageArea,
 			int[] damageSteps, int aoeDelay, int xSign, int baseDamage,
-			Ability.DamageType damageType, double armorPiercing, double targetValue) {
+			Ability.DamageType damageType, double armorPiercing, double targetValue,
+			boolean critical) {
 		int baseCol = aim.col() + xSign * target.getX();
 		int baseRow = aim.row() - target.getY();
+		// A critical shot scales its whole rolled damage, so every tile it splashes
+		// to shares the boost (and is flagged critical for the floating number).
+		double critMult = critical ? CRIT_MULTIPLIER : 1.0;
 		for (int d = 0; d < damageArea.length; d++) {
 			int col = baseCol + xSign * damageArea[d].getX();
 			int row = baseRow - damageArea[d].getY();
@@ -357,10 +372,28 @@ public class BattleSimulator {
 				continue;
 			int delay = Math.max(0, aoeDelay * (targetStep + damageSteps[d]));
 			double value = targetValue * damageArea[d].getValue();
-			double rawDamage = baseDamage * value;
+			double rawDamage = baseDamage * value * critMult;
 			result.add(new Hit(targetSide, new Cell(col, row), delay,
-					rawDamage, damageType, armorPiercing, value));
+					rawDamage, damageType, armorPiercing, value, critical));
 		}
+	}
+
+	/**
+	 * Rolls whether one shot crits. The chance is the ability's rate against the
+	 * unit on the shot's primary target cell (so future per-unit-type crit bonuses
+	 * apply, see {@link Ability#getCriticalRate}) plus the attacker's rank critical
+	 * bonus. An off-grid or empty cell uses just the base chance.
+	 */
+	private boolean rollCritical(PlacedUnit attacker, Ability ability, Side targetSide,
+			int col, int row) {
+		Unit target = null;
+		if (GridGeometry.isValid(col, row)) {
+			PlacedUnit hit = unitAt(targetSide, new Cell(col, row));
+			if (hit != null)
+				target = hit.getUnit();
+		}
+		double rate = ability.getCriticalRate(target) + attacker.getCriticalBonus();
+		return random.nextDouble() < rate;
 	}
 
 	/**
@@ -399,13 +432,16 @@ public class BattleSimulator {
 					targetArea[t].getY());
 			if (origin == null)
 				continue;
-			for (int shot = 0; shot < shots; shot++)
+			for (int shot = 0; shot < shots; shot++) {
+				boolean crit = rollCritical(attacker, ability, targetSide,
+						origin.cell().col(), origin.cell().row());
 				// The impact is positioned at the precomputed origin (SINGLE_TARGET, so
 				// no extra offset), but still scaled by the fixed tile's damagePercent.
 				addImpact(result, targetSide, origin.cell(), TargetSquare.SINGLE_TARGET,
 						targetSteps[t], damageArea, damageSteps, aoeDelay, xSign,
 						rollDamage(minDamage, maxDamage), damageType, armorPiercing,
-						targetArea[t].getValue());
+						targetArea[t].getValue(), crit);
+			}
 		}
 		return result;
 	}
@@ -511,10 +547,13 @@ public class BattleSimulator {
 	 * it is hit, the raw damage before the defender's modifiers, the ability's
 	 * damage type and armor-piercing fraction, and the damage-area value of this
 	 * tile (which scales both its damage and any status-effect chance). Tiles in
-	 * an area-of-effect ripple outwards using the ability's aoe delay.
+	 * an area-of-effect ripple outwards using the ability's aoe delay. {@code critical}
+	 * is true when the shot rolled a crit (its raw damage already includes the crit
+	 * multiplier); all tiles splashed by one shot share that flag.
 	 */
 	public record Hit(Side side, Cell cell, int delayFrames, double rawDamage,
-			Ability.DamageType damageType, double armorPiercing, double areaValue) {
+			Ability.DamageType damageType, double armorPiercing, double areaValue,
+			boolean critical) {
 	}
 
 	/** A cell together with the side of the battlefield it lies on. */

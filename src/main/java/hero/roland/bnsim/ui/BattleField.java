@@ -72,6 +72,12 @@ public class BattleField extends JComponent {
 	/** Frames a floating damage number lives, and how far it rises (pixels). */
 	private static final int DAMAGE_FLOAT_FRAMES = 24;
 	private static final int DAMAGE_RISE = 42;
+	/** Point size of a normal damage number, and the larger size for a critical hit. */
+	private static final float DAMAGE_FONT_SIZE = 26f;
+	private static final float CRIT_DAMAGE_FONT_SIZE = 38f;
+	/** Critical-hit numbers are white; outlined in black this many pixels thick. */
+	private static final Color CRIT_DAMAGE_COLOR = Color.WHITE;
+	private static final int CRIT_OUTLINE = 2;
 	/** Frames between successive numbers on one tile, and random spread (px). */
 	private static final int DAMAGE_STAGGER_FRAMES = 8;
 	private static final int DAMAGE_JITTER_X = 26;
@@ -540,7 +546,7 @@ public class BattleField extends JComponent {
 			int start = base + hit.delayFrames();
 			hitMarkers.add(new HitMarker(hit.side(), hit.cell(), start,
 					hit.rawDamage(), hit.damageType(), hit.armorPiercing(),
-					hit.areaValue(), ability));
+					hit.areaValue(), ability, hit.critical()));
 			lastHit = Math.max(lastHit, start - tick);
 		}
 
@@ -804,7 +810,7 @@ public class BattleField extends JComponent {
 				// Play the effect's sound as its damage number appears.
 				String sound = family != null ? family.getSound() : null;
 				endTick = Math.max(endTick,
-						spawnDamageNumber(side, unit.getCell(), st.damageDealt(), icon, sound));
+						spawnDamageNumber(side, unit.getCell(), st.damageDealt(), icon, sound, false));
 			}
 			if (unit.isDead()) {
 				sim.remove(unit);
@@ -851,7 +857,6 @@ public class BattleField extends JComponent {
 
 		drawGrid(g2, Side.ENEMY);
 		drawGrid(g2, Side.PLAYER);
-		drawSideLabels(g2);
 
 		// A selected unit shows its target area and outline in either mode (no-op
 		// when nothing is selected); setup mode also shows the drag-drop highlight.
@@ -915,20 +920,6 @@ public class BattleField extends JComponent {
 				}
 			}
 		}
-	}
-
-	private void drawSideLabels(Graphics2D g) {
-		int midCol = GridGeometry.COLS / 2;
-		// Anchor each label to that side's current back-most row, which moves
-		// toward the front as the side advances.
-		Point2D enemy = geometry.cellCentre(Side.ENEMY, midCol, visibleRows(Side.ENEMY) - 1);
-		Point2D player = geometry.cellCentre(Side.PLAYER, midCol, visibleRows(Side.PLAYER) - 1);
-		g.setColor(ENEMY_TINT);
-		g.drawString("Enemy", (int) enemy.getX() - 16,
-				(int) enemy.getY() - GridGeometry.HALF_H - 8);
-		g.setColor(PLAYER_TINT);
-		g.drawString("Player", (int) player.getX() - 16,
-				(int) player.getY() + GridGeometry.HALF_H + 18);
 	}
 
 	private void drawTargetable(Graphics2D g) {
@@ -1011,14 +1002,9 @@ public class BattleField extends JComponent {
 		statusApplyVisuals.removeIf(v -> tick - v.startTick >= STATUS_APPLY_FRAMES);
 	}
 
-	/** Spawns a plain (attack) damage number with no status icon. */
-	private int spawnDamageNumber(Side side, Cell cell, int amount) {
-		return spawnDamageNumber(side, cell, amount, null, null);
-	}
-
-	/** Spawns a status-tick damage number with the effect's icon and no sound. */
-	private int spawnDamageNumber(Side side, Cell cell, int amount, BufferedImage icon) {
-		return spawnDamageNumber(side, cell, amount, icon, null);
+	/** Spawns an attack damage number, drawn as a critical hit when {@code critical}. */
+	private int spawnDamageNumber(Side side, Cell cell, int amount, boolean critical) {
+		return spawnDamageNumber(side, cell, amount, null, null, critical);
 	}
 
 	/**
@@ -1027,16 +1013,17 @@ public class BattleField extends JComponent {
 	 * Numbers stacking on the same tile are delayed so they appear one after
 	 * another instead of all at once. When {@code sound} is non-null it is queued
 	 * to play as the number appears (a status effect's sound when its damage
-	 * lands). Returns the tick at which the number finishes fading, so callers can
+	 * lands). A {@code critical} number is drawn larger and white with a black
+	 * outline. Returns the tick at which the number finishes fading, so callers can
 	 * wait for the animation.
 	 */
 	private int spawnDamageNumber(Side side, Cell cell, int amount, BufferedImage icon,
-			String sound) {
+			String sound, boolean critical) {
 		int slot = countDamageNumbersAt(side, cell);
 		int start = tick + slot * DAMAGE_STAGGER_FRAMES;
 		int dx = random.nextInt(2 * DAMAGE_JITTER_X + 1) - DAMAGE_JITTER_X;
 		int dy = random.nextInt(2 * DAMAGE_JITTER_Y + 1) - DAMAGE_JITTER_Y;
-		damageNumbers.add(new DamageNumber(side, cell, amount, start, dx, dy, icon));
+		damageNumbers.add(new DamageNumber(side, cell, amount, start, dx, dy, icon, critical));
 		if (sound != null)
 			pendingSounds.add(new PendingSound(sound, start));
 		return start + DAMAGE_FLOAT_FRAMES;
@@ -1088,7 +1075,8 @@ public class BattleField extends JComponent {
 			Graphics2D g2 = (Graphics2D) g.create();
 			g2.setComposite(AlphaComposite.getInstance(
 					AlphaComposite.SRC_OVER, 1f - t));
-			g2.setFont(g2.getFont().deriveFont(Font.BOLD, 26f));
+			g2.setFont(g2.getFont().deriveFont(Font.BOLD,
+					number.critical ? CRIT_DAMAGE_FONT_SIZE : DAMAGE_FONT_SIZE));
 			int tw = g2.getFontMetrics().stringWidth(text);
 			int x = (int) Math.round(c.getX() - tw / 2.0 + number.dx);
 			int y = (int) Math.round(c.getY() + number.dy - t * DAMAGE_RISE);
@@ -1098,10 +1086,21 @@ public class BattleField extends JComponent {
 				g2.drawImage(number.icon, x - STATUS_NUMBER_ICON - 2, iconY,
 						STATUS_NUMBER_ICON, STATUS_NUMBER_ICON, null);
 			}
-			g2.setColor(Color.BLACK);
-			g2.drawString(text, x + 1, y + 1);
-			g2.setColor(DAMAGE_COLOR);
-			g2.drawString(text, x, y);
+			if (number.critical) {
+				// A crit reads as bigger white text ringed by a solid black outline.
+				g2.setColor(Color.BLACK);
+				for (int ox = -CRIT_OUTLINE; ox <= CRIT_OUTLINE; ox++)
+					for (int oy = -CRIT_OUTLINE; oy <= CRIT_OUTLINE; oy++)
+						if (ox != 0 || oy != 0)
+							g2.drawString(text, x + ox, y + oy);
+				g2.setColor(CRIT_DAMAGE_COLOR);
+				g2.drawString(text, x, y);
+			} else {
+				g2.setColor(Color.BLACK);
+				g2.drawString(text, x + 1, y + 1);
+				g2.setColor(DAMAGE_COLOR);
+				g2.drawString(text, x, y);
+			}
 			g2.dispose();
 		}
 	}
@@ -1128,7 +1127,7 @@ public class BattleField extends JComponent {
 			int dealt = target.applyDamage(marker.rawDamage,
 					marker.damageType, marker.armorPiercing);
 			if (dealt > 0)
-				spawnDamageNumber(marker.side, marker.cell, dealt);
+				spawnDamageNumber(marker.side, marker.cell, dealt, marker.critical);
 			if (target.isDead()) {
 				// Take it out of the simulation now (so it cannot be hit or act
 				// again), but keep drawing it until its health bar finishes draining.
@@ -1532,11 +1531,13 @@ public class BattleField extends JComponent {
 		final double areaValue;
 		/** Ability whose hit sound plays when this marker lands; may be null. */
 		final Ability ability;
+		/** Whether the shot that produced this tile rolled a critical hit. */
+		final boolean critical;
 		boolean applied;
 
 		HitMarker(Side side, Cell cell, int startTick, double rawDamage,
 				Ability.DamageType damageType, double armorPiercing,
-				double areaValue, Ability ability) {
+				double areaValue, Ability ability, boolean critical) {
 			this.side = side;
 			this.cell = cell;
 			this.startTick = startTick;
@@ -1545,6 +1546,7 @@ public class BattleField extends JComponent {
 			this.armorPiercing = armorPiercing;
 			this.areaValue = areaValue;
 			this.ability = ability;
+			this.critical = critical;
 		}
 	}
 
@@ -1596,7 +1598,8 @@ public class BattleField extends JComponent {
 		}
 	}
 
-	/** A red damage number that floats up from a tile and fades out. */
+	/** A floating damage number that rises from a tile and fades out (red, or
+	 * larger white-on-black for a critical hit). */
 	private static final class DamageNumber {
 		final Side side;
 		final Cell cell;
@@ -1606,9 +1609,11 @@ public class BattleField extends JComponent {
 		final int dx, dy;
 		/** Status icon drawn to the left of the number, or null for plain hits. */
 		final BufferedImage icon;
+		/** Whether this number is for a critical hit (drawn bigger and white). */
+		final boolean critical;
 
 		DamageNumber(Side side, Cell cell, int amount, int startTick, int dx, int dy,
-				BufferedImage icon) {
+				BufferedImage icon, boolean critical) {
 			this.side = side;
 			this.cell = cell;
 			this.amount = amount;
@@ -1616,6 +1621,7 @@ public class BattleField extends JComponent {
 			this.dx = dx;
 			this.dy = dy;
 			this.icon = icon;
+			this.critical = critical;
 		}
 	}
 

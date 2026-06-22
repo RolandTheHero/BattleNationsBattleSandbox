@@ -155,6 +155,11 @@ public class PlacedUnit {
 		return unit.getMaxRank() >= 1 ? unit.getRank(rank).armorHp() : 0;
 	}
 
+	/** This unit's rank critical-hit bonus as a fraction (0-1); rank stores a percent. */
+	public double getCriticalBonus() {
+		return (unit.getMaxRank() >= 1 ? unit.getRank(rank).critical() : 0) / 100.0;
+	}
+
 	public boolean isFullHealth() {
 		return currentHp >= getMaxHp() && currentArmor >= getMaxArmor();
 	}
