@@ -1,6 +1,7 @@
 package hero.roland.bnsim;
 
 import java.awt.Graphics2D;
+import java.awt.TexturePaint;
 import java.awt.geom.Rectangle2D;
 import java.io.File;
 import java.io.FileInputStream;
@@ -84,6 +85,12 @@ public class Timeline {
 
 	public void drawFrame(int num, Graphics2D g) {
 		frames[num].draw(g);
+	}
+
+	/** Draws a frame at ({@code x}, {@code y}) via its cached sprite image. */
+	public void drawFrameCached(int num, Graphics2D g, double x, double y,
+			TexturePaint texture) {
+		frames[num].drawCached(g, x, y, texture, scale);
 	}
 
 	public static void load() throws IOException {

@@ -131,9 +131,7 @@ public class Animation implements Drawable {
 			num %= numFrames;
 		else if (num >= numFrames)
 			return;
-		g.translate(xPos, yPos);
-		g.setPaint(bitmap.getTexture());
-		timeline.drawFrame(num, g);
+		timeline.drawFrameCached(num, g, xPos, yPos, bitmap.getTexture());
 	}
 
 	@Override
