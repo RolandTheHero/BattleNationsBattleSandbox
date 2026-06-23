@@ -311,6 +311,7 @@ public class BattleField extends JComponent {
 		advancingUnits.clear();
 		for (Side s : Side.values())
 			rowsAdvanced.put(s, 0);
+		sim.resetAdvancement();
 		dragging = null;
 		dragPoint = null;
 		enemyViewEnabled = false;

@@ -30,9 +30,19 @@ public class BattleSimulator {
 	/** Occupancy grid per side: [col][row], {@code null} when empty. */
 	private final Map<Side, PlacedUnit[][]> grids = new EnumMap<>(Side.class);
 
+	/**
+	 * How many rows each side has advanced (see {@link #advanceToFront}). Each
+	 * advance permanently drops that side's front row, so the side shrinks from the
+	 * front and its backmost still-existing row creeps forward. Used by combat to
+	 * tell a unit's original depth from its current cell.
+	 */
+	private final Map<Side, Integer> rowsAdvanced = new EnumMap<>(Side.class);
+
 	public BattleSimulator() {
-		for (Side side : Side.values())
+		for (Side side : Side.values()) {
 			grids.put(side, new PlacedUnit[GridGeometry.COLS][GridGeometry.ROWS]);
+			rowsAdvanced.put(side, 0);
+		}
 	}
 
 	public GridGeometry getGeometry() {
@@ -176,7 +186,19 @@ public class BattleSimulator {
 				moved = true;
 			}
 		}
+		rowsAdvanced.put(side, rowsAdvanced.get(side) + 1);
 		return moved;
+	}
+
+	/** How many rows the given side has advanced toward the front (0 if never). */
+	public int rowsAdvanced(Side side) {
+		return rowsAdvanced.getOrDefault(side, 0);
+	}
+
+	/** Resets every side's advance count; call when (re)starting a battle. */
+	public void resetAdvancement() {
+		for (Side side : Side.values())
+			rowsAdvanced.put(side, 0);
 	}
 
 	/**
@@ -210,11 +232,20 @@ public class BattleSimulator {
 	/**
 	 * The set of enemy cells the attacker can hit with the given attack.
 	 *
-	 * <p>Range is measured along the depth axis: distance = (tiles in front of
-	 * the attacker) + (tiles the target is behind the enemy front line) + 1, so
-	 * an attack with min/max range 1..5 can reach any enemy tile from anywhere.
-	 * A cell is excluded if an enemy unit in front of it (same column, nearer
-	 * the front) blocks the attack's line of fire.
+	 * <p>For a FRONT attack range is measured straight ahead: distance = (tiles in
+	 * front of the attacker) + (tiles the target is behind the enemy front line) +
+	 * 1, so an attack with min/max range 1..5 can reach any enemy tile from
+	 * anywhere.
+	 *
+	 * <p>A BACK attack instead counts <em>backwards</em> off the attacker's side
+	 * and loops around the far end to strike the enemy from behind. The backward
+	 * leg spans the number of rows that still exist on the attacker's side — not
+	 * the unit's own position, so moving the unit between rows does not change its
+	 * range — and the loop re-enters the enemy at its backmost still-existing row
+	 * (its original back row may have been advanced past).
+	 *
+	 * <p>A cell is excluded if a unit between the shot's entry side and the target
+	 * (in front of it for FRONT, behind it for BACK) blocks the line of fire.
 	 */
 	public Set<Cell> targetableCells(PlacedUnit attacker, Unit.Attack attack) {
 		Set<Cell> cells = new HashSet<>();
@@ -226,16 +257,22 @@ public class BattleSimulator {
 		int lineOfFire = ability.getLineOfFire();
 		int attackerRow = attacker.getCell().row(); // 0 = own front line
 		Side targetSide = opponentOf(attacker.getSide());
-		// BACK attacks reach the defender from behind, so depth and blocking are
-		// measured from the defender's back row instead of its front.
 		boolean fromBack = ability.getAttackDirection() == Ability.AttackDirection.BACK;
 
 		for (int row = 0; row < GridGeometry.ROWS; row++) {
 			for (int col = 0; col < GridGeometry.COLS; col++) {
-				if (!GridGeometry.isValid(col, row))
-					continue;
-				int targetDepth = fromBack ? (GridGeometry.ROWS - 1 - row) : row;
-				int distance = attackerRow + targetDepth + 1;
+				int distance;
+				if (fromBack) {
+					int attackerRows = GridGeometry.ROWS - attackerRow - rowsAdvanced(attacker.getSide());
+					int enemyBackRow = (GridGeometry.ROWS - 1) - rowsAdvanced(targetSide);
+					if (!GridGeometry.isValid(col, row + rowsAdvanced(targetSide)))
+						continue;
+					distance = attackerRows + (enemyBackRow - row);
+				} else {
+					if (!GridGeometry.isValid(col, row))
+						continue;
+					distance = attackerRow + row + 1;
+				}
 				if (distance < min || distance > max)
 					continue;
 				if (isBlocked(targetSide, col, row, lineOfFire, fromBack))
