@@ -58,6 +58,23 @@ public class BattleSimulator {
 		return null;
 	}
 
+	/**
+	 * Places a specific unit at a specific cell on a side (used for death-spawns,
+	 * which replace a fallen unit on its own tile). Returns the new
+	 * {@link PlacedUnit}, or {@code null} if the cell is invalid or occupied.
+	 */
+	public PlacedUnit spawnAt(Unit unit, Side side, Cell cell) {
+		if (cell == null)
+			return null;
+		int col = cell.col(), row = cell.row();
+		PlacedUnit[][] grid = grids.get(side);
+		if (!GridGeometry.isValid(col, row) || grid[col][row] != null)
+			return null;
+		PlacedUnit placed = new PlacedUnit(unit, side, new Cell(col, row));
+		grid[col][row] = placed;
+		return placed;
+	}
+
 	/** The unit occupying a cell on a side, or {@code null}. */
 	public PlacedUnit unitAt(Side side, Cell cell) {
 		if (cell == null)

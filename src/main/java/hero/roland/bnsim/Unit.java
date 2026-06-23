@@ -21,11 +21,12 @@ public class Unit implements Comparable<Unit> {
 
     private int blocking;
 	private String id, name, shortName, side;
-	private String backAnimName, frontAnimName;
+	private String backAnimName, frontAnimName, deathAnimName;
 	private Rank[] ranks;
 	private Weapon[] weapons;
     private UnitTag[] tags;
 	private Set<StatusEffect.StatusFamily> statusEffectImmunities;
+	private String deathSpawnedUnit;
 
 	public static void load() throws IOException {
 		units = new HashMap<String, Unit>();
@@ -75,6 +76,8 @@ public class Unit implements Comparable<Unit> {
 		for (int i = 0; i < statusEffectImmunitiesJson.length(); i++) {
 			statusEffectImmunities.add(StatusEffect.StatusFamily.get(statusEffectImmunitiesJson.getString(i)));
 		}
+		deathSpawnedUnit = json.optString("deathSpawnedUnit", null);
+		deathAnimName = json.optString("deathAnimationName", "troopdeath");
 	}
 
 	private void initRanks(JSONArray json) {
@@ -155,6 +158,16 @@ public class Unit implements Comparable<Unit> {
 
 	public Animation getFrontAnimation() throws IOException {
 		return Animation.get(frontAnimName);
+	}
+
+	/** The animation played in place of this unit's sprite while it dies. */
+	public Animation getDeathAnimation() throws IOException {
+		return Animation.get(deathAnimName);
+	}
+
+	/** The id of the unit that takes this unit's tile when it dies, or {@code null}. */
+	public String getDeathSpawnedUnit() {
+		return deathSpawnedUnit;
 	}
 
 	public Weapon[] getWeapons() {

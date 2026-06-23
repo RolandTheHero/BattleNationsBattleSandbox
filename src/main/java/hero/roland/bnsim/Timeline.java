@@ -19,8 +19,8 @@ import hero.roland.bnsim.util.LittleEndianInputStream;
 
 public class Timeline {
 
-	private static Map<String,String> packageIndex;
-	private static Map<String,Timeline> animCache;
+	private static Map<String, String> packageIndex;
+	private static Map<String, Timeline> animCache;
 
 	private String packageName, name;
 	private int xMin, xMax, yMin, yMax;

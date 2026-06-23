@@ -127,10 +127,13 @@ public class BattleField extends JComponent {
 	/**
 	 * Turn state. Each side's turn begins with a status-effect step (its effects
 	 * deal damage and the turn waits for that animation), then the action: the
-	 * enemy fires, or the player regains control. At the very end of each side's
-	 * turn, if the opposing side's front row has been emptied its units advance one
-	 * row toward the front: {@code AWAITING_ADVANCE} first waits for the turn's
-	 * remaining animations to settle, then {@code ADVANCING} plays the slide.
+	 * enemy fires, or the player regains control. Every turn then ends through
+	 * {@code AWAITING_ADVANCE}, which waits for all of the turn's animations to
+	 * settle — attack/impact flashes, damage numbers, draining bars, death
+	 * animations and death-spawns — before the next side acts, so the next turn
+	 * never begins over a still-animating board. If the opposing side's front row
+	 * has been emptied (and it still has units), {@code ADVANCING} then plays the
+	 * one-row slide before that next turn.
 	 */
 	private enum Phase {
 		PLAYER, PLAYER_FIRING, ENEMY_TURN_STATUS, ENEMY_FIRING, PLAYER_TURN_STATUS,
@@ -157,7 +160,9 @@ public class BattleField extends JComponent {
 	private int attacksRemaining;
 	private final EnemyBehavior enemyBehavior = new RandomEnemyBehavior();
 
-	/** Side waiting to advance once the turn's animations settle (null if none). */
+	/** The opposing side whose turn comes next, parked while the ended turn's
+	 * animations settle; it advances one row first if its front line is then empty
+	 * (null when no turn is ending). */
 	private Side pendingAdvanceSide;
 	/** Side whose units are sliding forward right now (null when not animating). */
 	private Side advancingSide;
@@ -192,7 +197,9 @@ public class BattleField extends JComponent {
 	private final List<DamageNumber> damageNumbers = new ArrayList<>();
 	/** Ability impact animations playing on struck tiles. */
 	private final List<DamageAnim> damageAnims = new ArrayList<>();
-	/** Units removed from the simulation but still on screen while their bar drains. */
+	/** Units removed from the simulation but still on screen: each drains its
+	 * health bar, then plays its death animation (after which its death-spawn, if
+	 * any, takes the tile). */
 	private final List<PlacedUnit> dyingUnits = new ArrayList<>();
 	/** Sounds queued to play at a future tick (e.g. a weapon's delayed fire sound). */
 	private final List<PendingSound> pendingSounds = new ArrayList<>();
@@ -598,16 +605,41 @@ public class BattleField extends JComponent {
 		}
 	}
 
+	/** The unit's death animation, or {@code null} if none could be loaded. */
+	private Animation loadDeathAnimation(PlacedUnit unit) {
+		try {
+			return unit.getUnit().getDeathAnimation();
+		} catch (IOException | RuntimeException e) {
+			return null;
+		}
+	}
+
 	/** Drives the turn state machine once per frame while in battle mode. */
 	private void advanceTurns() {
 		if (!battleMode)
 			return;
-		// Waiting for the turn's animations to settle before sliding units forward;
-		// this is polled every frame rather than gated on a fixed end tick.
-		if (phase == Phase.AWAITING_ADVANCE) {
+		// Phases that wait for the board to fully settle — every animation finished,
+		// including any death playing out — rather than a fixed end tick. Polled
+		// each frame so the next step never begins over a still-animating board.
+		switch (phase) {
+		case AWAITING_ADVANCE:
+			// The ended turn waits before the next side acts (and any advance slides).
 			if (turnVisualsSettled())
 				beginAdvanceSlide();
 			return;
+		case ENEMY_TURN_STATUS:
+			// Wait for start-of-turn status damage and any deaths it causes to finish
+			// before the enemy attacks, so a status kill isn't stranded behind it.
+			if (turnVisualsSettled())
+				enemyAct();
+			return;
+		case PLAYER_TURN_STATUS:
+			// As above, before handing control back to the player.
+			if (turnVisualsSettled())
+				phase = Phase.PLAYER;
+			return;
+		default:
+			break;
 		}
 		if (tick < attackEndTick)
 			return;
@@ -620,17 +652,11 @@ public class BattleField extends JComponent {
 			else
 				endOfTurn(Side.PLAYER);
 			break;
-		case ENEMY_TURN_STATUS:
-			enemyAct();
-			break;
 		case ENEMY_FIRING:
 			if (attacksRemaining > 0)
 				fireNextAttack();
 			else
 				endOfTurn(Side.ENEMY);
-			break;
-		case PLAYER_TURN_STATUS:
-			phase = Phase.PLAYER; // status damage finished animating; hand control back
 			break;
 		case ADVANCING:
 			finishAdvance(); // slide finished; hand off to the next turn
@@ -641,20 +667,17 @@ public class BattleField extends JComponent {
 	}
 
 	/**
-	 * Wraps up {@code actingSide}'s turn. If the opposing side's front line has been
-	 * emptied (and it still has units behind), those units advance one row forward
-	 * before the next turn begins; otherwise the next turn begins immediately. The
-	 * advance is deferred to {@code AWAITING_ADVANCE} so it plays only once this
-	 * turn's attack, damage and death animations have finished.
+	 * Wraps up {@code actingSide}'s turn. Rather than handing straight to the next
+	 * side, the turn always parks in {@code AWAITING_ADVANCE} until every one of its
+	 * animations has finished (see {@link #turnVisualsSettled}) — attack and impact
+	 * flashes, floating damage numbers, draining bars, death animations and their
+	 * death-spawns — so the next side never starts acting over a still-animating
+	 * board. Once settled, {@link #beginAdvanceSlide} advances the opposing side one
+	 * row if its front line is now empty, then the next turn begins.
 	 */
 	private void endOfTurn(Side actingSide) {
-		Side advancing = BattleSimulator.opponentOf(actingSide);
-		if (sim.isFrontRowEmpty(advancing) && sim.hasUnits(advancing)) {
-			pendingAdvanceSide = advancing;
-			phase = Phase.AWAITING_ADVANCE;
-		} else {
-			nextTurnAfter(actingSide);
-		}
+		pendingAdvanceSide = BattleSimulator.opponentOf(actingSide);
+		phase = Phase.AWAITING_ADVANCE;
 	}
 
 	/** Begins the turn that follows {@code actingSide}'s. */
@@ -683,14 +706,24 @@ public class BattleField extends JComponent {
 	}
 
 	/**
-	 * Applies the pending side's one-row advance to the simulation (so every unit's
-	 * range and targeting immediately use the new cells) and begins the slide
-	 * animation. The units are captured up front so dying units on the same side —
+	 * Called once the ended turn's animations have settled. If the pending side's
+	 * front line is empty (and it still has units), applies its one-row advance to
+	 * the simulation — so every unit's range and targeting immediately use the new
+	 * cells — and begins the slide animation; otherwise it simply hands control to
+	 * the next turn. The settled board is re-checked here because a death-spawn may
+	 * have filled (or, in a back row, left empty) the front line while we waited.
+	 * The advancing units are captured up front so dying units on the same side —
 	 * which keep their last cell while their bars drain — are not dragged along.
 	 */
 	private void beginAdvanceSlide() {
 		Side side = pendingAdvanceSide;
 		pendingAdvanceSide = null;
+		// No gap to close (front row occupied, or the side has no units left): just
+		// hand off to the next turn without sliding.
+		if (!sim.isFrontRowEmpty(side) || !sim.hasUnits(side)) {
+			nextTurnAfter(BattleSimulator.opponentOf(side));
+			return;
+		}
 		sim.advanceToFront(side);
 		advancingUnits = new HashSet<>();
 		for (PlacedUnit unit : sim.placedUnits())
@@ -759,13 +792,13 @@ public class BattleField extends JComponent {
 	}
 
 	/**
-	 * Begins the enemy's turn by evaluating its status effects. The enemy only
-	 * acts once their status-damage animation has finished playing.
+	 * Begins the enemy's turn by evaluating its status effects. The enemy only acts
+	 * once every start-of-turn status animation has finished — the damage numbers
+	 * and any death (and death-spawn) a status effect causes (see {@link #advanceTurns}).
 	 */
 	private void beginEnemyTurn() {
-		int frames = tickStatusEffects(Side.ENEMY);
+		tickStatusEffects(Side.ENEMY);
 		phase = Phase.ENEMY_TURN_STATUS;
-		attackEndTick = tick + frames; // wait for the status-damage animation
 	}
 
 	/** The enemy chooses and plays its attack, after its status effects ticked. */
@@ -782,25 +815,24 @@ public class BattleField extends JComponent {
 	}
 
 	/**
-	 * Begins the player's turn by evaluating their status effects. The player
-	 * only regains control once their status-damage animation has finished.
+	 * Begins the player's turn by evaluating their status effects. The player only
+	 * regains control once every start-of-turn status animation has finished — the
+	 * damage numbers and any death a status effect causes (see {@link #advanceTurns}).
 	 */
 	private void beginPlayerTurn() {
-		int frames = tickStatusEffects(Side.PLAYER);
+		tickStatusEffects(Side.PLAYER);
 		phase = Phase.PLAYER_TURN_STATUS;
-		attackEndTick = tick + frames; // wait for the status-damage animation
 	}
 
 	/**
 	 * Evaluates start-of-turn status effects for every unit on the given side:
 	 * each effect deals its damage (shown as a floating number with the effect's
-	 * icon), ages by a turn, and is removed when it expires. Units killed by an
-	 * effect are taken out of the simulation and left to drain on screen. Returns
-	 * the number of frames the turn should wait for the damage animation to finish
-	 * (0 when no effect dealt damage).
+	 * icon), ages by a turn, and is removed when it expires. A unit killed by an
+	 * effect is taken out of the simulation and left on screen to play out its
+	 * death; the turn waits for that to finish before proceeding (see
+	 * {@link #advanceTurns}).
 	 */
-	private int tickStatusEffects(Side side) {
-		int endTick = tick;
+	private void tickStatusEffects(Side side) {
 		for (PlacedUnit unit : sim.placedUnits()) {
 			if (unit.getSide() != side)
 				continue;
@@ -809,15 +841,11 @@ public class BattleField extends JComponent {
 				BufferedImage icon = family != null ? loadIcon(family.getUiIcon()) : null;
 				// Play the effect's sound as its damage number appears.
 				String sound = family != null ? family.getSound() : null;
-				endTick = Math.max(endTick,
-						spawnDamageNumber(side, unit.getCell(), st.damageDealt(), icon, sound, false));
+				spawnDamageNumber(side, unit.getCell(), st.damageDealt(), icon, sound, false);
 			}
-			if (unit.isDead()) {
-				sim.remove(unit);
-				dyingUnits.add(unit);
-			}
+			if (unit.isDead())
+				beginDying(unit);
 		}
-		return endTick - tick;
 	}
 
 	// --- Painting ----------------------------------------------------------
@@ -1035,11 +1063,62 @@ public class BattleField extends JComponent {
 			unit.animateBars(BAR_ANIM_FRAMES);
 	}
 
-	/** Drains dying units' bars, dropping each once its drain has finished. */
+	/**
+	 * Takes a just-killed unit off the board but keeps it on screen to die. The
+	 * cell is freed at once so it can no longer be hit or act; the unit then
+	 * drains its health bar and plays its death animation (see
+	 * {@link #updateDyingUnits}).
+	 */
+	private void beginDying(PlacedUnit unit) {
+		sim.remove(unit);
+		dyingUnits.add(unit);
+	}
+
+	/**
+	 * Whether no attack sequence is mid-animation — the firing unit has played out
+	 * every attack of its ability. True between turns and during the status/advance
+	 * phases. A unit's death animation and death-spawn wait for this so a unit killed
+	 * early in a multi-hit attack does not die before the barrage finishes.
+	 */
+	private boolean attacksFinished() {
+		return attacksRemaining <= 0 && tick >= attackAnimEndTick;
+	}
+
+	/**
+	 * Advances each dying unit: first its health bar drains, then (once the bar has
+	 * settled and the attacker has finished all its attack animations) it plays its
+	 * death animation, and once that finishes the unit is dropped and its
+	 * death-spawn unit (if any) takes the tile it leaves behind.
+	 */
 	private void updateDyingUnits() {
-		for (PlacedUnit unit : dyingUnits)
-			unit.animateBars(BAR_ANIM_FRAMES);
-		dyingUnits.removeIf(PlacedUnit::barsSettled);
+		for (int i = dyingUnits.size() - 1; i >= 0; i--) {
+			PlacedUnit unit = dyingUnits.get(i);
+			if (!unit.isPlayingDeathAnimation()) {
+				// Phase 1: drain the bar. Once it has emptied and the attacker has
+				// played out all of its attacks, begin the death animation.
+				unit.animateBars(BAR_ANIM_FRAMES);
+				if (unit.barsSettled() && attacksFinished())
+					unit.startDeathAnimation(loadDeathAnimation(unit), tick);
+			} else if (unit.deathAnimationFinished(tick)) {
+				// Phase 2 finished: drop the unit and place its death-spawn (if any).
+				spawnDeathUnit(unit);
+				dyingUnits.remove(i);
+			}
+		}
+	}
+
+	/**
+	 * Replaces a unit that has finished dying with its configured death-spawn unit
+	 * on the same tile (at full health, ready to act on its side's next turn).
+	 * Does nothing when the unit has no death-spawn or its id is unknown.
+	 */
+	private void spawnDeathUnit(PlacedUnit dying) {
+		String spawnId = dying.getUnit().getDeathSpawnedUnit();
+		if (spawnId == null)
+			return;
+		Unit spawn = Unit.get(spawnId);
+		if (spawn != null)
+			sim.spawnAt(spawn, dying.getSide(), dying.getCell());
 	}
 
 	/** Plays any queued sounds whose scheduled tick has arrived. */
@@ -1130,9 +1209,8 @@ public class BattleField extends JComponent {
 				spawnDamageNumber(marker.side, marker.cell, dealt, marker.critical);
 			if (target.isDead()) {
 				// Take it out of the simulation now (so it cannot be hit or act
-				// again), but keep drawing it until its health bar finishes draining.
-				sim.remove(target);
-				dyingUnits.add(target);
+				// again), but keep drawing it while its death animation plays.
+				beginDying(target);
 				// Drop any status roll accumulated for this now-dead unit.
 				pendingStatus.remove(new BattleSimulator.SideCell(marker.side, marker.cell));
 			} else if (marker.ability != null) {
@@ -1249,9 +1327,12 @@ public class BattleField extends JComponent {
 				drawRankBadge(g, unit, c.getX(), c.getY());
 			}
 		}
-		// Keep showing dying units' bars as they drain to empty.
+		// Keep showing dying units' bars as they drain to empty; once the death
+		// animation takes over, the bar is dropped.
 		if (battleMode)
 			for (PlacedUnit unit : dyingUnits) {
+				if (unit.isPlayingDeathAnimation())
+					continue;
 				Point2D c = unitDrawCentre(unit);
 				drawHealthBar(g, unit, c.getX(), c.getY());
 			}
@@ -1350,6 +1431,15 @@ public class BattleField extends JComponent {
 			double centreX, double centreY, float alpha) {
 		Graphics2D g2 = (Graphics2D) g.create();
 		g2.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, alpha));
+
+		if (unit.isPlayingDeathAnimation()) {
+			// Once the health bar has drained, the death animation replaces the
+			// sprite; with no death animation nothing is drawn (it is off the board).
+			drawAnimation(g2, unit.getDeathAnimation(),
+					tick - unit.getDeathStartTick(), centreX, centreY);
+			g2.dispose();
+			return;
+		}
 
 		Animation attack = unit.getActiveAttack(tick);
 		Animation anim = (attack != null) ? attack : unit.getAnimation();

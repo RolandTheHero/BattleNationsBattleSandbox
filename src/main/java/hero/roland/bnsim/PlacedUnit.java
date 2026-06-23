@@ -41,6 +41,12 @@ public class PlacedUnit {
 	private Animation attackAnimation;
 	private int attackStartTick;
 
+	/** A one-shot death animation that replaces the sprite once the unit's health
+	 * bar has finished draining. */
+	private Animation deathAnimation;
+	private int deathStartTick;
+	private boolean playingDeathAnimation;
+
 	/** Status effects currently afflicting this unit (e.g. poison, stun). */
 	private final List<ActiveStatusEffect> statusEffects = new ArrayList<>();
 
@@ -347,6 +353,43 @@ public class PlacedUnit {
 	/** The tick at which the current attack animation started. */
 	public int getAttackStartTick() {
 		return attackStartTick;
+	}
+
+	/**
+	 * Starts this unit's death animation: a non-looping animation (which may be
+	 * {@code null}) played from {@code tick} in place of its sprite. Called once
+	 * the unit's health bar has finished draining.
+	 */
+	public void startDeathAnimation(Animation animation, int tick) {
+		playingDeathAnimation = true;
+		if (animation != null)
+			animation.setLoop(false);
+		this.deathAnimation = animation;
+		this.deathStartTick = tick;
+	}
+
+	/** Whether this unit's death animation is currently playing. */
+	public boolean isPlayingDeathAnimation() {
+		return playingDeathAnimation;
+	}
+
+	/** This unit's death animation, or {@code null} if none could be loaded. */
+	public Animation getDeathAnimation() {
+		return deathAnimation;
+	}
+
+	/** The tick at which the death animation started. */
+	public int getDeathStartTick() {
+		return deathStartTick;
+	}
+
+	/**
+	 * Whether the death animation has finished playing — {@code true} at once
+	 * when the unit has no death animation, so it is then removed without delay.
+	 */
+	public boolean deathAnimationFinished(int tick) {
+		return deathAnimation == null
+				|| tick - deathStartTick >= deathAnimation.getEndFrame();
 	}
 
 	private Animation loadAnimation() {
