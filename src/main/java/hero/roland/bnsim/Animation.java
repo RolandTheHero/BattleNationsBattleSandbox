@@ -1,5 +1,6 @@
 package hero.roland.bnsim;
 
+import java.awt.Color;
 import java.awt.Graphics2D;
 import java.awt.geom.Rectangle2D;
 import java.io.IOException;
@@ -132,6 +133,23 @@ public class Animation implements Drawable {
 		else if (num >= numFrames)
 			return;
 		timeline.drawFrameCached(num, g, xPos, yPos, bitmap.getTexture());
+	}
+
+	/**
+	 * Draws frame {@code num} recoloured to {@code color} at {@code strength}
+	 * opacity, masked by the sprite's shape, at the animation's current position.
+	 * Pairs with {@link #drawFrame} to pulse a status tint over the unit itself.
+	 */
+	public void drawFrameTinted(int num, Graphics2D g, Color color, float strength) {
+		num -= delay;
+		if (num < 0)
+			return;
+		if (loop)
+			num %= numFrames;
+		else if (num >= numFrames)
+			return;
+		timeline.drawFrameCachedTinted(num, g, xPos, yPos, bitmap.getTexture(),
+				color, strength);
 	}
 
 	@Override

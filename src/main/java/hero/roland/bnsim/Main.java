@@ -21,7 +21,7 @@ public class Main {
 
     private static final String WELCOME_TEXT =
         "<html><div style='text-align: center; width: 320px;'>"
-        + "Welcome to a Battle Nations Battle Simulator by RolandTheHero.<br><br>"
+        + "Welcome to a Battle Nations Battle Sandbox by RolandTheHero.<br><br>"
         + "Select the folder where the game files are located to get started."
         + "</div></html>";
 

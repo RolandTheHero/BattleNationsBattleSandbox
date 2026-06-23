@@ -1,5 +1,6 @@
 package hero.roland.bnsim;
 
+import java.awt.Color;
 import java.awt.Graphics2D;
 import java.awt.TexturePaint;
 import java.awt.geom.Rectangle2D;
@@ -91,6 +92,13 @@ public class Timeline {
 	public void drawFrameCached(int num, Graphics2D g, double x, double y,
 			TexturePaint texture) {
 		frames[num].drawCached(g, x, y, texture, scale);
+	}
+
+	/** Draws a frame at ({@code x}, {@code y}) recoloured to {@code color} at
+	 *  {@code strength} opacity, masked by the frame's own shape. */
+	public void drawFrameCachedTinted(int num, Graphics2D g, double x, double y,
+			TexturePaint texture, Color color, float strength) {
+		frames[num].drawCachedTinted(g, x, y, texture, scale, color, strength);
 	}
 
 	public static void load() throws IOException {

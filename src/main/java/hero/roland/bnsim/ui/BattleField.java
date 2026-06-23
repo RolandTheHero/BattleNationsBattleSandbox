@@ -900,8 +900,6 @@ public class BattleField extends JComponent {
 		}
 
 		drawUnits(g2);
-		if (battleMode)
-			drawStatusPulses(g2);
 		drawHitMarkers(g2);
 		drawDamageAnims(g2);
 		drawOverlays(g2);
@@ -1447,6 +1445,8 @@ public class BattleField extends JComponent {
 
 		if (!drawAnimation(g2, anim, frame, centreX, centreY))
 			drawToken(g2, unit, centreX, centreY);
+		else if (battleMode)
+			drawStatusPulse(g2, unit, anim, frame);
 		g2.dispose();
 	}
 
@@ -1501,31 +1501,27 @@ public class BattleField extends JComponent {
 	}
 
 	/**
-	 * Pulses a translucent tint over each afflicted unit's tile in its status
-	 * family's colour, oscillating at the family's pulse speed. The pulse only
-	 * begins once the effect's apply icon starts playing, and is timed from that
-	 * moment so it eases up from nothing rather than snapping mid-cycle.
+	 * Pulses the afflicted unit's own sprite in its status family's colour,
+	 * oscillating at the family's pulse speed by blending a colour overlay masked
+	 * to the sprite shape over the just-drawn unit. The pulse only begins once the
+	 * effect's apply icon starts playing, and is timed from that moment so it eases
+	 * up from nothing rather than snapping mid-cycle. {@code anim}/{@code frame} are
+	 * the animation and frame already drawn for this unit, so the tint lines up
+	 * exactly with the sprite.
 	 */
-	private void drawStatusPulses(Graphics2D g) {
-		for (PlacedUnit unit : sim.placedUnits()) {
-			ActiveStatusEffect effect = unit.getPulseEffect(tick);
-			if (effect == null)
-				continue;
-			StatusEffect.StatusFamily family = effect.getEffect().getFamily();
-			double speed = Math.max(0.1, family.getPulseSpeed());     // seconds per pulse
-			double period = speed * 1000.0 / FRAME_DELAY;             // frames per pulse
-			double elapsed = tick - effect.getDisplayStartTick();
-			double phase = (elapsed % period) / period;
-			float wave = (float) (0.5 - 0.5 * Math.cos(2 * Math.PI * phase));
-			float alpha = PULSE_MIN_ALPHA + wave * (PULSE_MAX_ALPHA - PULSE_MIN_ALPHA);
+	private void drawStatusPulse(Graphics2D g, PlacedUnit unit, Animation anim, int frame) {
+		ActiveStatusEffect effect = unit.getPulseEffect(tick);
+		if (effect == null)
+			return;
+		StatusEffect.StatusFamily family = effect.getEffect().getFamily();
+		double speed = Math.max(0.1, family.getPulseSpeed());     // seconds per pulse
+		double period = speed * 1000.0 / FRAME_DELAY;             // frames per pulse
+		double elapsed = tick - effect.getDisplayStartTick();
+		double phase = (elapsed % period) / period;
+		float wave = (float) (0.5 - 0.5 * Math.cos(2 * Math.PI * phase));
+		float alpha = PULSE_MIN_ALPHA + wave * (PULSE_MAX_ALPHA - PULSE_MIN_ALPHA);
 
-			Graphics2D g2 = (Graphics2D) g.create();
-			g2.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, alpha));
-			g2.setColor(parseHexColor(family.getColorHex()));
-			Point2D c = unitDrawCentre(unit);
-			g2.fillPolygon(geometry.diamondAt(c.getX(), c.getY()));
-			g2.dispose();
-		}
+		anim.drawFrameTinted(frame, g, parseHexColor(family.getColorHex()), alpha);
 	}
 
 	/** Draws the "effect applied" icons sinking and fading from afflicted tiles. */

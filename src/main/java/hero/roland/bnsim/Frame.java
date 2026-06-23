@@ -1,6 +1,7 @@
 package hero.roland.bnsim;
 
 import java.awt.AlphaComposite;
+import java.awt.Color;
 import java.awt.Composite;
 import java.awt.Graphics2D;
 import java.awt.Polygon;
@@ -12,6 +13,8 @@ import java.awt.geom.Rectangle2D;
 import java.awt.image.BufferedImage;
 import java.io.IOException;
 import java.lang.ref.SoftReference;
+import java.util.HashMap;
+import java.util.Map;
 
 import hero.roland.bnsim.util.FileFormatException;
 import hero.roland.bnsim.util.LittleEndianInputStream;
@@ -32,6 +35,14 @@ public class Frame {
 	private SoftReference<BufferedImage> spriteRef;
 	private TexturePaint spriteTexture;
 	private int spriteOx, spriteOy;
+	/**
+	 * Cache of the sprite recoloured to a solid tint with its alpha preserved, one
+	 * entry per tint colour, so a pulsing status overlay is a cheap blit rather than
+	 * a per-pixel rebuild every frame. Tied to {@link #spriteRef}'s texture; dropped
+	 * when the texture changes. Held softly so the JVM can reclaim it.
+	 */
+	private Map<Integer, SoftReference<BufferedImage>> tintCache;
+	private TexturePaint tintTexture;
 	/** This frame has no visible polygons, so there is nothing to draw or cache. */
 	private boolean spriteEmpty;
 	/** Frame too large to cache; it falls back to drawing its polygons directly. */
@@ -103,6 +114,68 @@ public class Frame {
 		g.setPaint(texture);
 		draw(g);
 		g.setTransform(old);
+	}
+
+	/**
+	 * Draws this frame recoloured to {@code color} and masked by its own shape, at
+	 * {@code strength} opacity, over ({@code x}, {@code y}) — the same blit
+	 * {@link #drawCached} performs, but tinted, so a unit's sprite itself can pulse
+	 * with a status colour. Does nothing for empty or uncacheable frames.
+	 */
+	public void drawCachedTinted(Graphics2D g, double x, double y,
+			TexturePaint texture, double scale, Color color, float strength) {
+		if (spriteEmpty || spriteTooBig)
+			return;
+		BufferedImage base = (spriteRef != null) ? spriteRef.get() : null;
+		if (base == null || texture != spriteTexture) {
+			base = renderSprite(texture, scale);
+			if (base == null) // became empty or too big to cache
+				return;
+			spriteRef = new SoftReference<>(base);
+			spriteTexture = texture;
+		}
+		BufferedImage tint = tintedSprite(base, texture, color);
+		Composite old = g.getComposite();
+		g.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, strength));
+		g.drawImage(tint, (int) Math.round(x) + spriteOx,
+				(int) Math.round(y) + spriteOy, null);
+		g.setComposite(old);
+	}
+
+	/**
+	 * Returns {@code base} recoloured to {@code color} with its alpha preserved,
+	 * caching one image per colour for the current texture.
+	 */
+	private BufferedImage tintedSprite(BufferedImage base, TexturePaint texture,
+			Color color) {
+		if (tintCache == null || texture != tintTexture) {
+			tintCache = new HashMap<>();
+			tintTexture = texture;
+		}
+		int key = color.getRGB();
+		SoftReference<BufferedImage> ref = tintCache.get(key);
+		BufferedImage tint = (ref != null) ? ref.get() : null;
+		if (tint == null) {
+			tint = recolour(base, color);
+			tintCache.put(key, new SoftReference<>(tint));
+		}
+		return tint;
+	}
+
+	/** A copy of {@code src} with every pixel's RGB set to {@code color} and its
+	 *  original alpha kept, giving a solid-colour silhouette of the sprite. */
+	private static BufferedImage recolour(BufferedImage src, Color color) {
+		int w = src.getWidth(), h = src.getHeight();
+		BufferedImage out = new BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB);
+		int rgb = color.getRGB() & 0x00FFFFFF;
+		int[] row = new int[w];
+		for (int y = 0; y < h; y++) {
+			src.getRGB(0, y, w, 1, row, 0, w);
+			for (int x = 0; x < w; x++)
+				row[x] = (row[x] & 0xFF000000) | rgb;
+			out.setRGB(0, y, w, 1, row, 0, w);
+		}
+		return out;
 	}
 
 	/**
