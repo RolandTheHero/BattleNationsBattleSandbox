@@ -130,6 +130,10 @@ public class BattleField extends JComponent {
 	 * before the battle starts via {@link #setCombatRulesEnabled} (the UnitMenu toggle). */
 	private boolean combatRulesEnabled = true;
 
+	/** Status effect applied to a side at the start of each of its turns (whenever
+	 * the turn changes to it); null = none. Set via the UnitMenu "Environment" dropdown. */
+	private StatusEffect environmentStatusEffect;
+
 	/** Background image scaled to fill the component; null falls back to a colour. */
 	private BufferedImage background;
 
@@ -373,6 +377,16 @@ public class BattleField extends JComponent {
 	 */
 	public void setStatusImmunitiesEnabled(boolean enabled) {
 		Unit.setEnforceImmunities(enabled);
+	}
+
+	/**
+	 * Sets the status effect applied to a side at the start of each of its turns —
+	 * i.e. whenever the turn changes to it. {@code id} is a loaded status-effect id
+	 * (one of the "env" effects offered by the UnitMenu dropdown), or {@code null}
+	 * for none. Immune units are unaffected, as immunity is enforced on apply.
+	 */
+	public void setEnvironmentStatusEffect(String id) {
+		environmentStatusEffect = id != null ? StatusEffect.get(id) : null;
 	}
 
 	/** Listener notified when the selected attacker changes (null = cleared). */
@@ -742,10 +756,29 @@ public class BattleField extends JComponent {
 
 	/** Begins the turn that follows {@code actingSide}'s. */
 	private void nextTurnAfter(Side actingSide) {
+		// The turn is changing sides: apply the environment effect to the side it is
+		// changing to, just before that side's effects tick. This never fires for the
+		// player's opening turn, which starts the battle rather than following a turn.
+		applyEnvironmentStatusEffect(BattleSimulator.opponentOf(actingSide));
 		if (actingSide == Side.PLAYER)
 			beginEnemyTurn();
 		else
 			beginPlayerTurn();
+	}
+
+	/**
+	 * Applies the configured environment status effect (if any) to every unit on
+	 * {@code side} as its turn begins, just before its effects tick — so each unit
+	 * takes the environment's damage at the start of its turn. Re-applying every
+	 * turn refreshes the effect; immune units are unaffected (immunity is enforced
+	 * by {@link PlacedUnit#applyStatusEffect}).
+	 */
+	private void applyEnvironmentStatusEffect(Side side) {
+		if (environmentStatusEffect == null)
+			return;
+		for (PlacedUnit unit : sim.placedUnits())
+			if (unit.getSide() == side)
+				unit.applyStatusEffect(new ActiveStatusEffect(environmentStatusEffect, 0, tick));
 	}
 
 	/**

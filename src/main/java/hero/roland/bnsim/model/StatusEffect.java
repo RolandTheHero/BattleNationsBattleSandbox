@@ -118,6 +118,7 @@ public class StatusEffect {
         public double getPulseSpeed() { return pulseSpeed; }
         public String getSound() { return sound; }
         public String getUiIcon() { return uiIcon; }
+        public String toString() { return displayName; }
     }
     public static class SuppressionFamily extends StatusFamily {
         public SuppressionFamily() {

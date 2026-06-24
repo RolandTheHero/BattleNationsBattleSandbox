@@ -26,6 +26,7 @@ public class BattleFrame extends JFrame {
 		menu.setPlacer(arena.getField()::placeUnit);
 		menu.setSideClearer(arena.getField()::clearSide);
 		menu.setBackgroundSelector(arena.getField()::setBackgroundImage);
+		menu.setEnvironmentStatusEffectListener(arena.getField()::setEnvironmentStatusEffect);
 		menu.setCombatRulesListener(arena.getField()::setCombatRulesEnabled);
 		menu.setTargetTypesListener(arena.getField()::setTargetTypesEnabled);
 		menu.setStatusImmunitiesListener(arena.getField()::setStatusImmunitiesEnabled);

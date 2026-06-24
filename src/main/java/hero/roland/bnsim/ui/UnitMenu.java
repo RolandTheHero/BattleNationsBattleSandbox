@@ -43,7 +43,11 @@ public class UnitMenu extends JPanel {
 
 	private static final int EXPANDED_WIDTH = 250;
 
+	/** Dropdown label for "no environment status effect" (the default). */
+	private static final String NO_ENV_EFFECT = "None";
+
 	private final JComboBox<String> mapSelector = new JComboBox<>();
+	private final JComboBox<String> envEffectSelector = new JComboBox<>();
 	private final JPanel content = new JPanel(new BorderLayout(0, 6));
 
 	private final DefaultListModel<Unit> listModel = new DefaultListModel<>();
@@ -58,6 +62,7 @@ public class UnitMenu extends JPanel {
 	private BiConsumer<Unit, Side> placer;
 	private Consumer<Side> sideClearer;
 	private Consumer<String> backgroundSelector;
+	private Consumer<String> envEffectListener;
 	private Consumer<Boolean> combatRulesListener;
 	private Consumer<Boolean> targetTypesListener;
 	private Consumer<Boolean> statusImmunitiesListener;
@@ -66,7 +71,12 @@ public class UnitMenu extends JPanel {
 		setLayout(new BorderLayout());
 		setBorder(BorderFactory.createEmptyBorder(6, 6, 6, 6));
 
-		add(buildMapSelector(), BorderLayout.NORTH);
+		JPanel north = new JPanel();
+		north.setLayout(new BoxLayout(north, BoxLayout.Y_AXIS));
+		north.add(buildMapSelector());
+		north.add(Box.createVerticalStrut(4));
+		north.add(buildEnvEffectSelector());
+		add(north, BorderLayout.NORTH);
 
 		buildContent();
 		add(content, BorderLayout.CENTER);
@@ -238,6 +248,46 @@ public class UnitMenu extends JPanel {
 	/** Sets the callback invoked when a battlefield background is chosen. */
 	public void setBackgroundSelector(Consumer<String> selector) {
 		this.backgroundSelector = selector;
+	}
+
+	/**
+	 * Builds the environment-status-effect dropdown, listing every loaded status
+	 * effect whose id contains {@code "env"} with {@code None} as the default. The
+	 * chosen effect is applied to a side at the start of each of its turns (see
+	 * {@link BattleField#setEnvironmentStatusEffect}); selecting one notifies the
+	 * {@linkplain #setEnvironmentStatusEffectListener environment-effect listener}
+	 * with its id, or {@code null} for {@code None}.
+	 */
+	private JPanel buildEnvEffectSelector() {
+		envEffectSelector.addItem(NO_ENV_EFFECT); // default, listed first
+		try {
+			for (String id : GameFiles.active().getStatusEffectIds())
+				if (id.contains("env"))
+					envEffectSelector.addItem(id);
+		} catch (RuntimeException e) {
+			// Status effects not loaded yet: leave only the None option.
+		}
+		envEffectSelector.setSelectedItem(NO_ENV_EFFECT);
+		envEffectSelector.addActionListener(e -> {
+			Object sel = envEffectSelector.getSelectedItem();
+			if (envEffectListener != null)
+				envEffectListener.accept(NO_ENV_EFFECT.equals(sel) ? null : (String) sel);
+		});
+
+		JPanel panel = new JPanel(new BorderLayout(4, 0));
+		panel.add(new JLabel("Environment:"), BorderLayout.WEST);
+		panel.add(envEffectSelector, BorderLayout.CENTER);
+		return panel;
+	}
+
+	/**
+	 * Sets the callback invoked when the environment status effect is chosen, and
+	 * immediately pushes its current value so the field starts in sync.
+	 */
+	public void setEnvironmentStatusEffectListener(Consumer<String> listener) {
+		this.envEffectListener = listener;
+		Object sel = envEffectSelector.getSelectedItem();
+		listener.accept(NO_ENV_EFFECT.equals(sel) ? null : (String) sel);
 	}
 
 	private void loadUnits() {

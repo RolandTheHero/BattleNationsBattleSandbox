@@ -46,6 +46,9 @@ public interface GameFiles {
 	/** The status-effect family with the given id, or {@code null}. */
 	StatusEffect.StatusFamily getStatusFamily(String id);
 
+	/** The ids of every loaded status effect, sorted. */
+	String[] getStatusEffectIds();
+
 	// --- Sprites (loaded lazily, cached) ------------------------------------
 
 	/** The animation timeline with the given name, or {@code null}. */

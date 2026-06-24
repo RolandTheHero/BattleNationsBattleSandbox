@@ -115,6 +115,13 @@ public abstract class AbstractGameFiles implements GameFiles {
 		return statusFamilies.get(id);
 	}
 
+	@Override
+	public String[] getStatusEffectIds() {
+		String[] ids = statusEffects.keySet().toArray(new String[0]);
+		Arrays.sort(ids);
+		return ids;
+	}
+
 	// --- Sprite getters ------------------------------------------------------
 
 	@Override
