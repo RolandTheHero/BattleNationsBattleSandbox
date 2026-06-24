@@ -222,12 +222,13 @@ public class Unit implements Comparable<Unit> {
 		{ tagsByName.put(tagName(), this); }
 
 		public abstract String tagName();
-		public boolean isVehicle() { return false; }
+		public boolean isVehicle() { return this instanceof Vehicle; }
 		public boolean isInfantry() { return false; }
 
 		public static class Air extends UnitTag { public String tagName() { return "Air"; } }
 		public static class Fighter extends Air { public String tagName() { return "Fighter"; } }
 		public static class Helicopter extends Air { public String tagName() { return "Helicopter"; } }
+		public static class FlyingCritter extends Air { public String tagName() { return "FlyingCritter"; } }
 
 		public static class Ship extends UnitTag { public String tagName() { return "Ship"; } }
 		public static class Battleship extends Ship { public String tagName() { return "Battleship"; } }
@@ -240,13 +241,13 @@ public class Unit implements Comparable<Unit> {
 		public static class Vehicle extends Ground { public String tagName() { return "Vehicle"; } }
 		public static class Tank extends Vehicle { public String tagName() { return "Tank"; } }
 		public static class Defense extends Ground { public String tagName() { return "Defense"; } }
+		public static class Critter extends Ground { public String tagName() { return "Critter"; } }
 
 		public static class Metal extends UnitTag { public String tagName() { return "Metal"; } }
 
 		public static class Fast extends UnitTag { public String tagName() { return "Fast"; } }
 
-		public static class Critter extends UnitTag { public String tagName() { return "Critter"; } }
-		public static class Spiderwasp extends Critter { public String tagName() { return "Spiderwasp"; } }
+		public static class Spiderwasp extends UnitTag { public String tagName() { return "Spiderwasp"; } }
 
 		public static class Ignorable extends UnitTag { public String tagName() { return "Ignorable"; } }
 
@@ -261,10 +262,8 @@ public class Unit implements Comparable<Unit> {
 		public static final UnitTag METAL = new Metal();
 
 		// Construct one instance of every tag so its initializer block registers it
-		// in tagsByName; without this, fromString could only resolve METAL. The
-		// instances are intentionally discarded — creating them is the registration.
 		static {
-			new Air(); new Fighter(); new Helicopter();
+			new Air(); new Fighter(); new Helicopter(); new FlyingCritter();
 			new Ship(); new Battleship(); new Gunboat();
 			new Ground(); new Civilian(); new Soldier(); new Sniper();
 			new Vehicle(); new Tank(); new Defense();
