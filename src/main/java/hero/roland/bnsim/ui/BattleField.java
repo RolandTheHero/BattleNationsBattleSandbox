@@ -1700,15 +1700,23 @@ public class BattleField extends JComponent {
 				StatusApplyVisual visual = group.get(i);
 				float t = (tick - visual.startTick) / (float) STATUS_APPLY_FRAMES;
 				Point2D c = geometry.cellCentre(visual.side, visual.cell);
-				// Centre the row of icons on the tile: each is offset from centre
-				// by its position relative to the middle of the group.
+				// Scale the icon to fit within a size-square box while keeping its
+				// natural aspect ratio, so non-square icons aren't squashed.
+				int iw = visual.icon.getWidth();
+				int ih = visual.icon.getHeight();
+				double scale = size / (double) Math.max(iw, ih);
+				int dw = (int) Math.round(iw * scale);
+				int dh = (int) Math.round(ih * scale);
+				// Centre the row of icons on the tile: each box is offset from centre
+				// by its position relative to the middle of the group, and the icon is
+				// centred within its box.
 				double offset = (i - (count - 1) / 2.0) * size;
-				int x = (int) Math.round(c.getX() - size / 2.0 + offset);
-				int y = (int) Math.round(c.getY() - size / 2.0 + t * STATUS_APPLY_DROP);
+				int x = (int) Math.round(c.getX() + offset - dw / 2.0);
+				int y = (int) Math.round(c.getY() - dh / 2.0 + t * STATUS_APPLY_DROP);
 
 				Graphics2D g2 = (Graphics2D) g.create();
 				g2.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, 1f - t));
-				g2.drawImage(visual.icon, x, y, size, size, null);
+				g2.drawImage(visual.icon, x, y, dw, dh, null);
 				g2.dispose();
 			}
 		}
