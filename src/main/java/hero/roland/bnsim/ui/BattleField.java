@@ -19,6 +19,7 @@ import java.util.Comparator;
 import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
@@ -1678,22 +1679,38 @@ public class BattleField extends JComponent {
 
 	/** Draws the "effect applied" icons sinking and fading from afflicted tiles. */
 	private void drawStatusApplyVisuals(Graphics2D g) {
+		// Effects applied to the same tile at the same moment share a centre, so
+		// group them and lay each group's icons out in a row rather than stacking
+		// them all on the same spot.
+		Map<String, List<StatusApplyVisual>> groups = new LinkedHashMap<>();
 		for (StatusApplyVisual visual : statusApplyVisuals) {
 			if (visual.icon == null)
 				continue;
 			int elapsed = tick - visual.startTick;
 			if (elapsed < 0 || elapsed >= STATUS_APPLY_FRAMES)
 				continue;
-			float t = elapsed / (float) STATUS_APPLY_FRAMES;
-			Point2D c = geometry.cellCentre(visual.side, visual.cell);
-			int size = STATUS_APPLY_ICON;
-			int x = (int) Math.round(c.getX() - size / 2.0);
-			int y = (int) Math.round(c.getY() - size / 2.0 + t * STATUS_APPLY_DROP);
+			String key = visual.side + "|" + visual.cell + "|" + visual.startTick;
+			groups.computeIfAbsent(key, k -> new ArrayList<>()).add(visual);
+		}
 
-			Graphics2D g2 = (Graphics2D) g.create();
-			g2.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, 1f - t));
-			g2.drawImage(visual.icon, x, y, size, size, null);
-			g2.dispose();
+		int size = STATUS_APPLY_ICON;
+		for (List<StatusApplyVisual> group : groups.values()) {
+			int count = group.size();
+			for (int i = 0; i < count; i++) {
+				StatusApplyVisual visual = group.get(i);
+				float t = (tick - visual.startTick) / (float) STATUS_APPLY_FRAMES;
+				Point2D c = geometry.cellCentre(visual.side, visual.cell);
+				// Centre the row of icons on the tile: each is offset from centre
+				// by its position relative to the middle of the group.
+				double offset = (i - (count - 1) / 2.0) * size;
+				int x = (int) Math.round(c.getX() - size / 2.0 + offset);
+				int y = (int) Math.round(c.getY() - size / 2.0 + t * STATUS_APPLY_DROP);
+
+				Graphics2D g2 = (Graphics2D) g.create();
+				g2.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, 1f - t));
+				g2.drawImage(visual.icon, x, y, size, size, null);
+				g2.dispose();
+			}
 		}
 	}
 
