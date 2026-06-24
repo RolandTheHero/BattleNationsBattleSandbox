@@ -50,6 +50,8 @@ public class UnitMenu extends JPanel {
 	private final JList<Unit> unitList = new JList<>(listModel);
 	private final JTextField search = new JTextField();
 	private final JCheckBox cooldownToggle = new JCheckBox("Cooldowns & ammo", true);
+	private final JCheckBox targetTypesToggle = new JCheckBox("Target types", true);
+	private final JCheckBox statusImmunitiesToggle = new JCheckBox("Status immunities", true);
 
 	private final List<Unit> allUnits = new ArrayList<>();
 
@@ -57,6 +59,8 @@ public class UnitMenu extends JPanel {
 	private Consumer<Side> sideClearer;
 	private Consumer<String> backgroundSelector;
 	private Consumer<Boolean> combatRulesListener;
+	private Consumer<Boolean> targetTypesListener;
+	private Consumer<Boolean> statusImmunitiesListener;
 
 	public UnitMenu() {
 		setLayout(new BorderLayout());
@@ -88,10 +92,26 @@ public class UnitMenu extends JPanel {
 		cooldownToggle.setAlignmentX(LEFT_ALIGNMENT);
 		cooldownToggle.addActionListener(e -> fireCombatRules());
 
+		// Target-types toggle: when enabled abilities may only hit unit types in
+		// their targetable list; when disabled any ability can hit any unit.
+		targetTypesToggle.setToolTipText(
+				"Whether abilities can only hit unit types in their targetable list.");
+		targetTypesToggle.setAlignmentX(LEFT_ALIGNMENT);
+		targetTypesToggle.addActionListener(e -> fireTargetTypes());
+
+		// Status-immunities toggle: when enabled units resist status effects of the
+		// families they are immune to; when disabled any effect can be applied.
+		statusImmunitiesToggle.setToolTipText(
+				"Whether units' status-effect immunities are enforced.");
+		statusImmunitiesToggle.setAlignmentX(LEFT_ALIGNMENT);
+		statusImmunitiesToggle.addActionListener(e -> fireStatusImmunities());
+
 		JPanel top = new JPanel();
 		top.setLayout(new BoxLayout(top, BoxLayout.Y_AXIS));
 		searchPanel.setAlignmentX(LEFT_ALIGNMENT);
 		top.add(cooldownToggle);
+		top.add(targetTypesToggle);
+		top.add(statusImmunitiesToggle);
 		top.add(Box.createVerticalStrut(4));
 		top.add(searchPanel);
 
@@ -154,6 +174,34 @@ public class UnitMenu extends JPanel {
 	private void fireCombatRules() {
 		if (combatRulesListener != null)
 			combatRulesListener.accept(cooldownToggle.isSelected());
+	}
+
+	/**
+	 * Sets the callback invoked when the target-types toggle changes, and
+	 * immediately pushes its current value so the field starts in sync.
+	 */
+	public void setTargetTypesListener(Consumer<Boolean> listener) {
+		this.targetTypesListener = listener;
+		fireTargetTypes();
+	}
+
+	private void fireTargetTypes() {
+		if (targetTypesListener != null)
+			targetTypesListener.accept(targetTypesToggle.isSelected());
+	}
+
+	/**
+	 * Sets the callback invoked when the status-immunities toggle changes, and
+	 * immediately pushes its current value so the field starts in sync.
+	 */
+	public void setStatusImmunitiesListener(Consumer<Boolean> listener) {
+		this.statusImmunitiesListener = listener;
+		fireStatusImmunities();
+	}
+
+	private void fireStatusImmunities() {
+		if (statusImmunitiesListener != null)
+			statusImmunitiesListener.accept(statusImmunitiesToggle.isSelected());
 	}
 
 	private void clearSide(Side side) {

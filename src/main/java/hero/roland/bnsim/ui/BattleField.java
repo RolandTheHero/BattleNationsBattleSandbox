@@ -356,6 +356,25 @@ public class BattleField extends JComponent {
 		this.combatRulesEnabled = enabled;
 	}
 
+	/**
+	 * Sets whether abilities are restricted to the unit types in their targetable
+	 * list. When disabled every ability may hit any unit. Driven by the UnitMenu
+	 * toggle; applies immediately so the untargetable highlight updates live.
+	 */
+	public void setTargetTypesEnabled(boolean enabled) {
+		Ability.setEnforceTargetTypes(enabled);
+		repaint();
+	}
+
+	/**
+	 * Sets whether units' status-effect immunities are enforced. When disabled no
+	 * unit is immune, so any status effect can be applied to any unit. Driven by
+	 * the UnitMenu toggle.
+	 */
+	public void setStatusImmunitiesEnabled(boolean enabled) {
+		Unit.setEnforceImmunities(enabled);
+	}
+
 	/** Listener notified when the selected attacker changes (null = cleared). */
 	public void setAttackerSelectedListener(Consumer<PlacedUnit> listener) {
 		this.attackerSelectedListener = listener;

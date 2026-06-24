@@ -28,6 +28,13 @@ public class Unit implements Comparable<Unit> {
 	private Set<StatusEffect.StatusFamily> statusEffectImmunities;
 	private String deathSpawnedUnit;
 
+	/**
+	 * Whether {@link #isImmuneTo} enforces units' status-effect immunities. When
+	 * false no unit is immune, so any status effect can be applied to any unit.
+	 * Toggled from the UnitMenu's "Status immunities" setting.
+	 */
+	private static boolean enforceImmunities = true;
+
 	/** The unit with the given id from the active bundle, or {@code null}. */
 	public static Unit get(String id) {
 		return GameFiles.active().getUnit(id);
@@ -140,11 +147,22 @@ public class Unit implements Comparable<Unit> {
 	}
 
 	/**
+	 * Sets whether {@link #isImmuneTo} enforces units' status-effect immunities.
+	 * When disabled no unit is immune. Driven by the UnitMenu's "Status immunities"
+	 * toggle.
+	 */
+	public static void setEnforceImmunities(boolean enforce) {
+		enforceImmunities = enforce;
+	}
+
+	/**
 	 * Whether this unit is immune to status effects of the given family. A
 	 * {@code null} family is never immune (an effect with no family cannot match).
+	 * When immunity enforcement is disabled (see {@link #setEnforceImmunities}) no
+	 * unit is ever immune.
 	 */
 	public boolean isImmuneTo(StatusEffect.StatusFamily family) {
-		return family != null && statusEffectImmunities.contains(family);
+		return enforceImmunities && family != null && statusEffectImmunities.contains(family);
 	}
 
 	public Animation getBackAnimation() throws IOException {
