@@ -305,8 +305,8 @@ public class Ability {
 		double rate = baseCritical;
 		if (target != null && criticalBonuses != null) {
 			for (Map.Entry<UnitTag, Double> bonus : criticalBonuses.entrySet()) {
-				if (target.hasTag(bonus.getKey()) && rate < bonus.getValue())
-					rate = bonus.getValue();
+				if (target.hasTag(bonus.getKey()))
+					rate += bonus.getValue();
 			}
 		}
 		return rate;

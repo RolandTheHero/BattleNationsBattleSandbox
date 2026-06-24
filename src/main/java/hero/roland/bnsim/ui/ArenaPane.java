@@ -206,7 +206,7 @@ public class ArenaPane extends JLayeredPane {
 	 */
 	private JToggleButton makeAttackButton(Unit.Attack attack, PlacedUnit unit) {
 		JToggleButton button = new JToggleButton();
-		button.setToolTipText(attack.getName());
+		button.setToolTipText(attack.getName() + " (" + attack.getAbility().getTag() + ")");
 		int cooldown = unit.getAttackCooldown(attack);
 		ImageIcon icon = attackIcon(attack.getAbility());
 		if (icon != null) {
