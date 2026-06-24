@@ -900,8 +900,9 @@ public class BattleField extends JComponent {
 			}
 		}
 
-		drawUnits(g2);
+		// Struck tiles flash red on the grid layer, beneath the units standing on them.
 		drawHitMarkers(g2);
+		drawUnits(g2);
 		drawDamageAnims(g2);
 		drawOverlays(g2);
 		drawStatusApplyVisuals(g2);
