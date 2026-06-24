@@ -37,7 +37,6 @@ import hero.roland.bnsim.util.GlobFilter;
  * demand and cached.
  */
 public abstract class AbstractGameFiles implements GameFiles {
-
 	protected final File bundleFolder;
 	private File passButton;
 	private File doNotTargetCircle;

@@ -12,7 +12,6 @@ import org.json.JSONObject;
 
 import hero.roland.bnsim.gamefiles.GameFiles;
 import hero.roland.bnsim.model.Ability.TargetSquare;
-import hero.roland.bnsim.model.Unit.UnitTag;
 
 public class Unit implements Comparable<Unit> {
     public static final int NONE = 0, PARTIAL = 1, BLOCKING = 2;
@@ -324,6 +323,7 @@ public class Unit implements Comparable<Unit> {
         private int firesoundFrame;
 		private int ammo; // Infinite if -1
 		private int reloadTime; // Turns to reload the ammo back to full
+		private int baseAttack; // Added to the ability's attack when calculating total offense
 
 		protected Weapon() {
 			name = "(None)";
@@ -352,6 +352,7 @@ public class Unit implements Comparable<Unit> {
 			rangeBonus = json.optInt("rangeBonus", 0);
 			ammo = json.optInt("ammo", -1);
 			reloadTime = json.optInt("reloadTime", 0);
+			baseAttack = json.optInt("base_ATK", 0);
 		}
 		public String getName() {
 			return name;
@@ -396,6 +397,10 @@ public class Unit implements Comparable<Unit> {
 		}
 		public int getReloadTime() {
 			return reloadTime;
+		}
+		/** Added to the ability's attack when computing the attacker's total offense. */
+		public int getBaseAttack() {
+			return baseAttack;
 		}
 		public String toString() {
 			return name;

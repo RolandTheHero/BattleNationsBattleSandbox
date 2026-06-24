@@ -227,8 +227,9 @@ public class BattleSimulator {
 
 	// --- Combat ------------------------------------------------------------
 
-	/** Damage multiplier applied to a shot that rolls a critical hit. */
-	private static final double CRIT_MULTIPLIER = 1.85;
+	/** Damage multiplier applied to a critical hit. Applied where the hit lands
+	 * (after the defender's graze roll), so a grazed hit never gets the boost. */
+	public static final double CRIT_MULTIPLIER = 1.85;
 
 	private final Random random = new Random();
 
@@ -359,6 +360,12 @@ public class BattleSimulator {
 		int maxDamage = attack.getMaxDamage(attacker.getRank());
 		Ability.DamageType damageType = ability.getDamageType();
 		double armorPiercing = Math.max(0, Math.min(1, ability.getArmorPiercingRate())); // Need to clamp to [0, 1] just in case of bad data??
+		// Total offense (weapon base attack + ability attack + rank accuracy, less any
+		// flat reduction from active status effects such as suppression), carried into
+		// each hit so the defender's graze chance can be rolled against it when the hit
+		// lands. TODO Clamped at 0 so heavy suppression cannot drive offense negative. Verify whether this is true in the real game
+		int offense = Math.max(0, attack.getWeapon().getBaseAttack() + ability.getAttack()
+				+ attacker.getAccuracy() - attacker.getOffenseReduction());
 
 		// Area offsets are authored from the player's perspective: +x is one
 		// tile to the player's right. The enemy faces the opposite way, so its
@@ -383,7 +390,7 @@ public class BattleSimulator {
 					// damage multiplier — so the target contribution here is 1.
 					addImpact(result, targetSide, aim, hit, shot, damageArea,
 							damageSteps, aoeDelay, xSign, rollDamage(minDamage, maxDamage),
-							damageType, armorPiercing, 1.0, crit);
+							damageType, armorPiercing, 1.0, crit, offense);
 				}
 			}
 		} else {
@@ -397,7 +404,7 @@ public class BattleSimulator {
 					addImpact(result, targetSide, aim, targetArea[t], targetSteps[t],
 							damageArea, damageSteps, aoeDelay, xSign,
 							rollDamage(minDamage, maxDamage), damageType, armorPiercing,
-							targetArea[t].getValue(), crit);
+							targetArea[t].getValue(), crit, offense);
 				}
 		}
 		return result;
@@ -416,12 +423,12 @@ public class BattleSimulator {
 			TargetSquare target, int targetStep, TargetSquare[] damageArea,
 			int[] damageSteps, int aoeDelay, int xSign, int baseDamage,
 			Ability.DamageType damageType, double armorPiercing, double targetValue,
-			boolean critical) {
+			boolean critical, int attackerOffense) {
 		int baseCol = aim.col() + xSign * target.getX();
 		int baseRow = aim.row() - target.getY();
-		// A critical shot scales its whole rolled damage, so every tile it splashes
-		// to shares the boost (and is flagged critical for the floating number).
-		double critMult = critical ? CRIT_MULTIPLIER : 1.0;
+		// The crit flag rides along on every tile the shot splashes to; its damage
+		// boost is applied where the hit lands, after the defender's graze roll (a
+		// grazed hit never crits), so the raw damage carried here is pre-crit.
 		for (int d = 0; d < damageArea.length; d++) {
 			int col = baseCol + xSign * damageArea[d].getX();
 			int row = baseRow - damageArea[d].getY();
@@ -429,9 +436,9 @@ public class BattleSimulator {
 				continue;
 			int delay = Math.max(0, aoeDelay * (targetStep + damageSteps[d]));
 			double value = targetValue * damageArea[d].getValue();
-			double rawDamage = baseDamage * value * critMult;
+			double rawDamage = baseDamage * value;
 			result.add(new Hit(targetSide, new Cell(col, row), delay,
-					rawDamage, damageType, armorPiercing, value, critical));
+					rawDamage, damageType, armorPiercing, value, critical, attackerOffense));
 		}
 	}
 
@@ -477,6 +484,8 @@ public class BattleSimulator {
 		int maxDamage = attack.getMaxDamage(attacker.getRank());
 		Ability.DamageType damageType = ability.getDamageType();
 		double armorPiercing = Math.max(0, Math.min(1, ability.getArmorPiercingRate()));
+		int offense = Math.max(0, attack.getWeapon().getBaseAttack() + ability.getAttack()
+				+ attacker.getAccuracy() - attacker.getOffenseReduction());
 		int xSign = attacker.getSide() == Side.PLAYER ? 1 : -1;
 		int[] targetSteps = sequenceSteps(targetArea);
 		int[] damageSteps = sequenceSteps(damageArea);
@@ -497,7 +506,7 @@ public class BattleSimulator {
 				addImpact(result, targetSide, origin.cell(), TargetSquare.SINGLE_TARGET,
 						targetSteps[t], damageArea, damageSteps, aoeDelay, xSign,
 						rollDamage(minDamage, maxDamage), damageType, armorPiercing,
-						targetArea[t].getValue(), crit);
+						targetArea[t].getValue(), crit, offense);
 			}
 		}
 		return result;
@@ -605,12 +614,14 @@ public class BattleSimulator {
 	 * damage type and armor-piercing fraction, and the damage-area value of this
 	 * tile (which scales both its damage and any status-effect chance). Tiles in
 	 * an area-of-effect ripple outwards using the ability's aoe delay. {@code critical}
-	 * is true when the shot rolled a crit (its raw damage already includes the crit
-	 * multiplier); all tiles splashed by one shot share that flag.
+	 * is true when the shot rolled a crit (the crit multiplier is applied when the hit
+	 * lands, not here); all tiles splashed by one shot share that flag. {@code attackerOffense}
+	 * is the attacker's total offense (ability attack plus rank accuracy), carried so the
+	 * defender's graze chance can be rolled when the hit lands.
 	 */
 	public record Hit(Side side, Cell cell, int delayFrames, double rawDamage,
 			Ability.DamageType damageType, double armorPiercing, double areaValue,
-			boolean critical) {
+			boolean critical, int attackerOffense) {
 	}
 
 	/** A cell together with the side of the battlefield it lies on. */

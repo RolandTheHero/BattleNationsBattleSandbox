@@ -70,20 +70,25 @@ public class BattleField extends JComponent {
 	private static final Color DAMAGE_COLOR = new Color(235, 45, 45);
 
 	/** Frames a floating damage number lives, and how far it rises (pixels). */
-	private static final int DAMAGE_FLOAT_FRAMES = 24;
-	private static final int DAMAGE_RISE = 42;
-	/** Point size of a normal damage number, and the larger size for a critical hit. */
-	private static final float DAMAGE_FONT_SIZE = 26f;
-	private static final float CRIT_DAMAGE_FONT_SIZE = 38f;
-	/** Critical-hit numbers are white; outlined in black this many pixels thick. */
+	private static final int DAMAGE_FLOAT_FRAMES = 40;
+	private static final int DAMAGE_RISE = 30;
+	/** Point size of a normal damage number, the larger size for a critical hit,
+	 * and the size of the "DODGE"/"MISS" indications. */
+	private static final float DAMAGE_FONT_SIZE = 32f;
+	private static final float CRIT_DAMAGE_FONT_SIZE = 36f;
+	private static final float DODGE_FONT_SIZE = 32f;
+	/** Critical-hit (and dodge) text is white, outlined in black this many pixels thick. */
 	private static final Color CRIT_DAMAGE_COLOR = Color.WHITE;
 	private static final int CRIT_OUTLINE = 2;
+	/** Grazed-hit numbers are grey; a dodge (graze with no damage) shows white "DODGE". */
+	private static final Color GRAZE_DAMAGE_COLOR = new Color(160, 160, 160);
+	private static final Color DODGE_COLOR = Color.WHITE;
 	/** Frames between successive numbers on one tile, and random spread (px). */
 	private static final int DAMAGE_STAGGER_FRAMES = 8;
-	private static final int DAMAGE_JITTER_X = 26;
+	private static final int DAMAGE_JITTER_X = 32;
 	private static final int DAMAGE_JITTER_Y = 12;
 	/** Size (px) of the status icon drawn beside a status-damage number. */
-	private static final int STATUS_NUMBER_ICON = 22;
+	private static final int STATUS_NUMBER_ICON = 36;
 
 	/** How far the "effect applied" icon sinks while fading. */
 	private static final int STATUS_APPLY_DROP = 24;
@@ -583,7 +588,7 @@ public class BattleField extends JComponent {
 			int start = base + hit.delayFrames();
 			hitMarkers.add(new HitMarker(hit.side(), hit.cell(), start,
 					hit.rawDamage(), hit.damageType(), hit.armorPiercing(),
-					hit.areaValue(), ability, hit.critical()));
+					hit.areaValue(), ability, hit.critical(), hit.attackerOffense()));
 			lastHit = Math.max(lastHit, start - tick);
 		}
 
@@ -1095,7 +1100,7 @@ public class BattleField extends JComponent {
 
 	/** Spawns an attack damage number, drawn as a critical hit when {@code critical}. */
 	private int spawnDamageNumber(Side side, Cell cell, int amount, boolean critical) {
-		return spawnDamageNumber(side, cell, amount, null, null, critical);
+		return spawnDamageNumber(side, cell, amount, null, null, critical, false, false, false);
 	}
 
 	/**
@@ -1110,11 +1115,23 @@ public class BattleField extends JComponent {
 	 */
 	private int spawnDamageNumber(Side side, Cell cell, int amount, BufferedImage icon,
 			String sound, boolean critical) {
+		return spawnDamageNumber(side, cell, amount, icon, sound, critical, false, false, false);
+	}
+
+	/**
+	 * As {@link #spawnDamageNumber(Side, Cell, int, BufferedImage, String, boolean)},
+	 * but also flags a grazed hit (drawn grey), a dodge (a graze that dealt no
+	 * damage, drawn as white "DODGE") or a miss (a hit whose damage rounded down to
+	 * nothing, drawn as grey "MISS").
+	 */
+	private int spawnDamageNumber(Side side, Cell cell, int amount, BufferedImage icon,
+			String sound, boolean critical, boolean grazed, boolean dodge, boolean miss) {
 		int slot = countDamageNumbersAt(side, cell);
 		int start = tick + slot * DAMAGE_STAGGER_FRAMES;
 		int dx = random.nextInt(2 * DAMAGE_JITTER_X + 1) - DAMAGE_JITTER_X;
 		int dy = random.nextInt(2 * DAMAGE_JITTER_Y + 1) - DAMAGE_JITTER_Y;
-		damageNumbers.add(new DamageNumber(side, cell, amount, start, dx, dy, icon, critical));
+		damageNumbers.add(new DamageNumber(side, cell, amount, start, dx, dy, icon,
+				critical, grazed, dodge, miss));
 		if (sound != null)
 			pendingSounds.add(new PendingSound(sound, start));
 		return start + DAMAGE_FLOAT_FRAMES;
@@ -1212,13 +1229,17 @@ public class BattleField extends JComponent {
 				continue;
 			float t = elapsed / (float) DAMAGE_FLOAT_FRAMES;
 			Point2D c = geometry.cellCentre(number.side, number.cell);
-			String text = "-" + number.amount;
+			String text = number.dodge ? "DODGE"
+					: number.miss ? "MISS"
+					: "-" + number.amount;
 
 			Graphics2D g2 = (Graphics2D) g.create();
 			g2.setComposite(AlphaComposite.getInstance(
 					AlphaComposite.SRC_OVER, 1f - t));
-			g2.setFont(g2.getFont().deriveFont(Font.BOLD,
-					number.critical ? CRIT_DAMAGE_FONT_SIZE : DAMAGE_FONT_SIZE));
+			float fontSize = number.critical ? CRIT_DAMAGE_FONT_SIZE
+					: number.dodge || number.miss ? DODGE_FONT_SIZE
+					: DAMAGE_FONT_SIZE;
+			g2.setFont(g2.getFont().deriveFont(Font.BOLD, fontSize));
 			int tw = g2.getFontMetrics().stringWidth(text);
 			int x = (int) Math.round(c.getX() - tw / 2.0 + number.dx);
 			int y = (int) Math.round(c.getY() + number.dy - t * DAMAGE_RISE);
@@ -1228,23 +1249,38 @@ public class BattleField extends JComponent {
 				g2.drawImage(number.icon, x - STATUS_NUMBER_ICON - 2, iconY,
 						STATUS_NUMBER_ICON, STATUS_NUMBER_ICON, null);
 			}
-			if (number.critical) {
-				// A crit reads as bigger white text ringed by a solid black outline.
+			if (number.critical || number.dodge || number.miss) {
+				// A crit, dodge or miss reads as big text ringed by a solid black
+				// outline so it stays legible over any tile.
 				g2.setColor(Color.BLACK);
 				for (int ox = -CRIT_OUTLINE; ox <= CRIT_OUTLINE; ox++)
 					for (int oy = -CRIT_OUTLINE; oy <= CRIT_OUTLINE; oy++)
 						if (ox != 0 || oy != 0)
 							g2.drawString(text, x + ox, y + oy);
-				g2.setColor(CRIT_DAMAGE_COLOR);
+				g2.setColor(number.miss ? GRAZE_DAMAGE_COLOR
+						: number.dodge ? DODGE_COLOR
+						: CRIT_DAMAGE_COLOR);
 				g2.drawString(text, x, y);
 			} else {
+				// Normal hits are red; a graze is grey.
+				Color color = number.grazed ? GRAZE_DAMAGE_COLOR : DAMAGE_COLOR;
 				g2.setColor(Color.BLACK);
 				g2.drawString(text, x + 1, y + 1);
-				g2.setColor(DAMAGE_COLOR);
+				g2.setColor(color);
 				g2.drawString(text, x, y);
 			}
 			g2.dispose();
 		}
+	}
+
+	/**
+	 * Rolls whether {@code target} grazes a hit from an attacker with the given
+	 * offense. The graze chance (percent) is the defender's defense minus the
+	 * attacker's offense plus a flat 5, so evenly-matched units graze 5% of hits.
+	 */
+	private boolean rollGraze(int attackerOffense, PlacedUnit target) {
+		double chancePercent = target.getDefense() - attackerOffense + 5;
+		return random.nextDouble() * 100 < chancePercent;
 	}
 
 	/** Applies each hit's damage when it lands, removing units killed by it. */
@@ -1270,32 +1306,56 @@ public class BattleField extends JComponent {
 				if (dmgAnim != null)
 					damageAnims.add(new DamageAnim(marker.side, marker.cell, dmgAnim, tick));
 			}
-			int dealt = target.applyDamage(marker.rawDamage,
+			// The defender's graze roll comes first: a grazed hit cuts the damage to the
+			// ability's secondary fraction — or to nothing (a dodge) when that is 0 — and
+			// never crits. Only a hit that is not grazed can land its critical multiplier.
+			double rawDamage = marker.rawDamage;
+			boolean grazed = false, dodge = false, critical = false;
+			if (marker.ability != null && rawDamage > 0
+					&& rollGraze(marker.attackerOffense, target)) {
+				grazed = true;
+				rawDamage *= marker.ability.getSecondaryDamageRatio();
+				dodge = marker.ability.getSecondaryDamageRatio() <= 0;
+			} else if (marker.critical) {
+				critical = true;
+				rawDamage *= BattleSimulator.CRIT_MULTIPLIER;
+			}
+			int dealt = target.applyDamage(rawDamage,
 					marker.damageType, marker.armorPiercing);
-			if (dealt > 0)
-				spawnDamageNumber(marker.side, marker.cell, dealt, marker.critical);
+			if (dodge)
+				spawnDamageNumber(marker.side, marker.cell, 0, null, null, false, true, true, false);
+			else if (dealt <= 0)
+				// The hit connected but its damage rounded down to nothing: a grey "MISS".
+				spawnDamageNumber(marker.side, marker.cell, 0, null, null, false, false, false, true);
+			else if (grazed)
+				spawnDamageNumber(marker.side, marker.cell, dealt, null, null, false, true, false, false);
+			else
+				spawnDamageNumber(marker.side, marker.cell, dealt, critical);
 			if (target.isDead()) {
 				// Take it out of the simulation now (so it cannot be hit or act
 				// again), but keep drawing it while its death animation plays.
 				beginDying(target);
 				// Drop any status roll accumulated for this now-dead unit.
 				pendingStatus.remove(new BattleSimulator.SideCell(marker.side, marker.cell));
-			} else if (marker.ability != null) {
+			} else if (marker.ability != null && !dodge) {
 				// Record the hit; the ability's status effects are rolled once, after
-				// the whole attack finishes (see applyPendingStatusEffects).
+				// the whole attack finishes (see applyPendingStatusEffects). A dodge
+				// avoids the hit entirely, so it applies no status effects.
 				accumulateStatus(marker, target, dealt);
 			}
 		}
 	}
 
 	/**
-	 * Records one of an attack's hits on a tile so its ability's status effects can
-	 * be rolled <em>once</em> for the whole attack — after every hit has landed —
-	 * rather than once per hit. The starting damage accumulates across the attack's
-	 * hits on the tile, and the chance uses the strongest area value that struck it.
+	 * Records one of an attack's hits on a tile so its ability's status effects (and
+	 * any distraction-based suppression) can be rolled <em>once</em> for the whole
+	 * attack — after every hit has landed — rather than once per hit. The starting
+	 * damage accumulates across the attack's hits on the tile, and the chance uses
+	 * the strongest area value that struck it.
 	 */
 	private void accumulateStatus(HitMarker marker, PlacedUnit target, int dealt) {
-		if (marker.ability.getStatusEffects().length == 0)
+		if (marker.ability.getStatusEffects().length == 0
+				&& !marker.ability.causesDistraction())
 			return;
 		BattleSimulator.SideCell key = new BattleSimulator.SideCell(marker.side, marker.cell);
 		StatusAccumulator acc = pendingStatus.get(key);
@@ -1332,7 +1392,8 @@ public class BattleField extends JComponent {
 	 * applies those that succeed. The chance is the effect's base chance scaled
 	 * by the tile's damage-area value; the effect's starting damage scales with the
 	 * total damage the attack dealt to the unit. A successful application shows the
-	 * family's effect icon on the tile once the attack animation has finished.
+	 * family's effect icon on the tile once the attack animation has finished. The
+	 * attack's distraction is then checked for suppression (see {@link #rollSuppression}).
 	 */
 	private void rollStatusEffects(StatusAccumulator acc) {
 		for (Ability.StatusEffectChance sec : acc.ability.getStatusEffects()) {
@@ -1340,27 +1401,49 @@ public class BattleField extends JComponent {
 			if (effect == null)
 				continue;
 			double chance = sec.chance() * acc.areaValue;
-			if (random.nextDouble() >= chance)
-				continue;
-			// A unit immune to the effect's family is unaffected: nothing is applied
-			// and no apply icon/sound is shown.
-			if (!acc.target.applyStatusEffect(
-					new ActiveStatusEffect(effect, acc.totalDealt, attackAnimEndTick)))
-				continue;
+			if (random.nextDouble() < chance)
+				applyStatusEffect(acc, effect);
+		}
+		rollSuppression(acc);
+	}
 
-			// Show the family's "applied" icon on the tile after the attack ends,
-			// play its sound at the same moment, and hold the turn until that
-			// apply animation has finished playing.
-			StatusEffect.StatusFamily family = effect.getFamily();
-			if (family != null) {
-				BufferedImage icon = loadIcon(family.getEffectIcon());
-				statusApplyVisuals.add(new StatusApplyVisual(
-						acc.side, acc.cell, icon, attackAnimEndTick));
-				if (family.getSound() != null)
-					pendingSounds.add(new PendingSound(family.getSound(), attackAnimEndTick));
-				attackEndTick = Math.max(attackEndTick,
-						attackAnimEndTick + STATUS_APPLY_FRAMES);
-			}
+	/**
+	 * Suppresses the struck unit when the attack distracts it past its bravery: the
+	 * damage dealt to the unit scaled by the ability's distraction, plus its flat
+	 * distraction bonus, must exceed the unit's bravery. A non-distracting ability
+	 * (or one whose distraction does not clear the unit's bravery) suppresses nothing.
+	 */
+	private void rollSuppression(StatusAccumulator acc) {
+		if (!acc.ability.causesDistraction())
+			return;
+		double distraction = acc.totalDealt * acc.ability.getDamageDistraction()
+				+ acc.ability.getDamageDistractionBonus();
+		if (distraction <= acc.target.getBravery())
+			return;
+		StatusEffect suppression = StatusEffect.get("suppression");
+		if (suppression != null)
+			applyStatusEffect(acc, suppression);
+	}
+
+	/**
+	 * Applies one status effect to the accumulated tile's unit, unless the unit is
+	 * immune to its family (then nothing happens). On success it shows the family's
+	 * "applied" icon on the tile after the attack ends, plays its sound at the same
+	 * moment, and holds the turn until that apply animation has finished playing.
+	 */
+	private void applyStatusEffect(StatusAccumulator acc, StatusEffect effect) {
+		if (!acc.target.applyStatusEffect(
+				new ActiveStatusEffect(effect, acc.totalDealt, attackAnimEndTick)))
+			return;
+		StatusEffect.StatusFamily family = effect.getFamily();
+		if (family != null) {
+			BufferedImage icon = loadIcon(family.getEffectIcon());
+			statusApplyVisuals.add(new StatusApplyVisual(
+					acc.side, acc.cell, icon, attackAnimEndTick));
+			if (family.getSound() != null)
+				pendingSounds.add(new PendingSound(family.getSound(), attackAnimEndTick));
+			attackEndTick = Math.max(attackEndTick,
+					attackAnimEndTick + STATUS_APPLY_FRAMES);
 		}
 	}
 
@@ -1707,11 +1790,13 @@ public class BattleField extends JComponent {
 		final Ability ability;
 		/** Whether the shot that produced this tile rolled a critical hit. */
 		final boolean critical;
+		/** Attacker's total offense, rolled against the defender's defense for a graze. */
+		final int attackerOffense;
 		boolean applied;
 
 		HitMarker(Side side, Cell cell, int startTick, double rawDamage,
 				Ability.DamageType damageType, double armorPiercing,
-				double areaValue, Ability ability, boolean critical) {
+				double areaValue, Ability ability, boolean critical, int attackerOffense) {
 			this.side = side;
 			this.cell = cell;
 			this.startTick = startTick;
@@ -1721,6 +1806,7 @@ public class BattleField extends JComponent {
 			this.areaValue = areaValue;
 			this.ability = ability;
 			this.critical = critical;
+			this.attackerOffense = attackerOffense;
 		}
 	}
 
@@ -1773,7 +1859,9 @@ public class BattleField extends JComponent {
 	}
 
 	/** A floating damage number that rises from a tile and fades out (red, or
-	 * larger white-on-black for a critical hit). */
+	 * larger white-on-black for a critical hit, or grey for a graze, white "DODGE"
+	 * for a graze that deals no damage, or grey "MISS" for a hit whose damage
+	 * rounded down to nothing). */
 	private static final class DamageNumber {
 		final Side side;
 		final Cell cell;
@@ -1785,9 +1873,16 @@ public class BattleField extends JComponent {
 		final BufferedImage icon;
 		/** Whether this number is for a critical hit (drawn bigger and white). */
 		final boolean critical;
+		/** Whether this number is for a grazed hit (drawn grey). */
+		final boolean grazed;
+		/** Whether this is a dodge — a graze with no damage (drawn as white "DODGE"). */
+		final boolean dodge;
+		/** Whether this is a miss — a hit whose damage rounded to 0 (grey "MISS"). */
+		final boolean miss;
 
 		DamageNumber(Side side, Cell cell, int amount, int startTick, int dx, int dy,
-				BufferedImage icon, boolean critical) {
+				BufferedImage icon, boolean critical, boolean grazed, boolean dodge,
+				boolean miss) {
 			this.side = side;
 			this.cell = cell;
 			this.amount = amount;
@@ -1796,6 +1891,9 @@ public class BattleField extends JComponent {
 			this.dy = dy;
 			this.icon = icon;
 			this.critical = critical;
+			this.grazed = grazed;
+			this.dodge = dodge;
+			this.miss = miss;
 		}
 	}
 

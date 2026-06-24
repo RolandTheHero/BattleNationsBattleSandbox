@@ -195,6 +195,33 @@ public class PlacedUnit {
 		return (unit.getMaxRank() >= 1 ? unit.getRank(rank).critical() : 0) / 100.0;
 	}
 
+	/** This unit's accuracy for the current rank (0 when the unit has no ranks);
+	 * part of its offense when attacking. */
+	public int getAccuracy() {
+		return unit.getMaxRank() >= 1 ? unit.getRank(rank).accuracy() : 0;
+	}
+
+	/** This unit's defense for the current rank (0 when the unit has no ranks);
+	 * drives its chance to graze incoming hits. */
+	public int getDefense() {
+		return unit.getMaxRank() >= 1 ? unit.getRank(rank).defense() : 0;
+	}
+
+	/** This unit's bravery for the current rank (0 when the unit has no ranks); a
+	 * distracting hit suppresses the unit when its scaled damage exceeds this. */
+	public int getBravery() {
+		return unit.getMaxRank() >= 1 ? unit.getRank(rank).bravery() : 0;
+	}
+
+	/** The total flat offense reduction from this unit's active status effects
+	 * (e.g. suppression); subtracted from its offense when it attacks. */
+	public int getOffenseReduction() {
+		int total = 0;
+		for (ActiveStatusEffect e : statusEffects)
+			total += e.getEffect().getOffenseDown();
+		return total;
+	}
+
 	public boolean isFullHealth() {
 		return currentHp >= getMaxHp() && currentArmor >= getMaxArmor();
 	}

@@ -43,6 +43,7 @@ public class OldGameFiles extends AbstractGameFiles {
 
 	@Override
 	protected void loadStatusEffects() throws IOException {
+		statusEffects.put("suppression", new StatusEffect.Suppression());
 		try {
 			JSONObject json = readJson("StatusEffectsConfig.json");
 			for (String key : json.keySet())

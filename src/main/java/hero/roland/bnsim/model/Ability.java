@@ -48,6 +48,10 @@ public class Ability {
 	//private Map<String, Prerequisites> prereqs;
 	private int cooldown, globalCooldown, ammoRequired, prepTime;
 	private Set<UnitTag> targetableTags;
+	private int attack; // Base offense stat, added to unit's rank accuracy for total offense
+	private double secondaryDamageRatio; // Multiplier to damage when grazed
+	private double damageDistraction;
+	private int damageDistractionBonus;
 
 	private Ability() {
 		tag = "none";
@@ -135,6 +139,10 @@ public class Ability {
 		ammoRequired = stats.optInt("ammoRequired", 0);
 		prepTime = stats.optInt("chargeTime", 0);
 		initTargets(stats.optJSONArray("targets"));
+		attack = stats.optInt("attack", 0);
+		secondaryDamageRatio = stats.optDouble("secondaryDamagePercent", 0d) / 100;
+		damageDistraction = stats.optDouble("damage_distraction", 0d);
+		damageDistractionBonus = stats.optInt("damage_distractionBonus", 0);
 	}
 
 	// private void initPrereqs(JSONObject json) {
@@ -288,6 +296,38 @@ public class Ability {
 
     public double getArmorPiercingRate() {
         return armorPiercingRate;
+    }
+
+    /** This ability's base offense stat, added to the attacker's rank accuracy
+     * for its total offense (used in the defender's graze chance). */
+    public int getAttack() {
+        return attack;
+    }
+
+    /** Fraction (0-1) of a hit's damage that lands when the defender grazes it;
+     * 0 means a graze negates the hit entirely (a dodge). */
+    public double getSecondaryDamageRatio() {
+        return secondaryDamageRatio;
+    }
+
+    /** Multiplier applied to the damage this ability deals a unit when checking
+     * whether the hit distracts (suppresses) it; see {@link #causesDistraction}. */
+    public double getDamageDistraction() {
+        return damageDistraction;
+    }
+
+    /** Flat amount added to a hit's scaled damage when checking distraction-based
+     * suppression. */
+    public int getDamageDistractionBonus() {
+        return damageDistractionBonus;
+    }
+
+    /** Whether this ability can suppress a unit through distraction — it has a
+     * non-zero distraction multiplier or bonus. When true, a hit suppresses the
+     * defender if {@code damage * distraction + distractionBonus} exceeds the
+     * defender's bravery. */
+    public boolean causesDistraction() {
+        return damageDistraction != 0 || damageDistractionBonus != 0;
     }
 
 	/** This ability's base critical-hit chance (0-1), before any per-target bonus. */
