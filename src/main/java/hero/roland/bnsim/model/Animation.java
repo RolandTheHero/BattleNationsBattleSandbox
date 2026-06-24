@@ -1,9 +1,12 @@
-package hero.roland.bnsim;
+package hero.roland.bnsim.model;
 
 import java.awt.Color;
 import java.awt.Graphics2D;
 import java.awt.geom.Rectangle2D;
 import java.io.IOException;
+
+import hero.roland.bnsim.GridPoint;
+import hero.roland.bnsim.gamefiles.GameFiles;
 
 public class Animation implements Drawable {
 	private Timeline timeline;
@@ -12,16 +15,15 @@ public class Animation implements Drawable {
 	private double xPos, yPos;
 	private boolean loop;
 
+	/** A new animation for the named timeline from the active bundle, or {@code null}. */
 	public static Animation get(String name) throws IOException {
-		Timeline timeline = Timeline.get(name);
-		if (timeline == null) return null;
-		return new Animation(timeline);
+		return GameFiles.active().getAnimation(name);
 	}
 
-	public Animation(Timeline timeline) throws IOException {
+	public Animation(Timeline timeline, GameFiles gf) throws IOException {
 		this.timeline = timeline;
 		this.numFrames = timeline.getNumFrames();
-		bitmap = Bitmap.get(timeline.getPackageName());
+		bitmap = gf.getBitmap(timeline.getPackageName());
 	}
 
 	public String getName() {

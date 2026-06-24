@@ -12,7 +12,10 @@ import java.util.Map;
 import java.util.Random;
 import java.util.Set;
 
-import hero.roland.bnsim.Ability.TargetSquare;
+import hero.roland.bnsim.gamefiles.GameFiles;
+import hero.roland.bnsim.model.Ability;
+import hero.roland.bnsim.model.Ability.TargetSquare;
+import hero.roland.bnsim.model.Unit;
 
 /**
  * Owns the placement state of the battlefield: which {@link PlacedUnit}
@@ -209,10 +212,10 @@ public class BattleSimulator {
 	public void playSound(String name) {
 		if (name == null || name.isBlank())
 			return;
-		File file = GameFiles.file(name);
+		File file = GameFiles.active().file(name);
 		if (!file.isFile()) {
 			for (String ext : new String[] { ".mp3", ".wav", ".caf" }) {
-				File candidate = GameFiles.file(name + ext);
+				File candidate = GameFiles.active().file(name + ext);
 				if (candidate.isFile()) {
 					file = candidate;
 					break;

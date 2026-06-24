@@ -1,39 +1,35 @@
-package hero.roland.bnsim;
+package hero.roland.bnsim.model;
 
 import java.awt.TexturePaint;
 import java.awt.geom.Rectangle2D;
 import java.awt.image.BufferedImage;
 import java.io.IOException;
-import java.lang.ref.SoftReference;
-import java.util.HashMap;
 import java.util.HashSet;
-import java.util.Map;
 import java.util.Set;
 
+import hero.roland.bnsim.gamefiles.GameFiles;
 import hero.roland.bnsim.util.FileFormatException;
 import hero.roland.bnsim.util.LittleEndianInputStream;
 
 public class Bitmap {
 
-	private static Map<String,SoftReference<Bitmap>> cache =
-			new HashMap<String,SoftReference<Bitmap>>();
+	/** Bitmaps whose texture has been replaced in memory, held from GC so the
+	 *  change survives (the bundle's cache holds only soft references). */
 	private static Set<Bitmap> modified = new HashSet<Bitmap>();
 
 	private String name;
 	private int width, height, bits;
 	private TexturePaint texture, originalTexture;
 
+	/** The bitmap with the given name from the active bundle (cached there). */
 	public static Bitmap get(String name) throws IOException {
-		String lc = name.toLowerCase();
-		Bitmap bmp = null;
-		SoftReference<Bitmap> bmpRef = cache.get(lc);
-		if (bmpRef != null)
-			bmp = bmpRef.get();
-		if (bmp == null) {
-			bmp = new Bitmap(name);
-			bmp.read();
-			cache.put(lc, new SoftReference<Bitmap>(bmp));
-		}
+		return GameFiles.active().getBitmap(name);
+	}
+
+	/** Reads a fresh bitmap by name from the given bundle. */
+	public static Bitmap read(GameFiles gf, String name) throws IOException {
+		Bitmap bmp = new Bitmap(name);
+		bmp.readFrom(gf);
 		return bmp;
 	}
 
@@ -71,8 +67,8 @@ public class Bitmap {
 		modified.remove(this);
 	}
 
-	private void read() throws IOException {
-		LittleEndianInputStream in = new LittleEndianInputStream(GameFiles.open(name + "_0.z2raw"));
+	private void readFrom(GameFiles gf) throws IOException {
+		LittleEndianInputStream in = new LittleEndianInputStream(gf.open(name + "_0.z2raw"));
 		try {
 			int ver = in.readInt();
 			if (ver < 0 || ver > 1)

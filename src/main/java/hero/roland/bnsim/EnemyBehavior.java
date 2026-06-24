@@ -1,5 +1,7 @@
 package hero.roland.bnsim;
 
+import hero.roland.bnsim.model.Unit;
+
 /**
  * Strategy for deciding what the enemy side does on its turn. Different
  * implementations can give the enemy different behaviour (e.g. random,

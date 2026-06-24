@@ -1,14 +1,13 @@
-package hero.roland.bnsim;
+package hero.roland.bnsim.model;
 
-import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
 
-import org.json.JSONException;
 import org.json.JSONObject;
 
+import hero.roland.bnsim.gamefiles.GameFiles;
+
 public class StatusEffect {
-    private static Map<String, StatusEffect> statusEffects = new HashMap<>();
 
     private int duration; // How many turns the effect lasts. The effect is removed after this amount of turns has passed
     private boolean diminishing; // If true, the damage of the effect is multiplied by 0.5^(n-1) where n is the number of turns this effect has lasted
@@ -25,24 +24,12 @@ public class StatusEffect {
     private Map<Ability.DamageType, Double> damageMods = new HashMap<>(); // Each damage type in the map replaces the HP resistances for that type of the afflicted unit for the duration of this effect. If the unit is afflicted by multiple status effects that affect the same damage type, the higher one applies
     private Map<Ability.DamageType, Double> armorDamageMods = new HashMap<>(); // Same as above but for armor.
 
-    public static void load() throws IOException {
-		try {
-			loadJson("StatusEffectsConfig.json");
-		} catch (JSONException e) {
-			throw new IllegalArgumentException("Json type error", e);
-		}
-	}
-    public static void loadJson(String filename) throws IOException {
-        JSONObject json = GameFiles.readJson(filename);
-        for (String key : json.keySet()) {
-            statusEffects.put(key, new StatusEffect(json.getJSONObject(key)));
-        }
-    }
+    /** The status effect with the given id from the active bundle, or {@code null}. */
     public static StatusEffect get(String id) {
-        return statusEffects.get(id);
+        return GameFiles.active().getStatusEffect(id);
     }
 
-    private StatusEffect(JSONObject stats) {
+    public StatusEffect(GameFiles gf, JSONObject stats) {
         duration = stats.optInt("duration", 1);
         diminishing = stats.optBoolean("dot_Diminishing", true);
         abilityDamageMultiplier = stats.optDouble("dot_AbilityDamageMult", 0d);
@@ -51,7 +38,7 @@ public class StatusEffect {
         if (damageTypeStr != null) {
             damageType = Ability.DamageType.fromString(damageTypeStr);
         }
-        family = StatusFamily.get(stats.optString("family", null));
+        family = gf.getStatusFamily(stats.optString("family", null));
         armorPiercingRate = stats.optDouble("dot_apPercent", 0);
         bonusDamage = stats.optInt("dot_BonusDamage", 0);
 
@@ -92,15 +79,11 @@ public class StatusEffect {
     public Double getArmorDamageMod(Ability.DamageType type) { return armorDamageMods.get(type); }
 
     public static class StatusFamily {
-        private static Map<String, StatusFamily> families = new HashMap<>();
 
-        public static void load() throws IOException {
-            JSONObject json = GameFiles.readJson("StatusEffectFamiliesConfig.json");
-            for (String key : json.keySet()) {
-                families.put(key, new StatusFamily(json.getJSONObject(key)));
-            }
+        /** The status-effect family with the given id from the active bundle, or {@code null}. */
+        public static StatusFamily get(String id) {
+            return GameFiles.active().getStatusFamily(id);
         }
-        public static StatusFamily get(String id) { return families.get(id); }
 
         private String colorHex; // Colour of the pulse for the afflicted unit in hex code (without hashtag)
         private String displayName; // Name of the effect
@@ -109,7 +92,7 @@ public class StatusEffect {
         private String sound; // Name of the sound file
         private String uiIcon; // Name of the icon file
 
-        private StatusFamily(JSONObject json) {
+        public StatusFamily(JSONObject json) {
             colorHex = json.optString("colorHex", "#FFFFFF");
             displayName = json.optString("displayName", "seUnknown");
             effectIcon = json.optString("effectIcon", "suppressor_firemod_icon") + "@2x.png";

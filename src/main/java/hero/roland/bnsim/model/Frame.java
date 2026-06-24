@@ -1,4 +1,4 @@
-package hero.roland.bnsim;
+package hero.roland.bnsim.model;
 
 import java.awt.AlphaComposite;
 import java.awt.Color;

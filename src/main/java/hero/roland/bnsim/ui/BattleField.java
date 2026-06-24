@@ -31,19 +31,19 @@ import javax.swing.SwingUtilities;
 import javax.swing.Timer;
 import javax.swing.event.MouseInputAdapter;
 
-import hero.roland.bnsim.Ability;
-import hero.roland.bnsim.Animation;
+import hero.roland.bnsim.ActiveStatusEffect;
 import hero.roland.bnsim.BattleSimulator;
 import hero.roland.bnsim.Cell;
 import hero.roland.bnsim.EnemyBehavior;
-import hero.roland.bnsim.GameFiles;
 import hero.roland.bnsim.GridGeometry;
 import hero.roland.bnsim.PlacedUnit;
 import hero.roland.bnsim.RandomEnemyBehavior;
 import hero.roland.bnsim.Side;
-import hero.roland.bnsim.StatusEffect;
-import hero.roland.bnsim.ActiveStatusEffect;
-import hero.roland.bnsim.Unit;
+import hero.roland.bnsim.gamefiles.GameFiles;
+import hero.roland.bnsim.model.Ability;
+import hero.roland.bnsim.model.Animation;
+import hero.roland.bnsim.model.StatusEffect;
+import hero.roland.bnsim.model.Unit;
 
 /**
  * The central battlefield component. In setup mode it draws the two parallel
@@ -360,7 +360,7 @@ public class BattleField extends JComponent {
 	public void setBackgroundImage(String name) {
 		background = null;
 		if (name != null) {
-			File file = GameFiles.file(name);
+			File file = GameFiles.active().file(name);
 			if (file.isFile()) {
 				try {
 					background = ImageIO.read(file);
@@ -1583,7 +1583,7 @@ public class BattleField extends JComponent {
 		if (iconCache.containsKey(name))
 			return iconCache.get(name);
 		BufferedImage img = null;
-		File file = GameFiles.file(name);
+		File file = GameFiles.active().file(name);
 		if (file.isFile()) {
 			try {
 				img = ImageIO.read(file);

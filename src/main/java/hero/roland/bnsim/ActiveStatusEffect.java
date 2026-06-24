@@ -1,5 +1,7 @@
 package hero.roland.bnsim;
 
+import hero.roland.bnsim.model.StatusEffect;
+
 /**
  * A single {@link StatusEffect} currently afflicting a {@link PlacedUnit}. The
  * {@link StatusEffect} is the shared, immutable definition (loaded from config);

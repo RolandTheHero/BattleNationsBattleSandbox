@@ -15,6 +15,7 @@ import javax.swing.JPanel;
 import javax.swing.SwingConstants;
 import javax.swing.SwingUtilities;
 
+import hero.roland.bnsim.gamefiles.GameFiles;
 import hero.roland.bnsim.ui.BattleFrame;
 
 public class Main {

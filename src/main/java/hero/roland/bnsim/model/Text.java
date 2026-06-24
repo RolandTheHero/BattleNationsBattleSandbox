@@ -1,11 +1,6 @@
-package hero.roland.bnsim;
+package hero.roland.bnsim.model;
 
-import java.io.IOException;
-import java.util.HashMap;
-import java.util.Map;
-
-import org.json.JSONException;
-import org.json.JSONObject;
+import hero.roland.bnsim.gamefiles.GameFiles;
 
 public class Text {
     private Text() {}
@@ -34,27 +29,8 @@ public class Text {
         public String deltaFilename() { return deltaFilename; }
     }
 
-	private static Map<String, String> text = new HashMap<String, String>();
-
-	public static void load() throws IOException {
-		try {
-			loadJson(Language.EN.filename());
-			loadJson(Language.EN.deltaFilename());
-		} catch (JSONException e) {
-			throw new IllegalArgumentException("Json type error", e);
-		}
-	}
-
-	private static void loadJson(String file) throws IOException {
-        JSONObject json = GameFiles.readJson(file);
-		for (String key : json.keySet()) {
-			String str = json.getString(key);
-			text.put(key.toLowerCase(), str);
-		}
-	}
-
+	/** The localized string for {@code key} from the active bundle, or {@code null}. */
 	public static String get(String key) {
-		if (key == null) return null;
-		return text.get(key.toLowerCase());
+		return GameFiles.active().getText(key);
 	}
 }

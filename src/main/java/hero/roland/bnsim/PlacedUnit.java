@@ -5,6 +5,11 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
+import hero.roland.bnsim.model.Ability;
+import hero.roland.bnsim.model.Animation;
+import hero.roland.bnsim.model.StatusEffect;
+import hero.roland.bnsim.model.Unit;
+
 /**
  * A {@link Unit} placed on the battlefield: which unit, which side, and which
  * cell it currently occupies. It also owns the unit's idle {@link Animation},

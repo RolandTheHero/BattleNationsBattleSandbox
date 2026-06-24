@@ -4,6 +4,9 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
 
+import hero.roland.bnsim.model.Ability;
+import hero.roland.bnsim.model.Unit;
+
 /**
  * A simple enemy AI: it collects every (enemy unit, ability, reachable player
  * unit) combination — respecting each attack's range and the player units'

@@ -31,9 +31,9 @@ import javax.swing.ListSelectionModel;
 import javax.swing.event.DocumentEvent;
 import javax.swing.event.DocumentListener;
 
-import hero.roland.bnsim.GameFiles;
 import hero.roland.bnsim.Side;
-import hero.roland.bnsim.Unit;
+import hero.roland.bnsim.gamefiles.GameFiles;
+import hero.roland.bnsim.model.Unit;
 
 /**
  * A collapsible side menu for searching the loaded {@link Unit}s and adding a
@@ -156,7 +156,7 @@ public class UnitMenu extends JPanel {
 	private JPanel buildMapSelector() {
 		Set<String> names = new LinkedHashSet<>();
 		names.add("BattleMap.png"); // default, listed first
-		for (File f : GameFiles.glob("BattleMap*.png"))
+		for (File f : GameFiles.active().glob("BattleMap*.png"))
 			names.add(f.getName());
 		for (String n : names)
 			mapSelector.addItem(n);

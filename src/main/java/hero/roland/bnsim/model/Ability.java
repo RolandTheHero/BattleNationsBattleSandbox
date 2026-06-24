@@ -1,4 +1,4 @@
-package hero.roland.bnsim;
+package hero.roland.bnsim.model;
 
 import java.io.IOException;
 import java.util.Arrays;
@@ -8,13 +8,16 @@ import java.util.Map;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
+import hero.roland.bnsim.gamefiles.GameFiles;
+
 public class Ability {
 	public static final int LOF_CONTACT = 0, LOF_DIRECT = 1,
 			LOF_PRECISE = 2, LOF_INDIRECT = 3;
 
 	public static final Ability NO_ABILITY = new Ability();
 
-	private static Map<String, Ability> abilities;
+	/** The bundle this ability was loaded from ({@code null} for {@link #NO_ABILITY}). */
+	private GameFiles gf;
 
 	private String tag, name;
 	private String icon;
@@ -41,16 +44,6 @@ public class Ability {
 	private Map<String, Double> criticalBonuses;
 	//private Map<String, Prerequisites> prereqs;
 
-	public static void load() throws IOException {
-		abilities = new HashMap<String,Ability>();
-		JSONObject damageAnim = GameFiles.readJson("DamageAnimConfig.json");
-		JSONObject json = GameFiles.readJson("BattleAbilities.json");
-		for (String key : json.keySet()) {
-			Ability abil = new Ability(key, json.getJSONObject(key), damageAnim);
-			abilities.put(key, abil);
-		}
-	}
-
 	private Ability() {
 		tag = "none";
 		name = "(None)";
@@ -58,9 +51,10 @@ public class Ability {
 		maxRange = 5;
 	}
 
-	private Ability(String tag, JSONObject json, JSONObject dmgAnim) {
+	public Ability(GameFiles gf, String tag, JSONObject json, JSONObject dmgAnim) {
+		this.gf = gf;
 		this.tag = tag;
-		name = Text.get(json.optString("name", null));
+		name = gf.getText(json.optString("name", null));
 		icon = json.getString("icon");
 		if (!icon.endsWith(".png")) icon += "@2x.png";
 		if (name == null) name = tag;
@@ -114,7 +108,7 @@ public class Ability {
 			statusEffects = new StatusEffectChance[statusEffectsJSON.length()];
 			int i = 0;
 			for (String effectId : statusEffectsJSON.keySet()) {
-				StatusEffect effect = StatusEffect.get(effectId);
+				StatusEffect effect = gf.getStatusEffect(effectId);
 				double chance = statusEffectsJSON.optDouble(effectId, 0d) / 100.0; // Chance is from 0 to 100, so normalise to 0-1.
 				statusEffects[i++] = new StatusEffectChance(effect, chance);
 			}
@@ -167,8 +161,9 @@ public class Ability {
 		return json.optDouble(name, defaultVal);
 	}
 
+	/** The ability with the given tag from the active bundle, or {@code null}. */
 	public static Ability get(String tag) {
-		return abilities.get(tag);
+		return GameFiles.active().getAbility(tag);
 	}
 
 	public String getTag() {

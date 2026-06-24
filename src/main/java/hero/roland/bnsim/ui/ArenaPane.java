@@ -31,14 +31,14 @@ import javax.swing.JSlider;
 import javax.swing.JToggleButton;
 import javax.swing.SwingConstants;
 
-import hero.roland.bnsim.Ability;
 import hero.roland.bnsim.BattleSimulator;
-import hero.roland.bnsim.GameFiles;
 import hero.roland.bnsim.MusicPlayer;
 import hero.roland.bnsim.PlacedUnit;
 import hero.roland.bnsim.Side;
 import hero.roland.bnsim.SoundPlayer;
-import hero.roland.bnsim.Unit;
+import hero.roland.bnsim.gamefiles.GameFiles;
+import hero.roland.bnsim.model.Ability;
+import hero.roland.bnsim.model.Unit;
 
 /**
  * Hosts the {@link BattleField} together with the overlaid battle controls:
@@ -120,7 +120,7 @@ public class ArenaPane extends JLayeredPane {
 		viewEnemyButton.setSelected(false);
 		viewEnemyButton.setVisible(battle);
 		if (battle)
-			music.loop(GameFiles.file("battle_01.mp3"));
+			music.loop(GameFiles.active().file("battle_01.mp3"));
 		else {
 			music.stop();
 			attackPanel.setVisible(false);
@@ -322,7 +322,7 @@ public class ArenaPane extends JLayeredPane {
 
 	/** Loads the Pass button image at its native size, or null if it can't be read. */
 	private BufferedImage loadPassButtonImage() {
-		File file = GameFiles.getPassButton();
+		File file = GameFiles.active().getPassButton();
 		if (file == null || !file.isFile())
 			return null;
 		try {
@@ -335,7 +335,7 @@ public class ArenaPane extends JLayeredPane {
 	private BufferedImage loadImage(String name, int maxSize) {
 		if (name == null)
 			return null;
-		File file = GameFiles.file(name);
+		File file = GameFiles.active().file(name);
 		if (!file.isFile())
 			return null;
 		try {

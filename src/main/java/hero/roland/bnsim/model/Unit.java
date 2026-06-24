@@ -1,4 +1,4 @@
-package hero.roland.bnsim;
+package hero.roland.bnsim.model;
 
 import java.io.IOException;
 import java.util.Arrays;
@@ -8,16 +8,16 @@ import java.util.Map;
 import java.util.Set;
 
 import org.json.JSONArray;
-import org.json.JSONException;
 import org.json.JSONObject;
 
-import hero.roland.bnsim.Ability.TargetSquare;
-import hero.roland.bnsim.util.FileFormatException;
+import hero.roland.bnsim.gamefiles.GameFiles;
+import hero.roland.bnsim.model.Ability.TargetSquare;
 
 public class Unit implements Comparable<Unit> {
     public static final int NONE = 0, PARTIAL = 1, BLOCKING = 2;
 
-	private static Map<String, Unit> units;
+	/** The bundle this unit was loaded from. */
+	private final GameFiles gf;
 
     private int blocking;
 	private String id, name, shortName, side;
@@ -28,36 +28,24 @@ public class Unit implements Comparable<Unit> {
 	private Set<StatusEffect.StatusFamily> statusEffectImmunities;
 	private String deathSpawnedUnit;
 
-	public static void load() throws IOException {
-		units = new HashMap<String, Unit>();
-		try {
-			JSONObject json = GameFiles.readJson("BattleUnits.json");
-			for (String key : json.keySet()) {
-				units.put(key, new Unit(key, json.getJSONObject(key)));
-			}
-		}
-		catch (JSONException e) {
-			throw new FileFormatException("Json type error", e);
-		}
-	}
-
+	/** The unit with the given id from the active bundle, or {@code null}. */
 	public static Unit get(String id) {
-		return units.get(id);
+		return GameFiles.active().getUnit(id);
 	}
 
+	/** Every unit in the active bundle, sorted (by name then id). */
 	public static Unit[] getAll() {
-		Unit[] array = units.values().toArray(new Unit[units.size()]);
-		Arrays.sort(array);
-		return array;
+		return GameFiles.active().getUnits();
 	}
 
-	private Unit(String id, JSONObject json) {
+	public Unit(GameFiles gf, String id, JSONObject json) {
+		this.gf = gf;
 		this.id = id;
-		name = Text.get(json.optString("name", null));
+		name = gf.getText(json.optString("name", null));
 		if (name == null) name = id;
 		if (name.startsWith("Speciment ")) // fix game file typo
 			name = "Specimen" + name.substring(9);
-		shortName = Text.get(json.optString("shortName", null));
+		shortName = gf.getText(json.optString("shortName", null));
 		if (shortName == null) shortName = name;
 		side = json.optString("side", "Other");
 		backAnimName = json.optString("backIdleAnimation", null);
@@ -74,7 +62,7 @@ public class Unit implements Comparable<Unit> {
 		JSONArray statusEffectImmunitiesJson = json.optJSONArray("statusEffectImmunities", new JSONArray());
 		statusEffectImmunities = new HashSet<StatusEffect.StatusFamily>();
 		for (int i = 0; i < statusEffectImmunitiesJson.length(); i++) {
-			statusEffectImmunities.add(StatusEffect.StatusFamily.get(statusEffectImmunitiesJson.getString(i)));
+			statusEffectImmunities.add(gf.getStatusFamily(statusEffectImmunitiesJson.getString(i)));
 		}
 		deathSpawnedUnit = json.optString("deathSpawnedUnit", null);
 		deathAnimName = json.optString("deathAnimationName", "troopdeath");
@@ -315,7 +303,7 @@ public class Unit implements Comparable<Unit> {
 		}
 		protected Weapon(String tag, JSONObject json) {
 			this.tag = tag;
-			name = Text.get(json.optString("name", null));
+			name = gf.getText(json.optString("name", null));
 			if (name == null) name = tag;
 			frontAnimationName = json.optString("frontattackAnimation", null);
 			backAnimationName = json.optString("backattackAnimation", null);
@@ -382,7 +370,7 @@ public class Unit implements Comparable<Unit> {
 		private Weapon weapon;
 		//private Prerequisites prereq;
 		protected Attack(String tag, Weapon weapon) {
-			ability = Ability.get(tag);
+			ability = gf.getAbility(tag);
 			if (ability == null)
 				ability = Ability.NO_ABILITY;
 			this.weapon = weapon;

@@ -1,4 +1,4 @@
-package hero.roland.bnsim;
+package hero.roland.bnsim.model;
 
 import java.awt.Color;
 import java.awt.Graphics2D;
@@ -7,7 +7,6 @@ import java.awt.geom.Rectangle2D;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
-import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -15,37 +14,20 @@ import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
+import hero.roland.bnsim.gamefiles.GameFiles;
 import hero.roland.bnsim.util.FileFormatException;
 import hero.roland.bnsim.util.LittleEndianInputStream;
 
 public class Timeline {
-
-	private static Map<String, String> packageIndex;
-	private static Map<String, Timeline> animCache;
 
 	private String packageName, name;
 	private int xMin, xMax, yMin, yMax;
 	private Frame[] frames;
 	private double scale;
 
+	/** The timeline with the given name from the active bundle, or {@code null}. */
 	public static Timeline get(String name) throws IOException {
-		if (name == null) return null;
-		if (packageIndex == null) load();
-		String lc = name.toLowerCase();
-		if (!animCache.containsKey(lc)) {
-			String packname = packageIndex.get(lc);
-			if (packname == null) return null;
-			animCache.put(lc, null);
-			readTimeline(packname);
-		}
-		return animCache.get(lc);
-	}
-
-	public static String[] getAllNames() {
-		String[] names = new String[packageIndex.size()];
-		names = packageIndex.keySet().toArray(names);
-		Arrays.sort(names);
-		return names;
+		return GameFiles.active().getTimeline(name);
 	}
 
 	private Timeline(String name) {
@@ -101,29 +83,40 @@ public class Timeline {
 		frames[num].drawCachedTinted(g, x, y, texture, scale, color, strength);
 	}
 
-	public static void load() throws IOException {
-		packageIndex = new HashMap<String,String>();
-		animCache = new HashMap<String,Timeline>();
+	/**
+	 * Builds the animation-name &rarr; package index by reading every
+	 * {@code *_Metadata.json} in the bundle. Called once by the bundle the first
+	 * time a timeline is requested.
+	 */
+	public static Map<String, String> buildPackageIndex(GameFiles gf) throws IOException {
+		Map<String, String> index = new HashMap<String, String>();
 		try {
-			for (File file : GameFiles.glob("*_Metadata.json")) {
+			for (File file : gf.glob("*_Metadata.json")) {
 				String pack = file.getName();
 				pack = pack.substring(0, pack.length() - 14);
-				JSONObject meta = (JSONObject) GameFiles.readJson(new FileInputStream(file));
+				JSONObject meta = gf.readJson(new FileInputStream(file));
 				JSONArray names = meta.getJSONArray("animationNames");
 				for (Object animname : names) {
 					String animstr = (String) animname;
-					packageIndex.put(animstr.toLowerCase(), pack);
+					index.put(animstr.toLowerCase(), pack);
 				}
 			}
 		}
 		catch (ClassCastException | JSONException e) {
 			throw new FileFormatException("Json type error", e);
 		}
+		return index;
 	}
 
-	private static void readTimeline(String name) throws IOException {
+	/**
+	 * Reads every timeline in the named package's {@code _Timeline.bin}, returning
+	 * them keyed by lowercased name for the bundle to cache.
+	 */
+	public static Map<String, Timeline> readPackage(GameFiles gf, String packname)
+			throws IOException {
+		Map<String, Timeline> result = new HashMap<String, Timeline>();
 		LittleEndianInputStream in = new LittleEndianInputStream(
-				GameFiles.open(name + "_Timeline.bin"), 256);
+				gf.open(packname + "_Timeline.bin"), 256);
 		try {
 			int ver = in.readShort();
 			if (ver != 4 && ver != 6 && ver != 8)
@@ -132,7 +125,7 @@ public class Timeline {
 			int num = in.readShort();
 			in.readShort();
 			for (int i = 0; i < num; i++)
-				new Timeline(name).read(in, ver);
+				new Timeline(packname).read(in, ver, result);
 		}
 		catch (ArrayIndexOutOfBoundsException e) {
 			throw new FileFormatException("Invalid array index", e);
@@ -140,12 +133,13 @@ public class Timeline {
 		finally {
 			in.close();
 		}
+		return result;
 	}
 
-	private void read(LittleEndianInputStream in, int ver)
-			throws IOException {
+	private void read(LittleEndianInputStream in, int ver,
+			Map<String, Timeline> out) throws IOException {
 		name = in.readCString(256);
-		animCache.put(name.toLowerCase(), this);
+		out.put(name.toLowerCase(), this);
 		in.readShort();
 		readFrames(in, ver);
 		if (ver > 4)
