@@ -3,7 +3,12 @@ package hero.roland.bnsim;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Iterator;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 import hero.roland.bnsim.model.Ability;
 import hero.roland.bnsim.model.Animation;
@@ -54,6 +59,25 @@ public class PlacedUnit {
 
 	/** Status effects currently afflicting this unit (e.g. poison, stun). */
 	private final List<ActiveStatusEffect> statusEffects = new ArrayList<>();
+
+	/**
+	 * Combat-resource state, live only between {@link #startBattle} and the end of a
+	 * battle. When {@code combatRulesEnabled} is false the unit ignores ammo,
+	 * cooldowns, reloads and prep time entirely — every attack is always usable.
+	 */
+	private boolean combatRulesEnabled;
+	/** Each weapon's current ammo ({@code -1} when the weapon has infinite ammo). */
+	private final Map<Unit.Weapon, Integer> ammo = new HashMap<>();
+	/** Turns each weapon still has left to reload (absent/0 = not reloading). */
+	private final Map<Unit.Weapon, Integer> reloadRemaining = new HashMap<>();
+	/** Turns each ability still has left on cooldown (absent/0 = ready). */
+	private final Map<Ability, Integer> cooldownRemaining = new HashMap<>();
+	/**
+	 * Cooldowns/reloads set this turn, which skip the very next tick so that a value
+	 * of N blocks exactly N of the unit's upcoming turns (see {@link #tickCooldowns}).
+	 */
+	private final Set<Ability> cooldownFresh = new HashSet<>();
+	private final Set<Unit.Weapon> reloadFresh = new HashSet<>();
 
 	public PlacedUnit(Unit unit, Side side, Cell cell) {
 		this.unit = unit;
@@ -315,6 +339,189 @@ public class PlacedUnit {
 
 	/** One effect's start-of-turn result: the effect and the damage it dealt. */
 	public record StatusTick(StatusEffect effect, int damageDealt) {
+	}
+
+	// --- Cooldowns, ammo and reloads ---------------------------------------
+
+	/**
+	 * Initialises this unit's combat resources for the start of a battle: every
+	 * weapon is filled to its ammo capacity and cleared of any reload, and every
+	 * ability starts on a cooldown equal to its prep (charge) time. When
+	 * {@code rulesEnabled} is false the unit ignores cooldowns, ammo and reloads
+	 * entirely — every attack stays usable for the whole battle.
+	 */
+	public void startBattle(boolean rulesEnabled) {
+		combatRulesEnabled = rulesEnabled;
+		ammo.clear();
+		reloadRemaining.clear();
+		cooldownRemaining.clear();
+		cooldownFresh.clear();
+		reloadFresh.clear();
+		for (Unit.Weapon weapon : unit.getWeapons()) {
+			if ("none".equals(weapon.getTag()))
+				continue;
+			ammo.put(weapon, weapon.getAmmo());
+			if (!rulesEnabled)
+				continue;
+			for (Unit.Attack attack : weapon.getAttacks()) {
+				Ability ability = attack.getAbility();
+				if (ability == Ability.NO_ABILITY || ability.getPrepTime() <= 0)
+					continue;
+				cooldownRemaining.put(ability, ability.getPrepTime());
+			}
+		}
+	}
+
+	/** Whether this unit is tracking cooldowns, ammo and reloads this battle. */
+	public boolean isCombatRulesEnabled() {
+		return combatRulesEnabled;
+	}
+
+	/**
+	 * Whether the given attack can be used right now: its weapon is not reloading,
+	 * the ability is off cooldown, and the weapon has enough ammo for the ability's
+	 * cost (or is infinite). Always {@code true} when combat rules are disabled.
+	 */
+	public boolean isAttackReady(Unit.Attack attack) {
+		if (!combatRulesEnabled || attack == null)
+			return true;
+		Ability ability = attack.getAbility();
+		if (ability == Ability.NO_ABILITY)
+			return true;
+		Unit.Weapon weapon = attack.getWeapon();
+		if (reloadRemaining.getOrDefault(weapon, 0) > 0)
+			return false;
+		if (cooldownRemaining.getOrDefault(ability, 0) > 0)
+			return false;
+		int required = ability.getAmmoRequired();
+		return weapon.getAmmo() < 0 || required <= 0
+				|| ammo.getOrDefault(weapon, weapon.getAmmo()) >= required;
+	}
+
+	/**
+	 * Turns until the given attack can next be used (0 when it is ready now): the
+	 * larger of its weapon's reload and its ability's cooldown. Used for the UI
+	 * overlay. Always 0 when combat rules are disabled.
+	 */
+	public int getAttackCooldown(Unit.Attack attack) {
+		if (!combatRulesEnabled || attack == null)
+			return 0;
+		Ability ability = attack.getAbility();
+		if (ability == Ability.NO_ABILITY)
+			return 0;
+		return Math.max(reloadRemaining.getOrDefault(attack.getWeapon(), 0),
+				cooldownRemaining.getOrDefault(ability, 0));
+	}
+
+	/** The weapon's current ammo, or {@code -1} when it has infinite ammo. */
+	public int getWeaponAmmo(Unit.Weapon weapon) {
+		if (weapon == null || weapon.getAmmo() < 0)
+			return -1;
+		return ammo.getOrDefault(weapon, weapon.getAmmo());
+	}
+
+	/**
+	 * Records that this unit has used the given attack, spending the weapon's ammo
+	 * and starting the relevant timers. The ability's ammo cost is subtracted from
+	 * the weapon's pool; emptying the weapon puts it on reload (its ammo refilling
+	 * once the reload finishes). Either way the used ability goes on its own cooldown
+	 * and the weapon's other abilities go on its global cooldown; where several waits
+	 * apply to one attack (reload, cooldown, global cooldown) the longest one stands.
+	 * A no-op when combat rules are disabled.
+	 */
+	public void useAttack(Unit.Attack attack) {
+		if (!combatRulesEnabled || attack == null)
+			return;
+		Ability ability = attack.getAbility();
+		if (ability == Ability.NO_ABILITY)
+			return;
+		Unit.Weapon weapon = attack.getWeapon();
+		if (weapon.getAmmo() >= 0) { // finite ammo: spend it, reload when empty
+			int left = ammo.getOrDefault(weapon, weapon.getAmmo())
+					- Math.max(0, ability.getAmmoRequired());
+			if (left <= 0) {
+				ammo.put(weapon, 0);
+				if (weapon.getReloadTime() > 0) {
+					// Reload the whole weapon, but only if this reload is longer than
+					// one already running — a shorter one leaves the timer untouched.
+					if (weapon.getReloadTime() > reloadRemaining.getOrDefault(weapon, 0)) {
+						reloadRemaining.put(weapon, weapon.getReloadTime());
+						reloadFresh.add(weapon);
+					}
+				} else {
+					ammo.put(weapon, weapon.getAmmo()); // no reload time: refill at once
+				}
+			} else {
+				ammo.put(weapon, left);
+			}
+		}
+		// The used ability goes on its own cooldown and the weapon's other abilities
+		// on its global cooldown; these stack with any reload via the longest wait.
+		setCooldown(ability, ability.getCooldown());
+		int global = ability.getGlobalCooldown();
+		if (global > 0)
+			for (Unit.Attack other : weapon.getAttacks()) {
+				Ability otherAbility = other.getAbility();
+				if (otherAbility != Ability.NO_ABILITY && otherAbility != ability)
+					setCooldown(otherAbility, global);
+			}
+	}
+
+	/** Puts an ability on cooldown for {@code turns} of the unit's turns, flagged to
+	 * skip the next tick so it blocks for exactly that many. A shorter or equal value
+	 * than the cooldown already running is ignored, leaving the longer one in place. */
+	private void setCooldown(Ability ability, int turns) {
+		if (turns <= cooldownRemaining.getOrDefault(ability, 0))
+			return;
+		cooldownRemaining.put(ability, turns);
+		cooldownFresh.add(ability);
+	}
+
+	/**
+	 * Advances this unit's cooldowns and reloads by one turn — called as the unit's
+	 * own turn ends. Each counts down by one, and a weapon whose reload finishes is
+	 * refilled to full ammo. Entries set during this same turn skip this first tick
+	 * (so a value of N blocks exactly N of the unit's following turns and the count
+	 * shown to an onlooker drops as soon as a blocked turn passes). Does nothing while
+	 * a movement-blocking effect (e.g. a freeze) is active — freezing the timers — or
+	 * when combat rules are disabled.
+	 */
+	public void tickCooldowns() {
+		if (!combatRulesEnabled || isMovementBlocked())
+			return;
+		for (Iterator<Map.Entry<Ability, Integer>> it = cooldownRemaining.entrySet().iterator();
+				it.hasNext();) {
+			Map.Entry<Ability, Integer> entry = it.next();
+			if (cooldownFresh.remove(entry.getKey()))
+				continue; // set this turn: skip its first tick
+			int next = entry.getValue() - 1;
+			if (next <= 0)
+				it.remove();
+			else
+				entry.setValue(next);
+		}
+		for (Iterator<Map.Entry<Unit.Weapon, Integer>> it = reloadRemaining.entrySet().iterator();
+				it.hasNext();) {
+			Map.Entry<Unit.Weapon, Integer> entry = it.next();
+			Unit.Weapon weapon = entry.getKey();
+			if (reloadFresh.remove(weapon))
+				continue;
+			int next = entry.getValue() - 1;
+			if (next <= 0) {
+				it.remove();
+				ammo.put(weapon, weapon.getAmmo()); // reload finished: refill to full
+			} else {
+				entry.setValue(next);
+			}
+		}
+	}
+
+	/** Whether any active effect freezes this unit's cooldown and reload timers. */
+	private boolean isMovementBlocked() {
+		for (ActiveStatusEffect e : statusEffects)
+			if (e.getEffect().isBlockMovement())
+				return true;
+		return false;
 	}
 
 	/**

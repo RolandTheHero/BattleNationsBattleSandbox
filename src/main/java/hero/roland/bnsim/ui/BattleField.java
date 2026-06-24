@@ -120,6 +120,9 @@ public class BattleField extends JComponent {
 
 	private int tick;
 	private boolean battleMode;
+	/** Whether the next battle tracks cooldowns, ammo, reloads and prep time. Set
+	 * before the battle starts via {@link #setCombatRulesEnabled} (the UnitMenu toggle). */
+	private boolean combatRulesEnabled = true;
 
 	/** Background image scaled to fill the component; null falls back to a colour. */
 	private BufferedImage background;
@@ -328,9 +331,20 @@ public class BattleField extends JComponent {
 		attacksRemaining = 0;
 		message = null;
 		if (battle)
-			for (PlacedUnit unit : sim.placedUnits())
+			for (PlacedUnit unit : sim.placedUnits()) {
 				unit.resetHealth();
+				unit.startBattle(combatRulesEnabled);
+			}
 		repaint();
+	}
+
+	/**
+	 * Sets whether the next battle tracks cooldowns, ammo, reloads and prep time.
+	 * Driven by the UnitMenu toggle and read when a battle starts (so changing it
+	 * mid-battle takes effect from the following battle).
+	 */
+	public void setCombatRulesEnabled(boolean enabled) {
+		this.combatRulesEnabled = enabled;
 	}
 
 	/** Listener notified when the selected attacker changes (null = cleared). */
@@ -469,6 +483,15 @@ public class BattleField extends JComponent {
 			showMessage(selectedAttacker.getUnit().getName() + " is unable to act!");
 			return;
 		}
+		if (!selectedAttacker.isAttackReady(selectedAttack)) {
+			int turns = selectedAttacker.getAttackCooldown(selectedAttack);
+			if (turns > 0)
+				showMessage(selectedAttack.getName() + " is on cooldown for " + turns
+						+ " more turn" + (turns == 1 ? "" : "s") + "!");
+			else
+				showMessage("Not enough ammo for " + selectedAttack.getName() + "!");
+			return;
+		}
 		playerFire(aim);
 	}
 
@@ -520,6 +543,9 @@ public class BattleField extends JComponent {
 	 * have finished (see {@link #fireNextAttack}).
 	 */
 	private void executeAttack(PlacedUnit attacker, Unit.Attack attack, Cell aim) {
+		// Spend the weapon's ammo and start the ability's cooldown/reload once per use
+		// (not per attack in the sequence).
+		attacker.useAttack(attack);
 		firingAttacker = attacker;
 		firingAttack = attack;
 		firingAim = aim;
@@ -677,6 +703,11 @@ public class BattleField extends JComponent {
 	 * row if its front line is now empty, then the next turn begins.
 	 */
 	private void endOfTurn(Side actingSide) {
+		// Advance the acting side's cooldowns/reloads as its turn ends, so their
+		// countdowns are up to date before the opposing side gets to look or act.
+		for (PlacedUnit unit : sim.placedUnits())
+			if (unit.getSide() == actingSide)
+				unit.tickCooldowns();
 		pendingAdvanceSide = BattleSimulator.opponentOf(actingSide);
 		phase = Phase.AWAITING_ADVANCE;
 	}

@@ -43,6 +43,7 @@ public class Ability {
 	/** Extra critical chance (0-1) added when the target has the keyed unit type. */
 	private Map<String, Double> criticalBonuses;
 	//private Map<String, Prerequisites> prereqs;
+	private int cooldown, globalCooldown, ammoRequired, prepTime;
 
 	private Ability() {
 		tag = "none";
@@ -125,6 +126,10 @@ public class Ability {
 				criticalBonuses.put(key.toLowerCase(),
 						criticalBonusesJson.getDouble(key) / 100);
 		}
+		cooldown = stats.optInt("abilityCooldown", 0);
+		globalCooldown = stats.optInt("globalCooldown", 0);
+		ammoRequired = stats.optInt("ammoRequired", 0);
+		prepTime = stats.optInt("chargeTime", 0);
 	}
 
 	// private void initPrereqs(JSONObject json) {
@@ -290,6 +295,26 @@ public class Ability {
 
 	public boolean getCapture() {
 		return capture;
+	}
+
+	/** Turns this ability is unusable after it is used. */
+	public int getCooldown() {
+		return cooldown;
+	}
+
+	/** Turns the weapon's <em>other</em> abilities are unusable after this one is used. */
+	public int getGlobalCooldown() {
+		return globalCooldown;
+	}
+
+	/** Ammo this ability spends from its weapon's pool each time it is used. */
+	public int getAmmoRequired() {
+		return ammoRequired;
+	}
+
+	/** Turns this ability must charge at the start of a battle before its first use. */
+	public int getPrepTime() {
+		return prepTime;
 	}
 
 	public TargetSquare[] getDamageArea() {

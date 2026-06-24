@@ -20,6 +20,7 @@ import javax.swing.BoxLayout;
 import javax.swing.ButtonGroup;
 import javax.swing.DefaultListModel;
 import javax.swing.JButton;
+import javax.swing.JCheckBox;
 import javax.swing.JComboBox;
 import javax.swing.JLabel;
 import javax.swing.JList;
@@ -53,12 +54,14 @@ public class UnitMenu extends JPanel {
 	private final JTextField search = new JTextField();
 	private final JRadioButton playerRadio = new JRadioButton("Player", true);
 	private final JRadioButton enemyRadio = new JRadioButton("Enemy");
+	private final JCheckBox cooldownToggle = new JCheckBox("Cooldowns & ammo", true);
 
 	private final List<Unit> allUnits = new ArrayList<>();
 
 	private BiConsumer<Unit, Side> placer;
 	private Consumer<Side> sideClearer;
 	private Consumer<String> backgroundSelector;
+	private Consumer<Boolean> combatRulesListener;
 
 	public UnitMenu() {
 		setLayout(new BorderLayout());
@@ -93,11 +96,21 @@ public class UnitMenu extends JPanel {
 			@Override public void changedUpdate(DocumentEvent e) { filter(search.getText()); }
 		});
 
+		// Battle-rules toggle: enables/disables cooldowns, reloads, prep time and
+		// ammo for the next battle (set before starting one).
+		cooldownToggle.setToolTipText("When on, abilities consume ammo, reload when "
+				+ "empty, go on cooldown after use and charge for their prep time at "
+				+ "the start of a battle");
+		cooldownToggle.setAlignmentX(LEFT_ALIGNMENT);
+		cooldownToggle.addActionListener(e -> fireCombatRules());
+
 		JPanel top = new JPanel();
 		top.setLayout(new BoxLayout(top, BoxLayout.Y_AXIS));
 		sidePanel.setAlignmentX(LEFT_ALIGNMENT);
 		searchPanel.setAlignmentX(LEFT_ALIGNMENT);
 		top.add(sidePanel);
+		top.add(Box.createVerticalStrut(4));
+		top.add(cooldownToggle);
 		top.add(Box.createVerticalStrut(4));
 		top.add(searchPanel);
 
@@ -140,6 +153,20 @@ public class UnitMenu extends JPanel {
 	/** Sets the callback invoked to clear all units from a side. */
 	public void setSideClearer(Consumer<Side> sideClearer) {
 		this.sideClearer = sideClearer;
+	}
+
+	/**
+	 * Sets the callback invoked when the cooldowns/ammo toggle changes, and
+	 * immediately pushes its current value so the field starts in sync.
+	 */
+	public void setCombatRulesListener(Consumer<Boolean> listener) {
+		this.combatRulesListener = listener;
+		fireCombatRules();
+	}
+
+	private void fireCombatRules() {
+		if (combatRulesListener != null)
+			combatRulesListener.accept(cooldownToggle.isSelected());
 	}
 
 	private void clearSide(Side side) {

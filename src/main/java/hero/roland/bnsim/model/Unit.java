@@ -296,6 +296,9 @@ public class Unit implements Comparable<Unit> {
 		private int rangeBonus;
         private String firesound;
         private int firesoundFrame;
+		private int ammo; // Infinite if -1
+		private int reloadTime; // Turns to reload the ammo back to full
+
 		protected Weapon() {
 			name = "(None)";
 			tag = "none";
@@ -321,6 +324,8 @@ public class Unit implements Comparable<Unit> {
 			minDamage = json.optInt("base_damage_min", 0);
 			maxDamage = json.optInt("base_damage_max", 0);
 			rangeBonus = json.optInt("rangeBonus", 0);
+			ammo = json.optInt("ammo", -1);
+			reloadTime = json.optInt("reloadTime", 0);
 		}
 		public String getName() {
 			return name;
@@ -359,6 +364,12 @@ public class Unit implements Comparable<Unit> {
 		}
 		public int getRangeBonus() {
 			return rangeBonus;
+		}
+		public int getAmmo() {
+			return ammo;
+		}
+		public int getReloadTime() {
+			return reloadTime;
 		}
 		public String toString() {
 			return name;

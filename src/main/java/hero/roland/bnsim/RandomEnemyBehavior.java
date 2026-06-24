@@ -30,6 +30,8 @@ public class RandomEnemyBehavior implements EnemyBehavior {
 				for (Unit.Attack attack : weapon.getAttacks()) {
 					if (attack.getAbility() == Ability.NO_ABILITY)
 						continue;
+					if (!unit.isAttackReady(attack))
+						continue; // on cooldown, reloading or out of ammo
 					if (attack.getAbility().getTargetType() == Ability.TargetType.WEAPON) {
 						// Fixed attack: usable if its fixed area covers a player unit.
 						for (BattleSimulator.SideCell sc : sim.weaponAffectedCells(unit, attack))

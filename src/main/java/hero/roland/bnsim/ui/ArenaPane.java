@@ -168,9 +168,11 @@ public class ArenaPane extends JLayeredPane {
 				if (attack.getAbility() == Ability.NO_ABILITY)
 					continue;
 				anyAttack = true;
-				JToggleButton button = makeAttackButton(attack);
+				JToggleButton button = makeAttackButton(attack, unit);
 				group.add(button);
 				button.addActionListener(e -> field.setSelectedAttack(attack));
+				// Default the aim to the first attack; one on cooldown stays selectable
+				// (firing it is rejected with a message).
 				if (!selectedFirst[0]) {
 					button.setSelected(true);
 					field.setSelectedAttack(attack);
@@ -178,8 +180,13 @@ public class ArenaPane extends JLayeredPane {
 				}
 				row.add(button);
 			}
-			if (anyAttack)
+			if (anyAttack) {
+				// Show the weapon's remaining ammo (∞ when infinite) once the battle's
+				// resource rules are on.
+				if (unit.isCombatRulesEnabled())
+					row.add(makeAmmoLabel(unit.getWeaponAmmo(weapon)));
 				attackPanel.add(row);
+			}
 		}
 
 		attackPanel.setVisible(true);
@@ -197,15 +204,22 @@ public class ArenaPane extends JLayeredPane {
 	 * name if the icon is missing). The button gains a highlighted border while
 	 * selected.
 	 */
-	private JToggleButton makeAttackButton(Unit.Attack attack) {
+	private JToggleButton makeAttackButton(Unit.Attack attack, PlacedUnit unit) {
 		JToggleButton button = new JToggleButton();
 		button.setToolTipText(attack.getName());
+		int cooldown = unit.getAttackCooldown(attack);
 		ImageIcon icon = attackIcon(attack.getAbility());
 		if (icon != null) {
+			// A cooling-down/reloading attack stays selectable but shows a red overlay
+			// with the turns left; firing it is rejected with a message. Being out of
+			// ammo shows no overlay — the weapon's ammo label conveys that instead.
+			if (cooldown > 0)
+				icon = cooldownIcon(icon, cooldown);
 			button.setIcon(icon);
 			button.setMargin(new Insets(2, 2, 2, 2));
 		} else {
-			button.setText(attack.getName());
+			button.setText(cooldown > 0 ? attack.getName() + " (" + cooldown + ")"
+					: attack.getName());
 		}
 		// Highlight the selected attack with a coloured border; keep the layout
 		// stable by using a same-thickness empty border when unselected.
@@ -215,6 +229,46 @@ public class ArenaPane extends JLayeredPane {
 		button.addItemListener(e -> applyBorder.run());
 		applyBorder.run();
 		return button;
+	}
+
+	/** Red overlay shown over an attack button that is on cooldown or reloading. */
+	private static final Color COOLDOWN_TINT = new Color(200, 30, 30, 150);
+
+	/**
+	 * A copy of {@code base} under a translucent red wash with the number of turns
+	 * left drawn large and white in the centre — the overlay for an attack button
+	 * that is still cooling down or reloading.
+	 */
+	private ImageIcon cooldownIcon(ImageIcon base, int turns) {
+		int w = base.getIconWidth(), h = base.getIconHeight();
+		if (w <= 0 || h <= 0)
+			return base;
+		BufferedImage out = new BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB);
+		Graphics2D g = out.createGraphics();
+		g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+		g.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING,
+				RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
+		g.drawImage(base.getImage(), 0, 0, null);
+		g.setColor(COOLDOWN_TINT);
+		g.fillRect(0, 0, w, h);
+		String text = Integer.toString(turns);
+		g.setFont(g.getFont().deriveFont(Font.BOLD, h * 0.6f));
+		FontMetrics fm = g.getFontMetrics();
+		int tx = (w - fm.stringWidth(text)) / 2;
+		int ty = (h - fm.getHeight()) / 2 + fm.getAscent();
+		//g.setColor(Color.BLACK);
+		//g.drawString(text, tx + 1, ty + 1);
+		g.setColor(Color.YELLOW);
+		g.drawString(text, tx, ty);
+		g.dispose();
+		return new ImageIcon(out);
+	}
+
+	/** A small label showing a weapon's remaining ammo, with ∞ for infinite ammo. */
+	private JLabel makeAmmoLabel(int ammo) {
+		JLabel label = new JLabel("Ammo: " + (ammo < 0 ? "∞" : Integer.toString(ammo)));
+		label.setFont(label.getFont().deriveFont(Font.PLAIN, 11f));
+		return label;
 	}
 
 	/**
