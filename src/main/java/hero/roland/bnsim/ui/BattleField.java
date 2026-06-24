@@ -212,6 +212,9 @@ public class BattleField extends JComponent {
 	private final Map<BattleSimulator.SideCell, StatusAccumulator> pendingStatus = new HashMap<>();
 	/** Cache of loaded status icons (effect/ui icons), including null misses. */
 	private final Map<String, BufferedImage> iconCache = new HashMap<>();
+	/** The "cannot be targeted" circle, loaded once on first use (may stay null). */
+	private BufferedImage doNotTargetCircle;
+	private boolean doNotTargetCircleLoaded;
 	private final Random random = new Random();
 
 	/** A transient message shown across the field (e.g. "unit is stunned"). */
@@ -934,6 +937,8 @@ public class BattleField extends JComponent {
 		// Struck tiles flash red on the grid layer, beneath the units standing on them.
 		drawHitMarkers(g2);
 		drawUnits(g2);
+		// Mark enemy units the selected ability cannot hit, over their sprites.
+		drawUntargetable(g2);
 		drawDamageAnims(g2);
 		drawOverlays(g2);
 		drawStatusApplyVisuals(g2);
@@ -997,6 +1002,33 @@ public class BattleField extends JComponent {
 		for (BattleSimulator.SideCell sc : weaponAffected)
 			if (isCellVisible(sc.side(), sc.cell().col(), sc.cell().row()))
 				g.fillPolygon(geometry.cellDiamond(sc.side(), sc.cell().col(), sc.cell().row()));
+	}
+
+	/**
+	 * While an attack is selected, stamps the "do not target" circle over every
+	 * enemy unit the selected ability cannot hit — one whose unit types match none
+	 * of the ability's targetable tags — so the player can see which units the shot
+	 * would pass over. Does nothing until an attack is chosen.
+	 */
+	private void drawUntargetable(Graphics2D g) {
+		if (selectedAttacker == null || selectedAttack == null)
+			return;
+		BufferedImage circle = doNotTargetCircle();
+		if (circle == null || circle.getWidth() <= 0)
+			return;
+		Ability ability = selectedAttack.getAbility();
+		Side targetSide = BattleSimulator.opponentOf(selectedAttacker.getSide());
+		// Keep the asset's aspect ratio, sizing it to roughly half a tile's width.
+		int w = GridGeometry.HALF_W / 2;
+		int h = (int) Math.round((double) w * circle.getHeight() / circle.getWidth());
+		for (PlacedUnit unit : sim.placedUnits()) {
+			if (unit.getSide() != targetSide || ability.canTarget(unit.getUnit()))
+				continue;
+			Point2D c = unitDrawCentre(unit);
+			int x = (int) Math.round(c.getX() - w / 2.0);
+			int y = (int) Math.round(c.getY() - h / 2.0);
+			g.drawImage(circle, x, y, w, h, null);
+		}
 	}
 
 	private void drawSelection(Graphics2D g) {
@@ -1226,6 +1258,10 @@ public class BattleField extends JComponent {
 			marker.applied = true;
 			PlacedUnit target = sim.unitAt(marker.side, marker.cell);
 			if (target == null) continue;
+			// A unit the ability cannot target takes nothing: no sound, animation,
+			// damage or status — the hit simply does not happen to it.
+			if (marker.ability != null && !marker.ability.canTarget(target.getUnit()))
+				continue;
 			if (marker.ability != null && sounded.add(marker.cell)) {
 				boolean metal = target.getUnit().hasTag(Unit.UnitTag.METAL);
 				sim.playSound(marker.ability.getHitSound(metal));
@@ -1624,6 +1660,25 @@ public class BattleField extends JComponent {
 		}
 		iconCache.put(name, img);
 		return img;
+	}
+
+	/**
+	 * The bundle's "do not target" circle, loaded once on first use and cached
+	 * (including a {@code null} miss, so a missing asset is not re-read each frame).
+	 */
+	private BufferedImage doNotTargetCircle() {
+		if (!doNotTargetCircleLoaded) {
+			doNotTargetCircleLoaded = true;
+			File file = GameFiles.active().getDoNotTargetCircle();
+			if (file != null && file.isFile()) {
+				try {
+					doNotTargetCircle = ImageIO.read(file);
+				} catch (IOException e) {
+					doNotTargetCircle = null; // best-effort: a missing asset just isn't drawn
+				}
+			}
+		}
+		return doNotTargetCircle;
 	}
 
 	/** Parses an {@code #RRGGBB} (or {@code RRGGBB}) colour, white on failure. */

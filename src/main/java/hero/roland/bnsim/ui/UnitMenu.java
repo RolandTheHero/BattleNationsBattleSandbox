@@ -2,7 +2,6 @@ package hero.roland.bnsim.ui;
 
 import java.awt.BorderLayout;
 import java.awt.Dimension;
-import java.awt.FlowLayout;
 import java.awt.GridLayout;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
@@ -17,7 +16,6 @@ import java.util.function.Consumer;
 import javax.swing.BorderFactory;
 import javax.swing.Box;
 import javax.swing.BoxLayout;
-import javax.swing.ButtonGroup;
 import javax.swing.DefaultListModel;
 import javax.swing.JButton;
 import javax.swing.JCheckBox;
@@ -25,7 +23,6 @@ import javax.swing.JComboBox;
 import javax.swing.JLabel;
 import javax.swing.JList;
 import javax.swing.JPanel;
-import javax.swing.JRadioButton;
 import javax.swing.JScrollPane;
 import javax.swing.JTextField;
 import javax.swing.ListSelectionModel;
@@ -52,8 +49,6 @@ public class UnitMenu extends JPanel {
 	private final DefaultListModel<Unit> listModel = new DefaultListModel<>();
 	private final JList<Unit> unitList = new JList<>(listModel);
 	private final JTextField search = new JTextField();
-	private final JRadioButton playerRadio = new JRadioButton("Player", true);
-	private final JRadioButton enemyRadio = new JRadioButton("Enemy");
 	private final JCheckBox cooldownToggle = new JCheckBox("Cooldowns & ammo", true);
 
 	private final List<Unit> allUnits = new ArrayList<>();
@@ -77,15 +72,6 @@ public class UnitMenu extends JPanel {
 	}
 
 	private void buildContent() {
-		// Side selector.
-		ButtonGroup sideGroup = new ButtonGroup();
-		sideGroup.add(playerRadio);
-		sideGroup.add(enemyRadio);
-		JPanel sidePanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
-		sidePanel.add(new JLabel("Side:"));
-		sidePanel.add(playerRadio);
-		sidePanel.add(enemyRadio);
-
 		// Search field.
 		JPanel searchPanel = new JPanel(new BorderLayout(4, 0));
 		searchPanel.add(new JLabel("Search:"), BorderLayout.WEST);
@@ -98,18 +84,13 @@ public class UnitMenu extends JPanel {
 
 		// Battle-rules toggle: enables/disables cooldowns, reloads, prep time and
 		// ammo for the next battle (set before starting one).
-		cooldownToggle.setToolTipText("When on, abilities consume ammo, reload when "
-				+ "empty, go on cooldown after use and charge for their prep time at "
-				+ "the start of a battle");
+		cooldownToggle.setToolTipText("Whether ammo, reload, cooldowns and prep time are enabled.");
 		cooldownToggle.setAlignmentX(LEFT_ALIGNMENT);
 		cooldownToggle.addActionListener(e -> fireCombatRules());
 
 		JPanel top = new JPanel();
 		top.setLayout(new BoxLayout(top, BoxLayout.Y_AXIS));
-		sidePanel.setAlignmentX(LEFT_ALIGNMENT);
 		searchPanel.setAlignmentX(LEFT_ALIGNMENT);
-		top.add(sidePanel);
-		top.add(Box.createVerticalStrut(4));
 		top.add(cooldownToggle);
 		top.add(Box.createVerticalStrut(4));
 		top.add(searchPanel);
@@ -120,12 +101,18 @@ public class UnitMenu extends JPanel {
 			@Override
 			public void mouseClicked(MouseEvent e) {
 				if (e.getClickCount() == 2)
-					placeSelected();
+					placeSelected(Side.PLAYER);
 			}
 		});
 
-		JButton addButton = new JButton("Add to board");
-		addButton.addActionListener(e -> placeSelected());
+		// Add-to-side buttons.
+		JButton addPlayer = new JButton("Add to Player");
+		addPlayer.addActionListener(e -> placeSelected(Side.PLAYER));
+		JButton addEnemy = new JButton("Add to Enemy");
+		addEnemy.addActionListener(e -> placeSelected(Side.ENEMY));
+		JPanel addRow = new JPanel(new GridLayout(1, 2, 4, 0));
+		addRow.add(addPlayer);
+		addRow.add(addEnemy);
 
 		// Clear-side buttons.
 		JButton clearPlayer = new JButton("Clear Player");
@@ -137,7 +124,7 @@ public class UnitMenu extends JPanel {
 		clearRow.add(clearEnemy);
 
 		JPanel bottom = new JPanel(new BorderLayout(0, 4));
-		bottom.add(addButton, BorderLayout.NORTH);
+		bottom.add(addRow, BorderLayout.NORTH);
 		bottom.add(clearRow, BorderLayout.SOUTH);
 
 		content.add(top, BorderLayout.NORTH);
@@ -235,10 +222,10 @@ public class UnitMenu extends JPanel {
 		return value != null && value.toLowerCase().contains(q);
 	}
 
-	private void placeSelected() {
+	private void placeSelected(Side side) {
 		Unit selected = unitList.getSelectedValue();
 		if (selected != null && placer != null)
-			placer.accept(selected, playerRadio.isSelected() ? Side.PLAYER : Side.ENEMY);
+			placer.accept(selected, side);
 	}
 
 	@Override

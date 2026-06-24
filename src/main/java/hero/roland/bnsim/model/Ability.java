@@ -3,12 +3,15 @@ package hero.roland.bnsim.model;
 import java.io.IOException;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
+import java.util.Set;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
 
 import hero.roland.bnsim.gamefiles.GameFiles;
+import hero.roland.bnsim.model.Unit.UnitTag;
 
 public class Ability {
 	public static final int LOF_CONTACT = 0, LOF_DIRECT = 1,
@@ -41,9 +44,10 @@ public class Ability {
 	private StatusEffectChance[] statusEffects;
 	private double baseCritical;
 	/** Extra critical chance (0-1) added when the target has the keyed unit type. */
-	private Map<String, Double> criticalBonuses;
+	private Map<UnitTag, Double> criticalBonuses;
 	//private Map<String, Prerequisites> prereqs;
 	private int cooldown, globalCooldown, ammoRequired, prepTime;
+	private Set<UnitTag> targetableTags;
 
 	private Ability() {
 		tag = "none";
@@ -123,13 +127,14 @@ public class Ability {
 		JSONObject criticalBonusesJson = stats.optJSONObject("criticalBonuses");
 		if (criticalBonusesJson != null) {
 			for (String key : criticalBonusesJson.keySet())
-				criticalBonuses.put(key.toLowerCase(),
+				criticalBonuses.put(UnitTag.fromString(key),
 						criticalBonusesJson.getDouble(key) / 100);
 		}
 		cooldown = stats.optInt("abilityCooldown", 0);
 		globalCooldown = stats.optInt("globalCooldown", 0);
 		ammoRequired = stats.optInt("ammoRequired", 0);
 		prepTime = stats.optInt("chargeTime", 0);
+		initTargets(stats.optJSONArray("targets"));
 	}
 
 	// private void initPrereqs(JSONObject json) {
@@ -159,6 +164,30 @@ public class Ability {
 		for (int i = 0; i < squares.length; i++)
 			squares[i] = new TargetSquare(data.getJSONObject(i), weight);
 		return squares;
+	}
+
+	private void initTargets(JSONArray arr) {
+		targetableTags = new HashSet<>();
+		if (arr == null) return;
+		for (int i = 0; i < arr.length(); i++) {
+			UnitTag tag = UnitTag.fromString(arr.getString(i));
+			if (tag != null)
+				targetableTags.add(tag);
+		}
+	}
+
+	/**
+	 * Whether this ability is allowed to hit {@code unit}: true when the unit has
+	 * at least one of the ability's targetable tags. An ability with no configured
+	 * targets (an empty {@link #targetableTags}) is unrestricted and hits anything.
+	 */
+	public boolean canTarget(Unit unit) {
+		if (targetableTags == null || targetableTags.isEmpty())
+			return true;
+		for (UnitTag tag : targetableTags)
+			if (unit.hasTag(tag))
+				return true;
+		return false;
 	}
 
 	protected static double getDouble(JSONObject json, String name,
@@ -275,9 +304,9 @@ public class Ability {
 	public double getCriticalRate(Unit target) {
 		double rate = baseCritical;
 		if (target != null && criticalBonuses != null) {
-			for (Map.Entry<String, Double> bonus : criticalBonuses.entrySet()) {
-				if (target.hasTag(Unit.UnitTag.fromString(bonus.getKey())))
-					rate += bonus.getValue();
+			for (Map.Entry<UnitTag, Double> bonus : criticalBonuses.entrySet()) {
+				if (target.hasTag(bonus.getKey()) && rate < bonus.getValue())
+					rate = bonus.getValue();
 			}
 		}
 		return rate;

@@ -228,7 +228,7 @@ public class BattleSimulator {
 	// --- Combat ------------------------------------------------------------
 
 	/** Damage multiplier applied to a shot that rolls a critical hit. */
-	private static final double CRIT_MULTIPLIER = 1.8;
+	private static final double CRIT_MULTIPLIER = 1.85;
 
 	private final Random random = new Random();
 

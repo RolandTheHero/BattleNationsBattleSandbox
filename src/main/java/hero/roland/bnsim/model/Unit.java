@@ -12,6 +12,7 @@ import org.json.JSONObject;
 
 import hero.roland.bnsim.gamefiles.GameFiles;
 import hero.roland.bnsim.model.Ability.TargetSquare;
+import hero.roland.bnsim.model.Unit.UnitTag;
 
 public class Unit implements Comparable<Unit> {
     public static final int NONE = 0, PARTIAL = 1, BLOCKING = 2;
@@ -123,12 +124,19 @@ public class Unit implements Comparable<Unit> {
 		return blocking;
 	}
 
-	/** Whether this unit has the given tag (e.g. {@link UnitTag#METAL}). */
+	/**
+	 * Whether this unit has the given tag, honouring the tag hierarchy: a unit
+	 * tagged with a subtype also counts as having the supertype. For example a
+	 * unit tagged {@code Soldier}, {@code Vehicle} or {@code Tank} all "have" the
+	 * {@link UnitTag.Ground} tag, so an ability that targets {@code Ground} can
+	 * hit them. A {@code null} query tag matches nothing.
+	 */
 	public boolean hasTag(UnitTag tag) {
-		if (tags != null)
-			for (UnitTag t : tags)
-				if (t == tag)
-					return true;
+		if (tag == null || tags == null)
+			return false;
+		for (UnitTag t : tags)
+			if (t != null && tag.getClass().isInstance(t))
+				return true;
 		return false;
 	}
 
@@ -186,50 +194,68 @@ public class Unit implements Comparable<Unit> {
 		return ranks[rank-1].power();
 	}
 
-    public enum UnitTag {
-        DEFENSE("Defense"),
-        METAL("Metal"),
-        SOLDIER("Soldier"),
-        VEHICLE("Vehicle"),
-        FAST("Fast"),
-        ZOMBIE_CANDIDATE("ZombieCandidate"),
-        GUNBOAT("Gunboat"),
-        TANK("Tank"),
-        SRB("SRB"),
-        FIGHTER("Fighter"),
-        VRB("VRB"),
-        HELICOPTER("Helicopter"),
-        BATTLESHIP("Battleship"),
-        SHIP("Ship"),
-        CRITTER("Critter"),
-        CIVILIAN("Civilian"),
-        SNIPER("Sniper"),
-        IGNORABLE("Ignorable"),
-        SPIDERWASP("Spiderwasp"),
-        INFECTED("Infected"),
-        AIR("Air"),
-        OTHER("Other");
+	public static abstract class UnitTag {
+		private static final Map<String, UnitTag> tagsByName = new HashMap<>();
 
-        private final String tagName;
-        UnitTag(String tagName) {
-            this.tagName = tagName;
-        }
+		/** The registered tag with the given name, or {@code null} if unknown. */
+		public static UnitTag fromString(String name) {
+			return tagsByName.get(name);
+		}
 
-        public static UnitTag fromString(String str) {
-            for (UnitTag tag : values()) {
-                if (tag.tagName.equalsIgnoreCase(str)) {
-                    return tag;
-                }
-            }
-            return OTHER;
-        }
-		public boolean isVehicle() {
-			return this == VEHICLE || this == TANK;
+		{ tagsByName.put(tagName(), this); }
+
+		public abstract String tagName();
+		public boolean isVehicle() { return false; }
+		public boolean isInfantry() { return false; }
+
+		public static class Air extends UnitTag { public String tagName() { return "Air"; } }
+		public static class Fighter extends Air { public String tagName() { return "Fighter"; } }
+		public static class Helicopter extends Air { public String tagName() { return "Helicopter"; } }
+
+		public static class Ship extends UnitTag { public String tagName() { return "Ship"; } }
+		public static class Battleship extends Ship { public String tagName() { return "Battleship"; } }
+		public static class Gunboat extends Ship { public String tagName() { return "Gunboat"; } }
+
+		public static class Ground extends UnitTag { public String tagName() { return "Ground"; } }
+		public static class Civilian extends Ground { public String tagName() { return "Civilian"; } }
+		public static class Soldier extends Ground { public String tagName() { return "Soldier"; } }
+		public static class Sniper extends Ground { public String tagName() { return "Sniper"; } }
+		public static class Vehicle extends Ground { public String tagName() { return "Vehicle"; } }
+		public static class Tank extends Vehicle { public String tagName() { return "Tank"; } }
+		public static class Defense extends Ground { public String tagName() { return "Defense"; } }
+
+		public static class Metal extends UnitTag { public String tagName() { return "Metal"; } }
+
+		public static class Fast extends UnitTag { public String tagName() { return "Fast"; } }
+
+		public static class Critter extends UnitTag { public String tagName() { return "Critter"; } }
+		public static class Spiderwasp extends Critter { public String tagName() { return "Spiderwasp"; } }
+
+		public static class Ignorable extends UnitTag { public String tagName() { return "Ignorable"; } }
+
+		public static class Infected extends UnitTag { public String tagName() { return "Infected"; } }
+		public static class ZombieCandidate extends UnitTag { public String tagName() { return "ZombieCandidate"; } }
+
+		public static class SRB extends UnitTag { public String tagName() { return "SRB"; } }
+		public static class VRB extends UnitTag { public String tagName() { return "VRB"; } }
+
+		public static class Other extends UnitTag { public String tagName() { return "Other"; } }
+
+		public static final UnitTag METAL = new Metal();
+
+		// Construct one instance of every tag so its initializer block registers it
+		// in tagsByName; without this, fromString could only resolve METAL. The
+		// instances are intentionally discarded — creating them is the registration.
+		static {
+			new Air(); new Fighter(); new Helicopter();
+			new Ship(); new Battleship(); new Gunboat();
+			new Ground(); new Civilian(); new Soldier(); new Sniper();
+			new Vehicle(); new Tank(); new Defense();
+			new Fast(); new Critter(); new Spiderwasp();
+			new Ignorable(); new Infected(); new ZombieCandidate();
+			new Other(); new SRB(); new VRB();
 		}
-		public boolean isInfantry() {
-			return !isVehicle();
-		}
-    }
+	}
 
 	public class Rank {
 		private int power;

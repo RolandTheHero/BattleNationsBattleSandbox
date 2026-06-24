@@ -33,17 +33,23 @@ public class RandomEnemyBehavior implements EnemyBehavior {
 					if (!unit.isAttackReady(attack))
 						continue; // on cooldown, reloading or out of ammo
 					if (attack.getAbility().getTargetType() == Ability.TargetType.WEAPON) {
-						// Fixed attack: usable if its fixed area covers a player unit.
-						for (BattleSimulator.SideCell sc : sim.weaponAffectedCells(unit, attack))
-							if (sc.side() == Side.PLAYER
-									&& sim.unitAt(Side.PLAYER, sc.cell()) != null) {
+						// Fixed attack: usable if its fixed area covers a player unit
+						// the ability can actually hit (by unit type).
+						for (BattleSimulator.SideCell sc : sim.weaponAffectedCells(unit, attack)) {
+							if (sc.side() != Side.PLAYER)
+								continue;
+							PlacedUnit target = sim.unitAt(Side.PLAYER, sc.cell());
+							if (target != null && attack.getAbility().canTarget(target.getUnit())) {
 								candidates.add(new Move(unit, attack, unit.getCell()));
 								break;
 							}
+						}
 					} else {
-						for (Cell cell : sim.targetableCells(unit, attack))
-							if (sim.unitAt(Side.PLAYER, cell) != null)
+						for (Cell cell : sim.targetableCells(unit, attack)) {
+							PlacedUnit target = sim.unitAt(Side.PLAYER, cell);
+							if (target != null && attack.getAbility().canTarget(target.getUnit()))
 								candidates.add(new Move(unit, attack, cell));
+						}
 					}
 				}
 			}
