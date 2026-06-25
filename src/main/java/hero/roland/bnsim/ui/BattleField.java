@@ -11,6 +11,7 @@ import java.awt.Point;
 import java.awt.RenderingHints;
 import java.awt.Stroke;
 import java.awt.geom.Point2D;
+import java.awt.geom.Rectangle2D;
 import java.awt.image.BufferedImage;
 import java.io.File;
 import java.io.IOException;
@@ -64,6 +65,11 @@ public class BattleField extends JComponent {
 	/** Cyan highlight for the fixed tiles a WEAPON (fixed) attack will strike. */
 	private static final Color WEAPON_HIGHLIGHT = new Color(0, 220, 255, 120);
 	private static final Color SELECT_OUTLINE = new Color(245, 205, 70);
+	/** Cyan outline traced around a selected unit's sprite: its colour, thickness
+	 * (px) and opacity (the ring is drawn half-transparent). */
+	private static final Color SELECT_SPRITE_OUTLINE = new Color(0, 255, 255);
+	private static final int SELECT_SPRITE_OUTLINE_THICKNESS = 2;
+	private static final float SELECT_SPRITE_OUTLINE_ALPHA = 0.5f;
 	private static final Color HIT_COLOR = new Color(225, 40, 40);
 	private static final Color RANK_COLOR = new Color(0, 220, 255);
 	private static final Color HP_COLOR = new Color(70, 210, 60);
@@ -1743,10 +1749,67 @@ public class BattleField extends JComponent {
 		Animation anim = (attack != null) ? attack : unit.getAnimation();
 		int frame = (attack != null) ? (tick - unit.getAttackStartTick()) : tick;
 
+		// The selected unit gets a cyan outline traced around its sprite, drawn
+		// beneath it so only the ring sticking out past its edges shows.
+		if (unit == selectedAttacker && anim != null)
+			drawSpriteOutline(g2, anim, frame, centreX, centreY);
+
 		if (!drawAnimation(g2, anim, frame, centreX, centreY))
 			drawToken(g2, unit, centreX, centreY);
 		else if (battleMode)
 			drawStatusPulse(g2, unit, anim, frame);
+		g2.dispose();
+	}
+
+	/**
+	 * Traces a half-transparent cyan ring around the sprite of {@code anim}'s frame,
+	 * at the same spot {@link #drawAnimation} draws it. The sprite's silhouette is
+	 * stamped in cyan offset in eight directions to build a slightly larger copy,
+	 * then the sprite's own shape is punched back out so only the edge ring remains
+	 * — so a translucent (dragged) sprite cannot let the fill show through its body.
+	 * The ring is built off-screen and blitted at half opacity. A no-op when the
+	 * frame has no bounds or is too large to be worth outlining.
+	 */
+	private void drawSpriteOutline(Graphics2D g, Animation anim, int frame,
+			double centreX, double centreY) {
+		anim.setPosition(centreX, centreY + GridGeometry.HALF_H);
+		Rectangle2D.Double bounds = anim.getBounds();
+		if (bounds == null || bounds.width <= 0 || bounds.height <= 0)
+			return;
+		int r = SELECT_SPRITE_OUTLINE_THICKNESS;
+		int margin = r + 2; // room for the offset ring and its antialiased edge
+		int ox = (int) Math.floor(bounds.x) - margin;
+		int oy = (int) Math.floor(bounds.y) - margin;
+		int w = (int) Math.ceil(bounds.width) + margin * 2;
+		int h = (int) Math.ceil(bounds.height) + margin * 2;
+		if (w <= 0 || h <= 0 || (long) w * h > 4_000_000L)
+			return;
+
+		BufferedImage ring = new BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB);
+		Graphics2D rg = ring.createGraphics();
+		rg.setRenderingHint(RenderingHints.KEY_ANTIALIASING,
+				RenderingHints.VALUE_ANTIALIAS_ON);
+		rg.translate(-ox, -oy); // map component coords into the ring image
+		// Stamp the cyan silhouette offset in eight directions: their union is a
+		// filled copy of the sprite grown by the outline thickness.
+		int[][] offsets = {
+				{-r, 0}, {r, 0}, {0, -r}, {0, r},
+				{-r, -r}, {r, -r}, {-r, r}, {r, r} };
+		for (int[] off : offsets) {
+			Graphics2D og = (Graphics2D) rg.create();
+			og.translate(off[0], off[1]);
+			anim.drawFrameTinted(frame, og, SELECT_SPRITE_OUTLINE, 1f);
+			og.dispose();
+		}
+		// Punch the sprite's own shape out of the filled copy, leaving just the ring.
+		rg.setComposite(AlphaComposite.DstOut);
+		anim.drawFrame(frame, rg);
+		rg.dispose();
+
+		Graphics2D g2 = (Graphics2D) g.create();
+		g2.setComposite(AlphaComposite.getInstance(
+				AlphaComposite.SRC_OVER, SELECT_SPRITE_OUTLINE_ALPHA));
+		g2.drawImage(ring, ox, oy, null);
 		g2.dispose();
 	}
 
