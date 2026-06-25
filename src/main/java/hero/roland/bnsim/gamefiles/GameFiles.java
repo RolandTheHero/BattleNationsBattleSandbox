@@ -37,6 +37,8 @@ public interface GameFiles {
 	/** Every loaded unit, sorted (by name then id). */
 	Unit[] getUnits();
 
+	Unit.UnitTag getUnitTag(String name);
+
 	/** The ability with the given tag, or {@code null}. */
 	Ability getAbility(String tag);
 

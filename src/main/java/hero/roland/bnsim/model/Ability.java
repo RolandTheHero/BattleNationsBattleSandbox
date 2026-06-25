@@ -138,7 +138,7 @@ public class Ability {
 		JSONObject criticalBonusesJson = stats.optJSONObject("criticalBonuses");
 		if (criticalBonusesJson != null) {
 			for (String key : criticalBonusesJson.keySet())
-				criticalBonuses.put(UnitTag.fromString(key),
+				criticalBonuses.put(gf.getUnitTag(key),
 						criticalBonusesJson.getDouble(key) / 100);
 		}
 		cooldown = stats.optInt("abilityCooldown", 0);
@@ -185,7 +185,7 @@ public class Ability {
 		targetableTags = new HashSet<>();
 		if (arr == null) return;
 		for (int i = 0; i < arr.length(); i++) {
-			UnitTag tag = UnitTag.fromString(arr.getString(i));
+			UnitTag tag = gf.getUnitTag(arr.getString(i));
 			if (tag != null)
 				targetableTags.add(tag);
 		}

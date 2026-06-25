@@ -53,7 +53,6 @@ public class OldGameFiles extends AbstractGameFiles {
 		}
 	}
 
-	@Override
 	protected void loadAbilities() throws IOException {
 		JSONObject damageAnim = readJson("DamageAnimConfig.json");
 		JSONObject json = readJson("BattleAbilities.json");
@@ -69,6 +68,20 @@ public class OldGameFiles extends AbstractGameFiles {
 				units.put(key, new Unit(this, key, json.getJSONObject(key)));
 		} catch (JSONException e) {
 			throw new FileFormatException("Json type error", e);
+		}
+	}
+
+	@Override
+	protected void loadUnitTags() throws IOException {
+		JSONObject json = readJson("BattleConfig.json");
+		loadUnitTags(json.getJSONObject("tags"), null);
+	}
+
+	private void loadUnitTags(JSONObject json, Unit.UnitTag parent) {
+		for (String key : json.keySet()) {
+			Unit.UnitTag t = new Unit.UnitTag(key, parent);
+			unitTags.put(key, t);
+			loadUnitTags(json.getJSONObject(key), t);
 		}
 	}
 }

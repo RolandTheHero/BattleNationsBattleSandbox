@@ -64,7 +64,7 @@ public class Unit implements Comparable<Unit> {
         if (tags != null) {
             this.tags = new UnitTag[tags.length()];
             for (int i = 0; i < tags.length(); i++)
-                this.tags[i] = UnitTag.fromString(tags.getString(i));
+                this.tags[i] = gf.getUnitTag(tags.getString(i));
         }
 		JSONArray statusEffectImmunitiesJson = json.optJSONArray("statusEffectImmunities", new JSONArray());
 		statusEffectImmunities = new HashSet<StatusEffect.StatusFamily>();
@@ -134,14 +134,14 @@ public class Unit implements Comparable<Unit> {
 	 * Whether this unit has the given tag, honouring the tag hierarchy: a unit
 	 * tagged with a subtype also counts as having the supertype. For example a
 	 * unit tagged {@code Soldier}, {@code Vehicle} or {@code Tank} all "have" the
-	 * {@link UnitTag.Ground} tag, so an ability that targets {@code Ground} can
+	 * {@code Ground} tag, so an ability that targets {@code Ground} can
 	 * hit them. A {@code null} query tag matches nothing.
 	 */
 	public boolean hasTag(UnitTag tag) {
 		if (tag == null || tags == null)
 			return false;
 		for (UnitTag t : tags)
-			if (t != null && tag.getClass().isInstance(t))
+			if (t != null && t.isA(tag))
 				return true;
 		return false;
 	}
@@ -211,65 +211,11 @@ public class Unit implements Comparable<Unit> {
 		return ranks[rank-1].power();
 	}
 
-	public static abstract class UnitTag {
-		private static final Map<String, UnitTag> tagsByName = new HashMap<>();
-
-		/** The registered tag with the given name, or {@code null} if unknown. */
-		public static UnitTag fromString(String name) {
-			return tagsByName.get(name);
-		}
-
-		{ tagsByName.put(tagName(), this); }
-
-		public abstract String tagName();
-		public boolean isVehicle() { return this instanceof Vehicle; }
-		public boolean isInfantry() { return false; }
-
-		public static class Air extends UnitTag { public String tagName() { return "Air"; } }
-		public static class Fighter extends Air { public String tagName() { return "Fighter"; } }
-		public static class Helicopter extends Air { public String tagName() { return "Helicopter"; } }
-		public static class FlyingCritter extends Air { public String tagName() { return "FlyingCritter"; } }
-
-		public static class Ship extends UnitTag { public String tagName() { return "Ship"; } }
-		public static class Battleship extends Ship { public String tagName() { return "Battleship"; } }
-		public static class Gunboat extends Ship { public String tagName() { return "Gunboat"; } }
-
-		public static class Ground extends UnitTag { public String tagName() { return "Ground"; } }
-		public static class Civilian extends Ground { public String tagName() { return "Civilian"; } }
-		public static class Soldier extends Ground { public String tagName() { return "Soldier"; } }
-		public static class Sniper extends Ground { public String tagName() { return "Sniper"; } }
-		public static class Vehicle extends Ground { public String tagName() { return "Vehicle"; } }
-		public static class Tank extends Vehicle { public String tagName() { return "Tank"; } }
-		public static class Defense extends Ground { public String tagName() { return "Defense"; } }
-		public static class Critter extends Ground { public String tagName() { return "Critter"; } }
-
-		public static class Metal extends UnitTag { public String tagName() { return "Metal"; } }
-
-		public static class Fast extends UnitTag { public String tagName() { return "Fast"; } }
-
-		public static class Spiderwasp extends UnitTag { public String tagName() { return "Spiderwasp"; } }
-
-		public static class Ignorable extends UnitTag { public String tagName() { return "Ignorable"; } }
-
-		public static class Infected extends UnitTag { public String tagName() { return "Infected"; } }
-		public static class ZombieCandidate extends UnitTag { public String tagName() { return "ZombieCandidate"; } }
-
-		public static class SRB extends UnitTag { public String tagName() { return "SRB"; } }
-		public static class VRB extends UnitTag { public String tagName() { return "VRB"; } }
-
-		public static class Other extends UnitTag { public String tagName() { return "Other"; } }
-
-		public static final UnitTag METAL = new Metal();
-
-		// Construct one instance of every tag so its initializer block registers it
-		static {
-			new Air(); new Fighter(); new Helicopter(); new FlyingCritter();
-			new Ship(); new Battleship(); new Gunboat();
-			new Ground(); new Civilian(); new Soldier(); new Sniper();
-			new Vehicle(); new Tank(); new Defense();
-			new Fast(); new Critter(); new Spiderwasp();
-			new Ignorable(); new Infected(); new ZombieCandidate();
-			new Other(); new SRB(); new VRB();
+	public static record UnitTag(String name, UnitTag parentTag) {
+		public boolean isA(UnitTag other) {
+			if (other == null) return false;
+			if (this.equals(other)) return true;
+			return parentTag != null && parentTag.isA(other);
 		}
 	}
 

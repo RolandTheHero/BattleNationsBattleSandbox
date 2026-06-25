@@ -207,6 +207,9 @@ public class BattleField extends JComponent {
 	// unit's info panel and target area but cannot act.
 	private PlacedUnit selectedAttacker;
 	private Unit.Attack selectedAttack;
+	/** The attack the player fired with, dropped from the aim while the turn plays
+	 * out and re-highlighted on the selected unit once control returns (null = none). */
+	private Unit.Attack pendingPlayerAim;
 	private Set<Cell> targetable = new HashSet<>();
 	/** Fixed tiles a selected WEAPON attack will strike (cyan highlight). */
 	private Set<BattleSimulator.SideCell> weaponAffected = new HashSet<>();
@@ -353,6 +356,7 @@ public class BattleField extends JComponent {
 		firingAttack = null;
 		firingAim = null;
 		attacksRemaining = 0;
+		pendingPlayerAim = null;
 		message = null;
 		if (battle)
 			for (PlacedUnit unit : sim.placedUnits()) {
@@ -632,6 +636,9 @@ public class BattleField extends JComponent {
 		Unit.Attack attack = selectedAttack;
 		executeAttack(attacker, attack, aim);
 		phase = Phase.PLAYER_FIRING;   // wait for the animation to finish
+		// Remember the aim so the selected unit's target tiles can be re-highlighted
+		// once control returns to the player (see restorePlayerAim).
+		pendingPlayerAim = attack;
 		// Keep the attacker selected so its weapon box stays open, but drop the aim so
 		// no target highlight lingers while the attack plays out and the enemy acts.
 		// Refresh the box to show the ability's new cooldown and the weapon's spent
@@ -783,8 +790,10 @@ public class BattleField extends JComponent {
 			return;
 		case PLAYER_TURN_STATUS:
 			// As above, before handing control back to the player.
-			if (turnVisualsSettled())
+			if (turnVisualsSettled()) {
 				phase = Phase.PLAYER;
+				restorePlayerAim();
+			}
 			return;
 		default:
 			break;
@@ -997,6 +1006,21 @@ public class BattleField extends JComponent {
 	private void beginPlayerTurn() {
 		tickStatusEffects(Side.PLAYER);
 		phase = Phase.PLAYER_TURN_STATUS;
+	}
+
+	/**
+	 * Re-highlights the selected player unit's target tiles once control returns to
+	 * the player, restoring the attack it fired with — so the targetable tiles
+	 * reappear without the player having to reselect the unit. A no-op when nothing
+	 * is selected, the selection is an enemy (view-only) unit, the unit died during
+	 * the turn (its selection was already cleared by {@link #beginDying}), or the
+	 * player passed rather than fired (no pending aim to restore).
+	 */
+	private void restorePlayerAim() {
+		if (selectedAttacker != null && selectedAttacker.getSide() == Side.PLAYER
+				&& selectedAttack == null && pendingPlayerAim != null)
+			setSelectedAttack(pendingPlayerAim);
+		pendingPlayerAim = null;
 	}
 
 	/**
@@ -1453,7 +1477,7 @@ public class BattleField extends JComponent {
 			if (marker.ability != null && !marker.ability.canTarget(target.getUnit()))
 				continue;
 			if (marker.ability != null && sounded.add(marker.cell)) {
-				boolean metal = target.getUnit().hasTag(Unit.UnitTag.METAL);
+				boolean metal = target.getUnit().hasTag(GameFiles.active().getUnitTag("Metal"));
 				sim.playSound(marker.ability.getHitSound(metal));
 				// Play the ability's impact animation on the struck tile.
 				Animation dmgAnim = loadDamageAnimation(marker.side, marker.ability);

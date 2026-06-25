@@ -49,6 +49,7 @@ public abstract class AbstractGameFiles implements GameFiles {
 	// in their load* hooks).
 	protected final Map<String, String> text = new HashMap<>();
 	protected final Map<String, Unit> units = new HashMap<>();
+	protected final Map<String, Unit.UnitTag> unitTags = new HashMap<>();
 	protected final Map<String, Ability> abilities = new HashMap<>();
 	protected final Map<String, StatusEffect> statusEffects = new HashMap<>();
 	protected final Map<String, StatusEffect.StatusFamily> statusFamilies = new HashMap<>();
@@ -70,6 +71,7 @@ public abstract class AbstractGameFiles implements GameFiles {
 		loadText();
 		loadStatusFamilies();
 		loadStatusEffects();
+		loadUnitTags();
 		loadAbilities();
 		loadUnits();
 		passButton = new File(bundleFolder, "button_passInactive@2x.png");
@@ -87,6 +89,7 @@ public abstract class AbstractGameFiles implements GameFiles {
 	protected abstract void loadStatusEffects() throws IOException;
 	protected abstract void loadAbilities() throws IOException;
 	protected abstract void loadUnits() throws IOException;
+	protected abstract void loadUnitTags() throws IOException;
 
 	// --- Game-data getters ---------------------------------------------------
 
@@ -99,6 +102,11 @@ public abstract class AbstractGameFiles implements GameFiles {
 	@Override
 	public Unit getUnit(String id) {
 		return units.get(id);
+	}
+
+	@Override
+	public Unit.UnitTag getUnitTag(String name) {
+		return unitTags.get(name);
 	}
 
 	@Override
