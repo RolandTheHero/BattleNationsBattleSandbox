@@ -83,6 +83,8 @@ public interface GameFiles {
 	/** The image marking units that cannot be targeted (an {@code @2x} asset; may not exist). */
 	File getDoNotTargetCircle();
 
+	File getCritTab();
+
 	// --- Active bundle + loading --------------------------------------------
 
 	/** The bundle currently loaded, or {@code null} before any has loaded. */

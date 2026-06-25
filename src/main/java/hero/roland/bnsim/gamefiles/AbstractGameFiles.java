@@ -40,6 +40,7 @@ public abstract class AbstractGameFiles implements GameFiles {
 	protected final File bundleFolder;
 	private File passButton;
 	private File doNotTargetCircle;
+	private File critTab;
 
 	// Eagerly-loaded game data (filled in by loadAll(); subclasses populate these
 	// in their load* hooks).
@@ -70,6 +71,7 @@ public abstract class AbstractGameFiles implements GameFiles {
 		loadUnits();
 		passButton = new File(bundleFolder, "button_passInactive@2x.png");
 		doNotTargetCircle = new File(bundleFolder, "doNotTarget_circle@2x.png");
+		critTab = new File(bundleFolder, "CritTab@2x.png");
 	}
 
 	// Version-specific parsing steps, called by loadAll() in dependency order.
@@ -200,6 +202,11 @@ public abstract class AbstractGameFiles implements GameFiles {
 	@Override
 	public File getDoNotTargetCircle() {
 		return doNotTargetCircle;
+	}
+
+	@Override
+	public File getCritTab() {
+		return critTab;
 	}
 
 	@Override

@@ -72,7 +72,7 @@ public class BattleField extends JComponent {
 
 	/** Frames a floating damage number lives, and how far it rises (pixels). */
 	private static final int DAMAGE_FLOAT_FRAMES = 40;
-	private static final int DAMAGE_RISE = 30;
+	private static final int DAMAGE_RISE = 80;
 	/** Point size of a normal damage number, the larger size for a critical hit,
 	 * and the size of the "DODGE"/"MISS" indications. */
 	private static final float DAMAGE_FONT_SIZE = 32f;
@@ -81,6 +81,8 @@ public class BattleField extends JComponent {
 	/** Critical-hit (and dodge) text is white, outlined in black this many pixels thick. */
 	private static final Color CRIT_DAMAGE_COLOR = Color.WHITE;
 	private static final int CRIT_OUTLINE = 2;
+	/** The crit banner is drawn at this fraction of its native size, centred on the number. */
+	private static final double CRIT_TAB_SCALE = 0.8;
 	/** Grazed-hit numbers are grey; a dodge (graze with no damage) shows white "DODGE". */
 	private static final Color GRAZE_DAMAGE_COLOR = new Color(160, 160, 160);
 	private static final Color DODGE_COLOR = Color.WHITE;
@@ -225,6 +227,9 @@ public class BattleField extends JComponent {
 	/** The "cannot be targeted" circle, loaded once on first use (may stay null). */
 	private BufferedImage doNotTargetCircle;
 	private boolean doNotTargetCircleLoaded;
+	/** The critical-hit banner stamped under crit numbers, loaded once (may stay null). */
+	private BufferedImage critTab;
+	private boolean critTabLoaded;
 	private final Random random = new Random();
 
 	/** A transient message shown across the field (e.g. "unit is stunned"). */
@@ -1303,6 +1308,21 @@ public class BattleField extends JComponent {
 						STATUS_NUMBER_ICON, STATUS_NUMBER_ICON, null);
 			}
 			if (number.critical || number.dodge || number.miss) {
+				// A critical hit sits on its banner: the image is centred on the same
+				// spot as the number's text, so the number reads on top of it (and
+				// fades along with it). Drawn first, behind the text.
+				if (number.critical) {
+					BufferedImage tab = critTab();
+					if (tab != null && tab.getWidth() > 0) {
+						int w = (int) Math.round(tab.getWidth() * CRIT_TAB_SCALE);
+						int h = (int) Math.round(tab.getHeight() * CRIT_TAB_SCALE);
+						int ascent = g2.getFontMetrics().getAscent();
+						int descent = g2.getFontMetrics().getDescent();
+						int cx = (int) Math.round(x + tw / 2.0 - w / 2.0);
+						int cy = (int) Math.round(y - ascent / 2.0 + descent / 2.0 - h / 2.0);
+						g2.drawImage(tab, cx, cy, w, h, null);
+					}
+				}
 				// A crit, dodge or miss reads as big text ringed by a solid black
 				// outline so it stays legible over any tile.
 				g2.setColor(Color.BLACK);
@@ -1839,6 +1859,25 @@ public class BattleField extends JComponent {
 			}
 		}
 		return doNotTargetCircle;
+	}
+
+	/**
+	 * The bundle's critical-hit banner, loaded once on first use and cached
+	 * (including a {@code null} miss, so a missing asset is not re-read each frame).
+	 */
+	private BufferedImage critTab() {
+		if (!critTabLoaded) {
+			critTabLoaded = true;
+			File file = GameFiles.active().getCritTab();
+			if (file != null && file.isFile()) {
+				try {
+					critTab = ImageIO.read(file);
+				} catch (IOException e) {
+					critTab = null; // best-effort: a missing asset just isn't drawn
+				}
+			}
+		}
+		return critTab;
 	}
 
 	/** Parses an {@code #RRGGBB} (or {@code RRGGBB}) colour, white on failure. */
