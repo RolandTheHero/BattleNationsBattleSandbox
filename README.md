@@ -7,9 +7,9 @@ The modifications to the BaNG are as follows:
 - The JSON library used (javax.json) is switched out for [org.json](https://mvnrepository.com/artifact/org.json/json).
 - Added the parsing of more attributes of various files.
 
-Other work in this project is original.
+Other work in this project is original based off of the game Battle Nations.
 
-Requires a local install of the game on Mac (available free in the App store) or Windows (available through Steam).
+A copy of the Battle Nations game files is required. This project does not include them!
 
 ## How to Use
 1. Make sure you have Java installed.
