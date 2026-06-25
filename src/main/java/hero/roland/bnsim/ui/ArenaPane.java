@@ -98,6 +98,11 @@ public class ArenaPane extends JLayeredPane {
 		attackPanel.setBackground(new Color(255, 255, 255, 220));
 		attackPanel.setBorder(BorderFactory.createLineBorder(new Color(54, 66, 96)));
 		attackPanel.setVisible(false);
+		// Swallow clicks that land on the panel's background (not on an attack
+		// button) so they don't fall through to the battlefield underneath and
+		// deselect the unit. Without a mouse listener Swing treats the panel as
+		// transparent to events and routes such clicks to the field below.
+		attackPanel.addMouseListener(new java.awt.event.MouseAdapter() {});
 		add(attackPanel, JLayeredPane.PALETTE_LAYER);
 		// Keep the View Enemy button drawn in front of the weapons box, which it
 		// overlaps while enemy viewing is active.
