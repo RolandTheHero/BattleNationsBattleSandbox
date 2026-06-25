@@ -49,7 +49,7 @@ import hero.roland.bnsim.model.Unit;
 public class ArenaPane extends JLayeredPane {
 
 	private final BattleField field;
-	private final JButton startButton = new JButton("Start Battle");
+	private final JButton startButton = new JButton("Fight!");
 	private final JButton endButton = new JButton("End Battle");
 	private final JButton passButton = new JButton("Pass Turn");
 	private final JToggleButton viewEnemyButton = new JToggleButton("View Enemy");
@@ -69,6 +69,7 @@ public class ArenaPane extends JLayeredPane {
 		add(field, JLayeredPane.DEFAULT_LAYER);
 
 		startButton.addActionListener(e -> setBattleMode(true));
+		styleStartButton();
 		endButton.addActionListener(e -> setBattleMode(false));
 		endButton.setVisible(false);
 		passButton.addActionListener(e -> field.passTurn());
@@ -76,8 +77,16 @@ public class ArenaPane extends JLayeredPane {
 		passButton.setVisible(false);
 		viewEnemyButton.setToolTipText(
 				"Show enemy units' health, abilities and target area (view-only)");
-		viewEnemyButton.addActionListener(
-				e -> field.setEnemyViewEnabled(viewEnemyButton.isSelected()));
+		viewEnemyButton.addActionListener(e -> {
+			boolean engaged = field.setEnemyViewEnabled(viewEnemyButton.isSelected());
+			// With no enemy to view, undo the press so the toggle has no effect.
+			if (viewEnemyButton.isSelected() && !engaged)
+				viewEnemyButton.setSelected(false);
+			// Reposition the button (bottom-right vs. on top of the weapons box).
+			revalidate();
+			repaint();
+		});
+		styleViewEnemyButton();
 		viewEnemyButton.setVisible(false);
 		add(startButton, JLayeredPane.PALETTE_LAYER);
 		add(endButton, JLayeredPane.PALETTE_LAYER);
@@ -89,6 +98,9 @@ public class ArenaPane extends JLayeredPane {
 		attackPanel.setBorder(BorderFactory.createLineBorder(new Color(54, 66, 96)));
 		attackPanel.setVisible(false);
 		add(attackPanel, JLayeredPane.PALETTE_LAYER);
+		// Keep the View Enemy button drawn in front of the weapons box, which it
+		// overlaps while enemy viewing is active.
+		moveToFront(viewEnemyButton);
 
 		// Master-volume slider (top-right), always visible.
 		volumeSlider.setPreferredSize(new Dimension(120, 20));
@@ -156,7 +168,6 @@ public class ArenaPane extends JLayeredPane {
 		attackPanel.add(Box.createVerticalStrut(6));
 
 		ButtonGroup group = new ButtonGroup();
-		boolean[] selectedFirst = { false };
 		for (Unit.Weapon weapon : unit.getUnit().getWeapons()) {
 			if ("none".equals(weapon.getTag()))
 				continue;
@@ -171,13 +182,13 @@ public class ArenaPane extends JLayeredPane {
 				JToggleButton button = makeAttackButton(attack, unit);
 				group.add(button);
 				button.addActionListener(e -> field.setSelectedAttack(attack));
-				// Default the aim to the first attack; one on cooldown stays selectable
-				// (firing it is rejected with a message).
-				if (!selectedFirst[0]) {
+				// Highlight whichever attack the unit is currently aiming (the field
+				// sets this to the first attack when a unit is selected). Reading it
+				// rather than re-aiming lets the panel be rebuilt to refresh cooldowns
+				// and ammo without disturbing the aim. An attack on cooldown stays
+				// selectable — firing it is rejected with a message.
+				if (attack == field.getSelectedAttack())
 					button.setSelected(true);
-					field.setSelectedAttack(attack);
-					selectedFirst[0] = true;
-				}
 				row.add(button);
 			}
 			if (anyAttack) {
@@ -317,7 +328,7 @@ public class ArenaPane extends JLayeredPane {
 	 * missing.
 	 */
 	private void stylePassButton() {
-		BufferedImage img = loadPassButtonImage();
+		BufferedImage img = loadButtonImage(GameFiles.active().getPassButton());
 		if (img == null)
 			return;
 		passButton.setText("Pass");
@@ -374,9 +385,31 @@ public class ArenaPane extends JLayeredPane {
 		return out;
 	}
 
-	/** Loads the Pass button image at its native size, or null if it can't be read. */
-	private BufferedImage loadPassButtonImage() {
-		File file = GameFiles.active().getPassButton();
+	/**
+	 * Gives the Start button the fight-button images: {@code fightInactive} at
+	 * rest and {@code fightActive} while pressed, with the button text and chrome
+	 * removed. Falls back to the plain "Fight!" text button if the inactive image
+	 * is missing.
+	 */
+	private void styleStartButton() {
+		BufferedImage inactive = loadButtonImage(GameFiles.active().getFightButtonInactive());
+		if (inactive == null)
+			return;
+		startButton.setText(null);
+		startButton.setIcon(new ImageIcon(inactive));
+		// Use the active image while pressed; fall back to a darkened copy of the
+		// inactive image if that asset is missing.
+		BufferedImage active = loadButtonImage(GameFiles.active().getFightButtonActive());
+		startButton.setPressedIcon(new ImageIcon(active != null ? active : darken(inactive, 0.7f)));
+		startButton.setBorderPainted(false);
+		startButton.setContentAreaFilled(false);
+		startButton.setFocusPainted(false);
+		startButton.setBorder(BorderFactory.createEmptyBorder());
+		startButton.setMargin(new Insets(0, 0, 0, 0));
+	}
+
+	/** Loads a button image at its native size, or null if it's missing or unreadable. */
+	private BufferedImage loadButtonImage(File file) {
 		if (file == null || !file.isFile())
 			return null;
 		try {
@@ -384,6 +417,46 @@ public class ArenaPane extends JLayeredPane {
 		} catch (IOException e) {
 			return null;
 		}
+	}
+
+	/**
+	 * Gives the View Enemy toggle the {@link GameFiles#getMagGlass()} image at its
+	 * native size (the same in both states), with the button text and chrome
+	 * removed. Falls back to the plain "View Enemy" text button if the image is
+	 * missing.
+	 */
+	private void styleViewEnemyButton() {
+		BufferedImage img = loadButtonImage(GameFiles.active().getMagGlass());
+		if (img == null)
+			return;
+		viewEnemyButton.setText(null);
+		viewEnemyButton.setIcon(new ImageIcon(img));
+		viewEnemyButton.setRolloverEnabled(false);
+		viewEnemyButton.setBorderPainted(false);
+		viewEnemyButton.setContentAreaFilled(false);
+		viewEnemyButton.setFocusPainted(false);
+		viewEnemyButton.setBorder(BorderFactory.createEmptyBorder());
+		viewEnemyButton.setMargin(new Insets(0, 0, 0, 0));
+	}
+
+	/**
+	 * {@code img} scaled down so its largest side is at most {@code maxSize} pixels
+	 * (returned unchanged if it is already that small or smaller).
+	 */
+	private static BufferedImage scaleToMax(BufferedImage img, int maxSize) {
+		int max = Math.max(img.getWidth(), img.getHeight());
+		if (max <= maxSize)
+			return img;
+		double scale = (double) maxSize / max;
+		int w = (int) Math.round(img.getWidth() * scale);
+		int h = (int) Math.round(img.getHeight() * scale);
+		BufferedImage scaled = new BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB);
+		Graphics2D g = scaled.createGraphics();
+		g.setRenderingHint(RenderingHints.KEY_INTERPOLATION,
+				RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+		g.drawImage(img, 0, 0, w, h, null);
+		g.dispose();
+		return scaled;
 	}
 
 	private BufferedImage loadImage(String name, int maxSize) {
@@ -396,19 +469,7 @@ public class ArenaPane extends JLayeredPane {
 			BufferedImage img = ImageIO.read(file);
 			if (img == null)
 				return null;
-			int max = Math.max(img.getWidth(), img.getHeight());
-			if (max <= maxSize)
-				return img;
-			double scale = (double) maxSize / max;
-			int w = (int) Math.round(img.getWidth() * scale);
-			int h = (int) Math.round(img.getHeight() * scale);
-			BufferedImage scaled = new BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB);
-			Graphics2D g = scaled.createGraphics();
-			g.setRenderingHint(RenderingHints.KEY_INTERPOLATION,
-					RenderingHints.VALUE_INTERPOLATION_BILINEAR);
-			g.drawImage(img, 0, 0, w, h, null);
-			g.dispose();
-			return scaled;
+			return scaleToMax(img, maxSize);
 		} catch (IOException e) {
 			return null;
 		}
@@ -430,19 +491,31 @@ public class ArenaPane extends JLayeredPane {
 		Dimension pass = passButton.getPreferredSize();
 		passButton.setBounds(16, 16 + end.height + 8, pass.width, pass.height);
 
-		Dimension view = viewEnemyButton.getPreferredSize();
-		viewEnemyButton.setBounds(16, 16 + end.height + 8 + pass.height + 8,
-				view.width, view.height);
-
 		Dimension vol = volumePanel.getPreferredSize();
 		volumePanel.setBounds(w - vol.width - 16, 12, vol.width, vol.height);
 
-		if (attackPanel.isVisible()) {
+		// The unit's weapons box: player units anchor it bottom-left, enemy units
+		// bottom-right.
+		boolean boxShown = attackPanel.isVisible();
+		int boxX = 0, boxY = 0, boxW = 0;
+		if (boxShown) {
 			Dimension ap = attackPanel.getPreferredSize();
-			int width = Math.min(ap.width, w - 32);
-			// Player units anchor bottom-left, enemy units bottom-right.
-			int x = (panelSide == Side.ENEMY) ? (w - width - 16) : 16;
-			attackPanel.setBounds(x, h - ap.height - 64, width, ap.height);
+			boxW = Math.min(ap.width, w - 32);
+			boxX = (panelSide == Side.ENEMY) ? (w - boxW - 16) : 16;
+			boxY = h - ap.height - 64;
+			attackPanel.setBounds(boxX, boxY, boxW, ap.height);
+		}
+
+		// The View Enemy magnifying glass sits in the bottom-right corner (the same
+		// spot as the Fight button — the two are never shown together). While it's
+		// active it hops on top of the unit's weapons box, right-aligned to its top edge.
+		Dimension view = viewEnemyButton.getPreferredSize();
+		if (viewEnemyButton.isSelected() && boxShown) {
+			viewEnemyButton.setBounds(boxX + boxW - view.width, boxY - view.height,
+					view.width, view.height);
+		} else {
+			viewEnemyButton.setBounds(w - view.width - 16, h - view.height - 16,
+					view.width, view.height);
 		}
 	}
 

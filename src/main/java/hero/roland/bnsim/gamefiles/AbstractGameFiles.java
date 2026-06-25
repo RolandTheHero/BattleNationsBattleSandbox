@@ -41,6 +41,9 @@ public abstract class AbstractGameFiles implements GameFiles {
 	private File passButton;
 	private File doNotTargetCircle;
 	private File critTab;
+	private File magGlass;
+	private File fightButtonInactive;
+	private File fightButtonActive;
 
 	// Eagerly-loaded game data (filled in by loadAll(); subclasses populate these
 	// in their load* hooks).
@@ -72,6 +75,9 @@ public abstract class AbstractGameFiles implements GameFiles {
 		passButton = new File(bundleFolder, "button_passInactive@2x.png");
 		doNotTargetCircle = new File(bundleFolder, "doNotTarget_circle@2x.png");
 		critTab = new File(bundleFolder, "CritTab@2x.png");
+		magGlass = new File(bundleFolder, "magGlass@2x.png");
+		fightButtonInactive = new File(bundleFolder, "fightInactive@2x.png");
+		fightButtonActive = new File(bundleFolder, "fightActive@2x.png");
 	}
 
 	// Version-specific parsing steps, called by loadAll() in dependency order.
@@ -207,6 +213,21 @@ public abstract class AbstractGameFiles implements GameFiles {
 	@Override
 	public File getCritTab() {
 		return critTab;
+	}
+
+	@Override
+	public File getMagGlass() {
+		return magGlass;
+	}
+
+	@Override
+	public File getFightButtonInactive() {
+		return fightButtonInactive;
+	}
+
+	@Override
+	public File getFightButtonActive() {
+		return fightButtonActive;
 	}
 
 	@Override

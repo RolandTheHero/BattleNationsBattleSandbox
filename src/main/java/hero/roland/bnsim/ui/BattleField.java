@@ -400,18 +400,45 @@ public class BattleField extends JComponent {
 	}
 
 	/**
-	 * Battle mode: when enabled, enemy units may be selected to inspect their
-	 * health, abilities and target area (view-only — they cannot be made to act).
-	 * Disabling it clears any enemy unit that is currently selected.
+	 * Battle mode: when enabled, an enemy unit is always kept selected so its
+	 * health, abilities and target area can be inspected (view-only — enemy units
+	 * cannot be made to act, and clicking elsewhere does not deselect it). Enabling
+	 * auto-selects an enemy; disabling clears any enemy unit that was selected.
+	 *
+	 * <p>Returns whether enemy viewing is now active: enabling it does nothing and
+	 * returns {@code false} when there is no enemy to view, so the caller can leave
+	 * its toggle unpressed.
 	 */
-	public void setEnemyViewEnabled(boolean enabled) {
-		this.enemyViewEnabled = enabled;
-		// Only one side is selectable at a time; deselect a unit on the side that
-		// can no longer be picked (the player when enabling, the enemy when not).
-		Side selectableSide = enabled ? Side.ENEMY : Side.PLAYER;
-		if (selectedAttacker != null && selectedAttacker.getSide() != selectableSide)
-			clearSelection();
+	public boolean setEnemyViewEnabled(boolean enabled) {
+		if (enabled) {
+			PlacedUnit enemy = firstEnemy();
+			// No enemy to view: leave everything as it was and report that enemy
+			// viewing did not engage.
+			if (enemy == null) {
+				enemyViewEnabled = false;
+				return false;
+			}
+			enemyViewEnabled = true;
+			// Always keep an enemy selected for inspection; if a player unit (or
+			// nothing) was selected, show this enemy instead.
+			if (selectedAttacker == null || selectedAttacker.getSide() != Side.ENEMY)
+				selectAttacker(enemy);
+		} else {
+			enemyViewEnabled = false;
+			// Back to controlling the player: drop the enemy unit that was being viewed.
+			if (selectedAttacker != null && selectedAttacker.getSide() != Side.PLAYER)
+				clearSelection();
+		}
 		repaint();
+		return enemyViewEnabled;
+	}
+
+	/** The first enemy unit placed, or {@code null} if the enemy side has no units. */
+	private PlacedUnit firstEnemy() {
+		for (PlacedUnit unit : sim.placedUnits())
+			if (unit.getSide() == Side.ENEMY)
+				return unit;
+		return null;
 	}
 
 	/**
@@ -431,6 +458,11 @@ public class BattleField extends JComponent {
 			}
 		}
 		repaint();
+	}
+
+	/** The attack currently aimed with, or {@code null} when none is selected. */
+	public Unit.Attack getSelectedAttack() {
+		return selectedAttack;
 	}
 
 	/**
@@ -501,14 +533,15 @@ public class BattleField extends JComponent {
 				}
 			}
 		}
-		// Otherwise (re)select a unit, or clear the selection. Only one side is
-		// selectable: enemy units (view-only) while enemy viewing is enabled,
-		// the player's own units otherwise.
+		// Otherwise (re)select a unit. Only one side is selectable: enemy units
+		// (view-only) while enemy viewing is enabled, the player's own units
+		// otherwise. Clicking away clears the selection — except while enemy
+		// viewing, which always keeps an enemy selected.
 		Side selectableSide = enemyViewEnabled ? Side.ENEMY : Side.PLAYER;
 		PlacedUnit clicked = sim.pick(p);
 		if (clicked != null && clicked.getSide() == selectableSide)
 			selectAttacker(clicked);
-		else
+		else if (!enemyViewEnabled)
 			clearSelection();
 	}
 
@@ -544,12 +577,38 @@ public class BattleField extends JComponent {
 
 	private void selectAttacker(PlacedUnit unit) {
 		selectedAttacker = unit;
-		selectedAttack = null;
-		targetable = new HashSet<>();
-		weaponAffected = new HashSet<>();
+		// Default the aim to the unit's first usable attack (also computing its
+		// highlighted tiles) so a target can be clicked straight away.
+		setSelectedAttack(firstAttack(unit));
 		if (attackerSelectedListener != null)
 			attackerSelectedListener.accept(unit);
 		repaint();
+	}
+
+	/**
+	 * The unit's first usable attack — the first real ability across its weapons —
+	 * or {@code null} if it has none. Used to default the aim when a unit is selected.
+	 */
+	private Unit.Attack firstAttack(PlacedUnit unit) {
+		for (Unit.Weapon weapon : unit.getUnit().getWeapons()) {
+			if ("none".equals(weapon.getTag()))
+				continue;
+			for (Unit.Attack attack : weapon.getAttacks())
+				if (attack.getAbility() != Ability.NO_ABILITY)
+					return attack;
+		}
+		return null;
+	}
+
+	/**
+	 * Rebuilds the selected unit's info panel so its cooldowns, ammo and health
+	 * reflect the unit's current state, without changing the current aim. Lets the
+	 * panel stay open and current after firing and across turns instead of having to
+	 * be closed and reopened. A no-op display-wise when nothing is selected.
+	 */
+	private void refreshSelectionInfo() {
+		if (attackerSelectedListener != null)
+			attackerSelectedListener.accept(selectedAttacker);
 	}
 
 	private void clearSelection() {
@@ -565,9 +624,18 @@ public class BattleField extends JComponent {
 	private void playerFire(Cell aim) {
 		PlacedUnit attacker = selectedAttacker;
 		Unit.Attack attack = selectedAttack;
-		clearSelection();              // disable further selection/attacks
 		executeAttack(attacker, attack, aim);
 		phase = Phase.PLAYER_FIRING;   // wait for the animation to finish
+		// Keep the attacker selected so its weapon box stays open, but drop the aim so
+		// no target highlight lingers while the attack plays out and the enemy acts.
+		// Refresh the box to show the ability's new cooldown and the weapon's spent
+		// ammo (no further firing is possible until the player's turn comes back, as
+		// input is ignored outside Phase.PLAYER).
+		selectedAttack = null;
+		targetable = new HashSet<>();
+		weaponAffected = new HashSet<>();
+		refreshSelectionInfo();
+		repaint();
 	}
 
 	/**
@@ -757,6 +825,9 @@ public class BattleField extends JComponent {
 				unit.tickCooldowns();
 		pendingAdvanceSide = BattleSimulator.opponentOf(actingSide);
 		phase = Phase.AWAITING_ADVANCE;
+		// The acting side's cooldowns and reloads just advanced; refresh the open info
+		// panel so a shown unit's countdowns stay current without reselecting it.
+		refreshSelectionInfo();
 	}
 
 	/** Begins the turn that follows {@code actingSide}'s. */
@@ -1210,6 +1281,10 @@ public class BattleField extends JComponent {
 	private void beginDying(PlacedUnit unit) {
 		sim.remove(unit);
 		dyingUnits.add(unit);
+		// If the unit whose info panel is open just died, close it — it can no longer
+		// act or be inspected.
+		if (unit == selectedAttacker)
+			clearSelection();
 	}
 
 	/**

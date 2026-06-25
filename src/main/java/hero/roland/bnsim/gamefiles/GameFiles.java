@@ -85,6 +85,12 @@ public interface GameFiles {
 
 	File getCritTab();
 
+	File getMagGlass();
+
+	File getFightButtonInactive();
+
+	File getFightButtonActive();
+
 	// --- Active bundle + loading --------------------------------------------
 
 	/** The bundle currently loaded, or {@code null} before any has loaded. */
