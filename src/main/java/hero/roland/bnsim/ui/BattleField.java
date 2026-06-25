@@ -1,7 +1,6 @@
 package hero.roland.bnsim.ui;
 
 import java.awt.AlphaComposite;
-import java.awt.BasicStroke;
 import java.awt.Color;
 import java.awt.Dimension;
 import java.awt.Font;
@@ -9,7 +8,6 @@ import java.awt.Graphics;
 import java.awt.Graphics2D;
 import java.awt.Point;
 import java.awt.RenderingHints;
-import java.awt.Stroke;
 import java.awt.geom.Point2D;
 import java.awt.geom.Rectangle2D;
 import java.awt.image.BufferedImage;
@@ -64,7 +62,6 @@ public class BattleField extends JComponent {
 	private static final Color TARGET_HIGHLIGHT = new Color(60, 120, 230, 110);
 	/** Cyan highlight for the fixed tiles a WEAPON (fixed) attack will strike. */
 	private static final Color WEAPON_HIGHLIGHT = new Color(0, 220, 255, 120);
-	private static final Color SELECT_OUTLINE = new Color(245, 205, 70);
 	/** Cyan outline traced around a selected unit's sprite: its colour, thickness
 	 * (px) and opacity (the ring is drawn half-transparent). */
 	private static final Color SELECT_SPRITE_OUTLINE = new Color(0, 255, 255);
@@ -210,6 +207,10 @@ public class BattleField extends JComponent {
 	/** The attack the player fired with, dropped from the aim while the turn plays
 	 * out and re-highlighted on the selected unit once control returns (null = none). */
 	private Unit.Attack pendingPlayerAim;
+	/** Hides the selected unit's sprite outline while its attack plays out and the
+	 * enemy acts; cleared so the outline returns once control comes back (see
+	 * {@link #playerFire} and {@link #restorePlayerAim}). */
+	private boolean selectHighlightSuppressed;
 	private Set<Cell> targetable = new HashSet<>();
 	/** Fixed tiles a selected WEAPON attack will strike (cyan highlight). */
 	private Set<BattleSimulator.SideCell> weaponAffected = new HashSet<>();
@@ -357,6 +358,7 @@ public class BattleField extends JComponent {
 		firingAim = null;
 		attacksRemaining = 0;
 		pendingPlayerAim = null;
+		selectHighlightSuppressed = false;
 		message = null;
 		if (battle)
 			for (PlacedUnit unit : sim.placedUnits()) {
@@ -500,10 +502,15 @@ public class BattleField extends JComponent {
 		dragPoint = p;
 		// Picking up a unit also selects it, showing its info panel and target
 		// area (view-only in setup); clicking empty space clears the selection.
-		if (dragging != null)
-			selectAttacker(dragging);
-		else
+		// An already-selected unit keeps its current ability — only a fresh
+		// selection resets the aim — so dragging a unit doesn't change the
+		// selected ability.
+		if (dragging != null) {
+			if (dragging != selectedAttacker)
+				selectAttacker(dragging);
+		} else {
 			clearSelection();
+		}
 		repaint();
 	}
 
@@ -587,6 +594,7 @@ public class BattleField extends JComponent {
 
 	private void selectAttacker(PlacedUnit unit) {
 		selectedAttacker = unit;
+		selectHighlightSuppressed = false;
 		// Default the aim to the unit's first usable attack (also computing its
 		// highlighted tiles) so a target can be clicked straight away.
 		setSelectedAttack(firstAttack(unit));
@@ -641,10 +649,13 @@ public class BattleField extends JComponent {
 		pendingPlayerAim = attack;
 		// Keep the attacker selected so its weapon box stays open, but drop the aim so
 		// no target highlight lingers while the attack plays out and the enemy acts.
+		// The unit's sprite outline is hidden the same way, returning with the target
+		// tiles once control comes back (see restorePlayerAim).
 		// Refresh the box to show the ability's new cooldown and the weapon's spent
 		// ammo (no further firing is possible until the player's turn comes back, as
 		// input is ignored outside Phase.PLAYER).
 		selectedAttack = null;
+		selectHighlightSuppressed = true;
 		targetable = new HashSet<>();
 		weaponAffected = new HashSet<>();
 		refreshSelectionInfo();
@@ -1021,6 +1032,8 @@ public class BattleField extends JComponent {
 				&& selectedAttack == null && pendingPlayerAim != null)
 			setSelectedAttack(pendingPlayerAim);
 		pendingPlayerAim = null;
+		// Bring the selected unit's sprite outline back now control is the player's.
+		selectHighlightSuppressed = false;
 	}
 
 	/**
@@ -1085,10 +1098,9 @@ public class BattleField extends JComponent {
 		drawGrid(g2, Side.ENEMY);
 		drawGrid(g2, Side.PLAYER);
 
-		// A selected unit shows its target area and outline in either mode (no-op
-		// when nothing is selected); setup mode also shows the drag-drop highlight.
+		// A selected unit shows its target area in either mode (no-op when nothing is
+		// selected); setup mode also shows the drag-drop highlight.
 		drawTargetable(g2);
-		drawSelection(g2);
 		if (!battleMode && dragging != null && dragPoint != null) {
 			Cell target = geometry.cellAt(dragging.getSide(), dragPoint);
 			if (target != null) {
@@ -1193,17 +1205,6 @@ public class BattleField extends JComponent {
 			int y = (int) Math.round(c.getY() - h / 2.0);
 			g.drawImage(circle, x, y, w, h, null);
 		}
-	}
-
-	private void drawSelection(Graphics2D g) {
-		if (selectedAttacker == null)
-			return;
-		Cell cell = selectedAttacker.getCell();
-		Stroke old = g.getStroke();
-		g.setStroke(new BasicStroke(3f));
-		g.setColor(SELECT_OUTLINE);
-		g.drawPolygon(geometry.cellDiamond(selectedAttacker.getSide(), cell.col(), cell.row()));
-		g.setStroke(old);
 	}
 
 	private void drawHitMarkers(Graphics2D g) {
@@ -1774,8 +1775,9 @@ public class BattleField extends JComponent {
 		int frame = (attack != null) ? (tick - unit.getAttackStartTick()) : tick;
 
 		// The selected unit gets a cyan outline traced around its sprite, drawn
-		// beneath it so only the ring sticking out past its edges shows.
-		if (unit == selectedAttacker && anim != null)
+		// beneath it so only the ring sticking out past its edges shows. Hidden while
+		// the unit's attack plays out and the enemy acts (see playerFire).
+		if (unit == selectedAttacker && !selectHighlightSuppressed && anim != null)
 			drawSpriteOutline(g2, anim, frame, centreX, centreY);
 
 		if (!drawAnimation(g2, anim, frame, centreX, centreY))
