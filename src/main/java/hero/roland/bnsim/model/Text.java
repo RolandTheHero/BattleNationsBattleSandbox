@@ -1,7 +1,5 @@
 package hero.roland.bnsim.model;
 
-import hero.roland.bnsim.gamefiles.GameFiles;
-
 public class Text {
     private Text() {}
     public enum Language {
@@ -28,9 +26,4 @@ public class Text {
         public String filename() { return filename; }
         public String deltaFilename() { return deltaFilename; }
     }
-
-	/** The localized string for {@code key} from the active bundle, or {@code null}. */
-	public static String get(String key) {
-		return GameFiles.active().getText(key);
-	}
 }

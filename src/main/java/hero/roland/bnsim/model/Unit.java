@@ -2,6 +2,7 @@ package hero.roland.bnsim.model;
 
 import java.io.IOException;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
@@ -131,6 +132,16 @@ public class Unit implements Comparable<Unit> {
 	}
 
 	/**
+	 * This unit's directly-assigned tags (e.g. {@code Ground}, {@code Tank}), in
+	 * file order, never {@code null}. These are the unit's own tags only; the
+	 * supertypes they imply via the tag hierarchy are not included (see
+	 * {@link #hasTag} for hierarchy-aware membership).
+	 */
+	public UnitTag[] getTags() {
+		return tags == null ? new UnitTag[0] : tags.clone();
+	}
+
+	/**
 	 * Whether this unit has the given tag, honouring the tag hierarchy: a unit
 	 * tagged with a subtype also counts as having the supertype. For example a
 	 * unit tagged {@code Soldier}, {@code Vehicle} or {@code Tank} all "have" the
@@ -163,6 +174,15 @@ public class Unit implements Comparable<Unit> {
 	 */
 	public boolean isImmuneTo(StatusEffect.StatusFamily family) {
 		return enforceImmunities && family != null && statusEffectImmunities.contains(family);
+	}
+
+	/**
+	 * The status-effect families this unit is innately immune to, as an
+	 * unmodifiable view. Unaffected by the {@link #setEnforceImmunities} toggle,
+	 * which only governs whether those immunities are applied in combat.
+	 */
+	public Set<StatusEffect.StatusFamily> getStatusImmunities() {
+		return Collections.unmodifiableSet(statusEffectImmunities);
 	}
 
 	public Animation getBackAnimation() throws IOException {
@@ -287,6 +307,7 @@ public class Unit implements Comparable<Unit> {
 		private int ammo; // Infinite if -1
 		private int reloadTime; // Turns to reload the ammo back to full
 		private int baseAttack; // Added to the ability's attack when calculating total offense
+		private double baseCritRate;
 
 		protected Weapon() {
 			name = "(None)";
@@ -316,6 +337,7 @@ public class Unit implements Comparable<Unit> {
 			ammo = json.optInt("ammo", -1);
 			reloadTime = json.optInt("reloadTime", 0);
 			baseAttack = json.optInt("base_ATK", 0);
+			baseCritRate = json.optDouble("base_critPercent", 0d) / 100;
 		}
 		public String getName() {
 			return name;
@@ -364,6 +386,9 @@ public class Unit implements Comparable<Unit> {
 		/** Added to the ability's attack when computing the attacker's total offense. */
 		public int getBaseAttack() {
 			return baseAttack;
+		}
+		public double getBaseCritical() {
+			return baseCritRate;
 		}
 		public String toString() {
 			return name;

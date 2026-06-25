@@ -383,7 +383,8 @@ public class BattleSimulator {
 				TargetSquare hit = pickWeighted(targetArea);
 				if (hit != null) {
 					// Each shot rolls its own crit against the unit on its target tile.
-					boolean crit = rollCritical(attacker, ability, targetSide,
+					boolean crit = rollCritical(attacker, ability,
+							attack.getWeapon().getBaseCritical(), targetSide,
 							aim.col() + xSign * hit.getX(), aim.row() - hit.getY());
 					// The picked tile takes full damage: a random area's square value
 					// is its pick probability (consumed by pickWeighted), not a
@@ -396,7 +397,8 @@ public class BattleSimulator {
 		} else {
 			for (int t = 0; t < targetArea.length; t++)
 				for (int shot = 0; shot < shots; shot++) {
-					boolean crit = rollCritical(attacker, ability, targetSide,
+					boolean crit = rollCritical(attacker, ability,
+							attack.getWeapon().getBaseCritical(), targetSide,
 							aim.col() + xSign * targetArea[t].getX(),
 							aim.row() - targetArea[t].getY());
 					// The target square's value is its authored damagePercent; combine
@@ -445,18 +447,19 @@ public class BattleSimulator {
 	/**
 	 * Rolls whether one shot crits. The chance is the ability's rate against the
 	 * unit on the shot's primary target cell (so future per-unit-type crit bonuses
-	 * apply, see {@link Ability#getCriticalRate}) plus the attacker's rank critical
-	 * bonus. An off-grid or empty cell uses just the base chance.
+	 * apply, see {@link Ability#getCriticalRate}) plus the firing weapon's base
+	 * critical chance and the attacker's rank critical bonus. An off-grid or empty
+	 * cell uses just the base chance (still including the weapon and rank bonuses).
 	 */
-	private boolean rollCritical(PlacedUnit attacker, Ability ability, Side targetSide,
-			int col, int row) {
+	private boolean rollCritical(PlacedUnit attacker, Ability ability, double weaponCrit,
+			Side targetSide, int col, int row) {
 		Unit target = null;
 		if (GridGeometry.isValid(col, row)) {
 			PlacedUnit hit = unitAt(targetSide, new Cell(col, row));
 			if (hit != null)
 				target = hit.getUnit();
 		}
-		double rate = ability.getCriticalRate(target) + attacker.getCriticalBonus();
+		double rate = ability.getCriticalRate(target) + weaponCrit + attacker.getCriticalBonus();
 		return random.nextDouble() < rate;
 	}
 
@@ -499,7 +502,8 @@ public class BattleSimulator {
 			if (origin == null)
 				continue;
 			for (int shot = 0; shot < shots; shot++) {
-				boolean crit = rollCritical(attacker, ability, targetSide,
+				boolean crit = rollCritical(attacker, ability,
+						attack.getWeapon().getBaseCritical(), targetSide,
 						origin.cell().col(), origin.cell().row());
 				// The impact is positioned at the precomputed origin (SINGLE_TARGET, so
 				// no extra offset), but still scaled by the fixed tile's damagePercent.

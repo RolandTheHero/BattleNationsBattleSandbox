@@ -2,6 +2,7 @@ package hero.roland.bnsim.model;
 
 import java.io.IOException;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
@@ -139,7 +140,7 @@ public class Ability {
 		if (criticalBonusesJson != null) {
 			for (String key : criticalBonusesJson.keySet())
 				criticalBonuses.put(gf.getUnitTag(key),
-						criticalBonusesJson.getDouble(key) / 100);
+					criticalBonusesJson.getDouble(key) / 100);
 		}
 		cooldown = stats.optInt("abilityCooldown", 0);
 		globalCooldown = stats.optInt("globalCooldown", 0);
@@ -370,6 +371,19 @@ public class Ability {
 			}
 		}
 		return rate;
+	}
+
+	/**
+	 * The extra critical-hit chance (0-1) this ability gains against each unit
+	 * type, keyed by the {@link UnitTag} that triggers it, as an unmodifiable
+	 * view. Empty when the ability has no tag-specific bonuses. The full chance
+	 * against a target with one of these tags is {@link #getBaseCritical} plus
+	 * the bonus — see {@link #getCriticalRate}.
+	 */
+	public Map<UnitTag, Double> getCriticalBonuses() {
+		return criticalBonuses == null
+			? Collections.emptyMap()
+			: Collections.unmodifiableMap(criticalBonuses);
 	}
 
     /** The status effects this ability can inflict, each with its chance (percent). */

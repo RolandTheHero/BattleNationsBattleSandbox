@@ -1,5 +1,6 @@
 package hero.roland.bnsim.ui;
 
+import java.awt.BorderLayout;
 import java.awt.Color;
 import java.awt.Dimension;
 import java.awt.FlowLayout;
@@ -158,11 +159,25 @@ public class ArenaPane extends JLayeredPane {
 		panelSide = unit.getSide();
 		attackPanel.setLayout(new BoxLayout(attackPanel, BoxLayout.Y_AXIS));
 
-		// Unit name and health/armor bar, both centered at the top of the panel.
+		// Unit name (enlarged) with an "!" info button anchored to its right, then the
+		// health/armor bar, all centered at the top of the panel.
 		JLabel name = new JLabel(unit.getUnit().getName(), JLabel.CENTER);
-		name.setAlignmentX(CENTER_ALIGNMENT);
-		name.setMaximumSize(new Dimension(Integer.MAX_VALUE, name.getPreferredSize().height));
-		attackPanel.add(name);
+		name.setFont(name.getFont().deriveFont(Font.BOLD, name.getFont().getSize2D() + 3f));
+
+		JButton info = new JButton("!");
+		info.setFont(info.getFont().deriveFont(Font.BOLD));
+		info.setMargin(new Insets(0, 6, 0, 6));
+		info.setFocusable(false);
+		info.setToolTipText("Show this unit's full stats, abilities and damage");
+		info.addActionListener(e -> UnitInfoDialog.show(this, unit));
+
+		JPanel nameRow = new JPanel(new BorderLayout(4, 0));
+		nameRow.setOpaque(false);
+		nameRow.add(name, BorderLayout.CENTER);
+		nameRow.add(info, BorderLayout.EAST);
+		nameRow.setAlignmentX(CENTER_ALIGNMENT);
+		nameRow.setMaximumSize(new Dimension(Integer.MAX_VALUE, nameRow.getPreferredSize().height));
+		attackPanel.add(nameRow);
 		attackPanel.add(Box.createVerticalStrut(4));
 		attackPanel.add(new HealthArmorBar(unit));
 		attackPanel.add(Box.createVerticalStrut(6));
