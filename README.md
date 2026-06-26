@@ -11,6 +11,10 @@ Other work in this project is original based off of the game Battle Nations.
 
 A copy of the Battle Nations game files is required. This project does not include them!
 
+Battle Nations is (C) Madrona Games, Inc.
+
+Currently, only pre-Madrona versions of the game files can be loaded.
+
 ## How to Use
 1. Make sure you have Java installed.
 2. Clone this repository.
