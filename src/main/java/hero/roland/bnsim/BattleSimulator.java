@@ -30,6 +30,10 @@ public class BattleSimulator {
 
 	private final GridGeometry geometry = new GridGeometry();
 
+	/** The optional house-rule toggles, shared with every {@link PlacedUnit} and
+	 * read wherever a rule is enforced. */
+	private final BattleRules rules = new BattleRules();
+
 	/** Occupancy grid per side: [col][row], {@code null} when empty. */
 	private final Map<Side, PlacedUnit[][]> grids = new EnumMap<>(Side.class);
 
@@ -52,6 +56,12 @@ public class BattleSimulator {
 		return geometry;
 	}
 
+	/** The shared house-rule toggles for this simulation (target types, immunities
+	 * and combat resources). The UnitMenu flips these via the BattleField. */
+	public BattleRules getRules() {
+		return rules;
+	}
+
 	/**
 	 * Places a unit in the first free cell on the given side (row-major
 	 * order). Returns the new {@link PlacedUnit}, or {@code null} if that
@@ -62,7 +72,7 @@ public class BattleSimulator {
 		for (int row = 0; row < GridGeometry.ROWS; row++) {
 			for (int col = 0; col < GridGeometry.COLS; col++) {
 				if (GridGeometry.isValid(col, row) && grid[col][row] == null) {
-					PlacedUnit placed = new PlacedUnit(unit, side, new Cell(col, row));
+					PlacedUnit placed = new PlacedUnit(unit, side, new Cell(col, row), rules);
 					grid[col][row] = placed;
 					return placed;
 				}
@@ -83,7 +93,7 @@ public class BattleSimulator {
 		PlacedUnit[][] grid = grids.get(side);
 		if (!GridGeometry.isValid(col, row) || grid[col][row] != null)
 			return null;
-		PlacedUnit placed = new PlacedUnit(unit, side, new Cell(col, row));
+		PlacedUnit placed = new PlacedUnit(unit, side, new Cell(col, row), rules);
 		grid[col][row] = placed;
 		return placed;
 	}

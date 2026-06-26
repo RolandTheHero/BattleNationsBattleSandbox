@@ -49,13 +49,6 @@ public class Ability {
 	//private Map<String, Prerequisites> prereqs;
 	private int cooldown, globalCooldown, ammoRequired, prepTime;
 	private Set<UnitTag> targetableTags;
-
-	/**
-	 * Whether {@link #canTarget} enforces abilities' targetable unit tags. When
-	 * false every ability may hit any unit regardless of its configured targets.
-	 * Toggled from the UnitMenu's "Target types" setting.
-	 */
-	private static boolean enforceTargetTypes = true;
 	private int attack; // Base offense stat, added to unit's rank accuracy for total offense
 	private double secondaryDamageRatio; // Multiplier to damage when grazed
 	private double damageDistraction;
@@ -195,24 +188,13 @@ public class Ability {
 	}
 
 	/**
-	 * Sets whether {@link #canTarget} enforces abilities' targetable unit tags.
-	 * When disabled every ability may hit any unit. Driven by the UnitMenu's
-	 * "Target types" toggle.
-	 */
-	public static void setEnforceTargetTypes(boolean enforce) {
-		enforceTargetTypes = enforce;
-	}
-
-	/**
-	 * Whether this ability is allowed to hit {@code unit}: true when the unit has
-	 * at least one of the ability's targetable tags. An ability with no configured
-	 * targets (an empty {@link #targetableTags}) is unrestricted and hits anything.
-	 * When target-type enforcement is disabled (see {@link #setEnforceTargetTypes})
-	 * every ability hits anything.
+	 * Whether this ability's target list allows it to hit {@code unit}: true when the
+	 * unit has at least one of the ability's targetable tags. An ability with no
+	 * configured targets (an empty {@link #targetableTags}) is unrestricted and hits
+	 * anything. This is the raw target-type rule; whether it is enforced at all is the
+	 * caller's decision (the UnitMenu's "Target types" toggle).
 	 */
 	public boolean canTarget(Unit unit) {
-		if (!enforceTargetTypes)
-			return true;
 		if (targetableTags == null || targetableTags.isEmpty())
 			return true;
 		for (UnitTag tag : targetableTags)

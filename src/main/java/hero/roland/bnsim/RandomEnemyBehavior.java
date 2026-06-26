@@ -19,6 +19,7 @@ public class RandomEnemyBehavior implements EnemyBehavior {
 	@Override
 	public Move decideMove(BattleSimulator sim) {
 		List<Move> candidates = new ArrayList<>();
+		boolean enforceTargetTypes = sim.getRules().isEnforceTargetTypes();
 		for (PlacedUnit unit : sim.placedUnits()) {
 			if (unit.getSide() != Side.ENEMY)
 				continue;
@@ -39,7 +40,7 @@ public class RandomEnemyBehavior implements EnemyBehavior {
 							if (sc.side() != Side.PLAYER)
 								continue;
 							PlacedUnit target = sim.unitAt(Side.PLAYER, sc.cell());
-							if (target != null && attack.getAbility().canTarget(target.getUnit())) {
+							if (target != null && (!enforceTargetTypes || attack.getAbility().canTarget(target.getUnit()))) {
 								candidates.add(new Move(unit, attack, unit.getCell()));
 								break;
 							}
@@ -47,7 +48,7 @@ public class RandomEnemyBehavior implements EnemyBehavior {
 					} else {
 						for (Cell cell : sim.targetableCells(unit, attack)) {
 							PlacedUnit target = sim.unitAt(Side.PLAYER, cell);
-							if (target != null && attack.getAbility().canTarget(target.getUnit()))
+							if (target != null && (!enforceTargetTypes || attack.getAbility().canTarget(target.getUnit())))
 								candidates.add(new Move(unit, attack, cell));
 						}
 					}

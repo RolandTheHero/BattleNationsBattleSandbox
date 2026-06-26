@@ -60,10 +60,15 @@ public class PlacedUnit {
 	/** Status effects currently afflicting this unit (e.g. poison, stun). */
 	private final List<ActiveStatusEffect> statusEffects = new ArrayList<>();
 
+	/** The shared house-rule toggles (target types, immunities, combat resources),
+	 * consulted when applying status effects and snapshotted at {@link #startBattle}. */
+	private final BattleRules rules;
+
 	/**
 	 * Combat-resource state, live only between {@link #startBattle} and the end of a
-	 * battle. When {@code combatRulesEnabled} is false the unit ignores ammo,
-	 * cooldowns, reloads and prep time entirely — every attack is always usable.
+	 * battle. Snapshotted from {@link BattleRules#isCombatRulesEnabled()} at battle
+	 * start; when false the unit ignores ammo, cooldowns, reloads and prep time
+	 * entirely — every attack is always usable.
 	 */
 	private boolean combatRulesEnabled;
 	/** Each weapon's current ammo ({@code -1} when the weapon has infinite ammo). */
@@ -79,10 +84,11 @@ public class PlacedUnit {
 	private final Set<Ability> cooldownFresh = new HashSet<>();
 	private final Set<Unit.Weapon> reloadFresh = new HashSet<>();
 
-	public PlacedUnit(Unit unit, Side side, Cell cell) {
+	public PlacedUnit(Unit unit, Side side, Cell cell, BattleRules rules) {
 		this.unit = unit;
 		this.side = side;
 		this.cell = cell;
+		this.rules = rules;
 		resetHealth();
 	}
 
@@ -321,7 +327,7 @@ public class PlacedUnit {
 	 * immunity.
 	 */
 	public boolean applyStatusEffect(ActiveStatusEffect effect) {
-		if (unit.isImmuneTo(effect.getEffect().getFamily()))
+		if (rules.isEnforceImmunities() && unit.isImmuneTo(effect.getEffect().getFamily()))
 			return false;
 		statusEffects.removeIf(e -> e.getEffect() == effect.getEffect());
 		statusEffects.add(effect);
@@ -389,12 +395,13 @@ public class PlacedUnit {
 	/**
 	 * Initialises this unit's combat resources for the start of a battle: every
 	 * weapon is filled to its ammo capacity and cleared of any reload, and every
-	 * ability starts on a cooldown equal to its prep (charge) time. When
-	 * {@code rulesEnabled} is false the unit ignores cooldowns, ammo and reloads
-	 * entirely — every attack stays usable for the whole battle.
+	 * ability starts on a cooldown equal to its prep (charge) time. Snapshots the
+	 * combat-rules toggle (see {@link BattleRules}); when it is off the unit ignores
+	 * cooldowns, ammo and reloads entirely — every attack stays usable for the whole
+	 * battle.
 	 */
-	public void startBattle(boolean rulesEnabled) {
-		combatRulesEnabled = rulesEnabled;
+	public void startBattle() {
+		combatRulesEnabled = rules.isCombatRulesEnabled();
 		ammo.clear();
 		reloadRemaining.clear();
 		cooldownRemaining.clear();
@@ -404,7 +411,7 @@ public class PlacedUnit {
 			if ("none".equals(weapon.getTag()))
 				continue;
 			ammo.put(weapon, weapon.getAmmo());
-			if (!rulesEnabled)
+			if (!combatRulesEnabled)
 				continue;
 			for (Unit.Attack attack : weapon.getAttacks()) {
 				Ability ability = attack.getAbility();

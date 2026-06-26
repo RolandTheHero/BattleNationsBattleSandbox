@@ -137,9 +137,6 @@ public class BattleField extends JComponent {
 
 	private int tick;
 	private boolean battleMode;
-	/** Whether the next battle tracks cooldowns, ammo, reloads and prep time. Set
-	 * before the battle starts via {@link #setCombatRulesEnabled} (the UnitMenu toggle). */
-	private boolean combatRulesEnabled = true;
 
 	/** Status effect applied to a side at the start of each of its turns (whenever
 	 * the turn changes to it); null = none. Set via the UnitMenu "Environment" dropdown. */
@@ -389,7 +386,7 @@ public class BattleField extends JComponent {
 		if (battle)
 			for (PlacedUnit unit : sim.placedUnits()) {
 				unit.resetHealth();
-				unit.startBattle(combatRulesEnabled);
+				unit.startBattle();
 			}
 		repaint();
 	}
@@ -400,7 +397,7 @@ public class BattleField extends JComponent {
 	 * mid-battle takes effect from the following battle).
 	 */
 	public void setCombatRulesEnabled(boolean enabled) {
-		this.combatRulesEnabled = enabled;
+		sim.getRules().setCombatRulesEnabled(enabled);
 	}
 
 	/**
@@ -409,7 +406,7 @@ public class BattleField extends JComponent {
 	 * toggle; applies immediately so the untargetable highlight updates live.
 	 */
 	public void setTargetTypesEnabled(boolean enabled) {
-		Ability.setEnforceTargetTypes(enabled);
+		sim.getRules().setEnforceTargetTypes(enabled);
 		repaint();
 	}
 
@@ -419,7 +416,7 @@ public class BattleField extends JComponent {
 	 * the UnitMenu toggle.
 	 */
 	public void setStatusImmunitiesEnabled(boolean enabled) {
-		Unit.setEnforceImmunities(enabled);
+		sim.getRules().setEnforceImmunities(enabled);
 	}
 
 	/**
@@ -1410,6 +1407,10 @@ public class BattleField extends JComponent {
 	private void drawUntargetable(Graphics2D g) {
 		if (selectedAttacker == null || selectedAttack == null)
 			return;
+		// Untargetable units only exist when the target-type rule is enforced; with it
+		// off every unit can be hit, so nothing is highlighted.
+		if (!sim.getRules().isEnforceTargetTypes())
+			return;
 		BufferedImage circle = doNotTargetCircle();
 		if (circle == null || circle.getWidth() <= 0)
 			return;
@@ -1723,7 +1724,8 @@ public class BattleField extends JComponent {
 			if (target == null) continue;
 			// A unit the ability cannot target takes nothing: no sound, animation,
 			// damage or status — the hit simply does not happen to it.
-			if (marker.ability != null && !marker.ability.canTarget(target.getUnit()))
+			if (marker.ability != null && sim.getRules().isEnforceTargetTypes()
+					&& !marker.ability.canTarget(target.getUnit()))
 				continue;
 			if (marker.ability != null && sounded.add(marker.cell)) {
 				boolean metal = target.getUnit().hasTag(GameFiles.active().getUnitTag("Metal"));
