@@ -69,6 +69,7 @@ public class UnitMenu extends JPanel {
 	private Consumer<Boolean> combatRulesListener;
 	private Consumer<Boolean> targetTypesListener;
 	private Consumer<Boolean> statusImmunitiesListener;
+	private Runnable languageChangedListener;
 
 	public UnitMenu() {
 		setLayout(new BorderLayout());
@@ -227,9 +228,10 @@ public class UnitMenu extends JPanel {
 	/**
 	 * Builds the language dropdown, listing every {@link Text.Language} with the
 	 * bundle's current language pre-selected. Choosing one re-reads the bundle's
-	 * text in that language (see {@link GameFiles#setLanguage}). Note this only
-	 * swaps the loaded strings; units and abilities already on the board keep the
-	 * names they resolved when first loaded.
+	 * text in that language (see {@link GameFiles#setLanguage}). Units and
+	 * abilities resolve their names from the loaded text on demand, so the unit
+	 * list and (via the {@linkplain #setLanguageChangedListener language-changed
+	 * listener}) the battlefield are refreshed to show the new language.
 	 */
 	private JPanel buildLanguageSelector() {
 		for (Text.Language lang : Text.Language.values())
@@ -247,13 +249,28 @@ public class UnitMenu extends JPanel {
 				// Could not read the chosen language's text files; keep whatever text
 				// was loaded before so the app stays usable.
 				ex.printStackTrace();
+				return;
 			}
+			// Names are looked up from the text live, so a repaint re-renders the
+			// unit list in the new language; the listener refreshes the rest.
+			unitList.repaint();
+			if (languageChangedListener != null)
+				languageChangedListener.run();
 		});
 
 		JPanel panel = new JPanel(new BorderLayout(4, 0));
 		panel.add(new JLabel("Language:"), BorderLayout.WEST);
 		panel.add(languageSelector, BorderLayout.CENTER);
 		return panel;
+	}
+
+	/**
+	 * Sets the callback invoked after the text language has been switched, for the
+	 * caller to refresh any other views that display loaded text (e.g. the
+	 * battlefield). The unit list is refreshed by the menu itself.
+	 */
+	public void setLanguageChangedListener(Runnable listener) {
+		this.languageChangedListener = listener;
 	}
 
 	/**

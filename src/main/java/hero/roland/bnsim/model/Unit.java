@@ -21,7 +21,7 @@ public class Unit implements Comparable<Unit> {
 	private final GameFiles gf;
 
     private int blocking;
-	private String id, name, shortName, side;
+	private String id, nameId, shortNameId, side;
 	private String backAnimName, frontAnimName, deathAnimName;
 	private Rank[] ranks;
 	private Weapon[] weapons;
@@ -49,12 +49,8 @@ public class Unit implements Comparable<Unit> {
 	public Unit(GameFiles gf, String id, JSONObject json) {
 		this.gf = gf;
 		this.id = id;
-		name = gf.getText(json.optString("name", null));
-		if (name == null) name = id;
-		if (name.startsWith("Speciment ")) // fix game file typo
-			name = "Specimen" + name.substring(9);
-		shortName = gf.getText(json.optString("shortName", null));
-		if (shortName == null) shortName = name;
+		nameId = json.optString("name", null);
+		shortNameId = json.optString("shortName", null);
 		side = json.optString("side", "Other");
 		backAnimName = json.optString("backIdleAnimation", null);
 		frontAnimName = json.optString("frontIdleAnimation", null);
@@ -110,15 +106,21 @@ public class Unit implements Comparable<Unit> {
 	}
 
 	public String getName() {
+		String name = gf.getText(nameId);
+		if (name == null) name = id;
+		if (name.startsWith("Speciment ")) // fix game file typo
+			name = "Specimen" + name.substring(9);
 		return name;
 	}
 
 	public String getShortName() {
+		String shortName = gf.getText(shortNameId);
+		if (shortName == null) shortName = getName();
 		return shortName;
 	}
 
 	public String toString() {
-		return name;
+		return getName();
 	}
 
 	public String getSide() {
@@ -213,7 +215,7 @@ public class Unit implements Comparable<Unit> {
 
 	@Override
 	public int compareTo(Unit that) {
-		int cmp = this.name.compareTo(that.name);
+		int cmp = this.getName().compareTo(that.getName());
 		if (cmp == 0)
 			cmp = this.id.compareTo(that.id);
 		return cmp;
@@ -296,7 +298,7 @@ public class Unit implements Comparable<Unit> {
 	}
 
 	public class Weapon {
-		private String name, tag;
+		private String nameId, tag;
 		private String frontAnimationName, backAnimationName;
 		private Attack[] attacks;
 		private int hitDelay;
@@ -310,14 +312,12 @@ public class Unit implements Comparable<Unit> {
 		private double baseCritRate;
 
 		protected Weapon() {
-			name = "(None)";
 			tag = "none";
 			attacks = new Attack[0];
 		}
 		protected Weapon(String tag, JSONObject json) {
 			this.tag = tag;
-			name = gf.getText(json.optString("name", null));
-			if (name == null) name = tag;
+			nameId = json.optString("name", null);
 			frontAnimationName = json.optString("frontattackAnimation", null);
 			backAnimationName = json.optString("backattackAnimation", null);
 			firesoundFrame = json.optInt("firesoundFrame", 0);
@@ -340,7 +340,9 @@ public class Unit implements Comparable<Unit> {
 			baseCritRate = json.optDouble("base_critPercent", 0d) / 100;
 		}
 		public String getName() {
-			return name;
+			String name = gf.getText(nameId);
+			if (name != null) return name;
+			return "none".equals(tag) ? "(None)" : tag;
 		}
 		public String getTag() {
 			return tag;
@@ -391,7 +393,7 @@ public class Unit implements Comparable<Unit> {
 			return baseCritRate;
 		}
 		public String toString() {
-			return name;
+			return getName();
 		}
 	}
 

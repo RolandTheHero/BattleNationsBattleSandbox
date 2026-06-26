@@ -267,6 +267,16 @@ public class PlacedUnit {
 	}
 
 	/**
+	 * Whether this unit is wholly immune to the given damage type: its effective
+	 * HP damage modifier (resistance) for the type is exactly 0, so a hit of that
+	 * type deals it no HP damage. Active status-effect resistance overrides are
+	 * taken into account, exactly as in {@link #applyDamage}.
+	 */
+	public boolean isImmuneToDamageType(Ability.DamageType type) {
+		return effectiveDamageMod(type) == 0;
+	}
+
+	/**
 	 * The unit's HP damage modifier for a type, with active status effects taken
 	 * into account: an effect's modifier <em>replaces</em> the unit's own for that
 	 * type, and when several effects modify the same type the highest one applies.

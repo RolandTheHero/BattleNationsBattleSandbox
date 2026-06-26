@@ -199,8 +199,8 @@ final class UnitInfoDialog extends JDialog {
 			if (!baseResist.isEmpty() || !armorResist.isEmpty() || !statusResist.isEmpty()) {
 				sb.append(sectionHeader("Resistances"));
 				sb.append("<table cellspacing='0' cellpadding='0'><tr>");
-				appendResistColumn(sb, "Base", baseResist, false);
-				appendResistColumn(sb, "Armor", armorResist, !baseResist.isEmpty());
+				appendResistColumn(sb, gf.getText("bodydmgmods"), baseResist, false);
+				appendResistColumn(sb, gf.getText("armor"), armorResist, !baseResist.isEmpty());
 				appendResistColumn(sb, "Immunities", statusResist,
 						!baseResist.isEmpty() || !armorResist.isEmpty());
 				sb.append("</tr></table>");
@@ -224,10 +224,10 @@ final class UnitInfoDialog extends JDialog {
 
 			String weaponInfo = "";
 			if (weapon.getAmmo() >= 0)
-				weaponInfo = "Ammo " + weapon.getAmmo();
+				weaponInfo = gf.getText("ammo") + " " + weapon.getAmmo();
 			if (weapon.getReloadTime() > 0)
 				weaponInfo += (weaponInfo.isEmpty() ? "" : " · ")
-						+ "Reload " + weapon.getReloadTime();
+					+ gf.getText("reload") + " " + weapon.getReloadTime();
 			weapons.append("<div style='margin-top:8px;'><font size='4'><b>")
 					.append(esc(weapon.getName())).append("</b></font>");
 			if (!weaponInfo.isEmpty())
@@ -340,8 +340,15 @@ final class UnitInfoDialog extends JDialog {
 		rows.append(kv(gf.getText("criticalpercent"), pct(baseCrit + ability.getBaseCritical())));
 		appendCriticalBonuses(rows, ability, baseCrit);
 
-		return "<div style='margin-left:10px; margin-top:4px;'><b>"
-				+ esc(ability.getName()) + "</b>"
+		// Header row: the ability's icon to the left of its name, both cells
+		// middle-aligned so the name sits vertically centred against the (taller)
+		// icon.
+		String header = "<table cellspacing='0' cellpadding='0'><tr>"
+				+ "<td valign='middle'>" + abilityIcon(ability) + "</td>"
+				+ "<td valign='middle'>&nbsp;<b>" + esc(ability.getName()) + "</b></td>"
+				+ "</tr></table>";
+		return "<div style='margin-left:10px; margin-top:4px;'>"
+				+ header
 				+ "<table cellspacing='0' cellpadding='1'>" + rows + "</table></div>";
 	}
 
@@ -358,9 +365,14 @@ final class UnitInfoDialog extends JDialog {
 		List<Map.Entry<Unit.UnitTag, Double>> bonuses =
 			new ArrayList<>(ability.getCriticalBonuses().entrySet());
 		bonuses.sort(Comparator.comparing(e -> e.getKey().name()));
-		for (Map.Entry<Unit.UnitTag, Double> bonus : bonuses)
-			rows.append(kv(gf.getText("critpertag") + esc(bonus.getKey().name()),
+		for (Map.Entry<Unit.UnitTag, Double> bonus : bonuses) {
+			// The string is "Crit%% vs. %@""
+			String critText = gf.getText("critpertag")
+				.replace("%%", "%")
+				.replace("%@", esc(bonus.getKey().name()));
+			rows.append(kv(critText,
 				pct(baseCrit + ability.getBaseCritical() + bonus.getValue())));
+		}
 	}
 
 	// --- HTML helpers ------------------------------------------------------
@@ -429,7 +441,8 @@ final class UnitInfoDialog extends JDialog {
 	}
 
 	private static String turns(int n) {
-		return n + (n == 1 ? " turn" : " turns");
+		GameFiles gf = GameFiles.active();
+		return String.format(gf.getText("chargestats"), n);
 	}
 
 	private static String blockingString(int blocking) {
@@ -455,6 +468,22 @@ final class UnitInfoDialog extends JDialog {
 		if (url == null)
 			return muted("(" + damageTypeLabel(type) + ")");
 		return iconImg(url);
+	}
+
+	/** Side (px) the ability's icon is drawn at in its section header. */
+	private static final int ABILITY_ICON_SIZE = 28;
+
+	/**
+	 * Inline markup for an ability's icon scaled to {@link #ABILITY_ICON_SIZE},
+	 * or an empty string when the icon cannot be found. Placed in the section
+	 * header's left, middle-aligned cell (see {@link #buildAttack}).
+	 */
+	private static String abilityIcon(Ability ability) {
+		String url = iconUrl(ability == null ? null : ability.getIcon());
+		if (url == null)
+			return "";
+		return "<img src='" + url + "' align='middle' width='" + ABILITY_ICON_SIZE
+				+ "' height='" + ABILITY_ICON_SIZE + "'>";
 	}
 
 	/**

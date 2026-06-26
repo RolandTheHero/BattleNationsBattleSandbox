@@ -23,7 +23,7 @@ public class Ability {
 	/** The bundle this ability was loaded from ({@code null} for {@link #NO_ABILITY}). */
 	private GameFiles gf;
 
-	private String tag, name;
+	private String tag, nameId;
 	private String icon;
 	private String frontAnimationName, backAnimationName;
 	private double damageFromWeapon, damageFromUnit;
@@ -63,7 +63,6 @@ public class Ability {
 
 	private Ability() {
 		tag = "none";
-		name = "(None)";
 		minRange = 1;
 		maxRange = 5;
 	}
@@ -71,10 +70,9 @@ public class Ability {
 	public Ability(GameFiles gf, String tag, JSONObject json, JSONObject dmgAnim) {
 		this.gf = gf;
 		this.tag = tag;
-		name = gf.getText(json.optString("name", null));
+		nameId = json.optString("name", null);
 		icon = json.getString("icon");
 		if (!icon.endsWith(".png")) icon += "@2x.png";
-		if (name == null) name = tag;
 		infantryHitSound = json.optString("inf_hitsound", null);
         vehicleHitSound = json.optString("veh_hitsound", null);
 		initAnimation(json, dmgAnim);
@@ -238,7 +236,9 @@ public class Ability {
 	}
 
 	public String getName() {
-		return name;
+		String name = (gf == null) ? null : gf.getText(nameId);
+		if (name != null) return name;
+		return "none".equals(tag) ? "(None)" : tag;
 	}
 
 	/** Bundle-relative path to this ability's icon image, or {@code null}. */
@@ -247,7 +247,7 @@ public class Ability {
 	}
 
 	public String toString() {
-		return name;
+		return getName();
 	}
 
 	public Animation getFrontAnimation() throws IOException {

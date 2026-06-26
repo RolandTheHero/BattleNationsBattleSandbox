@@ -412,6 +412,17 @@ public class BattleField extends JComponent {
 	}
 
 	/**
+	 * Re-notifies the attacker-selected listener with the current selection and
+	 * repaints, so the unit info panel and the painted unit labels rebuild after
+	 * the data they show has changed (e.g. the text language was switched).
+	 */
+	public void refreshAttacker() {
+		if (attackerSelectedListener != null)
+			attackerSelectedListener.accept(selectedAttacker);
+		repaint();
+	}
+
+	/**
 	 * Battle mode: when enabled, an enemy unit is always kept selected so its
 	 * health, abilities and target area can be inspected (view-only — enemy units
 	 * cannot be made to act, and clicking elsewhere does not deselect it). Enabling
@@ -1260,7 +1271,7 @@ public class BattleField extends JComponent {
 
 	/** Spawns an attack damage number, drawn as a critical hit when {@code critical}. */
 	private int spawnDamageNumber(Side side, Cell cell, int amount, boolean critical) {
-		return spawnDamageNumber(side, cell, amount, null, null, critical, false, false, false);
+		return spawnDamageNumber(side, cell, amount, null, null, critical, false, false, false, false);
 	}
 
 	/**
@@ -1275,23 +1286,25 @@ public class BattleField extends JComponent {
 	 */
 	private int spawnDamageNumber(Side side, Cell cell, int amount, BufferedImage icon,
 			String sound, boolean critical) {
-		return spawnDamageNumber(side, cell, amount, icon, sound, critical, false, false, false);
+		return spawnDamageNumber(side, cell, amount, icon, sound, critical, false, false, false, false);
 	}
 
 	/**
 	 * As {@link #spawnDamageNumber(Side, Cell, int, BufferedImage, String, boolean)},
 	 * but also flags a grazed hit (drawn grey), a dodge (a graze that dealt no
-	 * damage, drawn as white "DODGE") or a miss (a hit whose damage rounded down to
-	 * nothing, drawn as grey "MISS").
+	 * damage, drawn as white "DODGE"), a miss (a hit whose damage rounded down to
+	 * nothing, drawn as grey "MISS") or an immune hit (the target's resistance to
+	 * the damage type is 0, drawn as grey "IMMUNE").
 	 */
 	private int spawnDamageNumber(Side side, Cell cell, int amount, BufferedImage icon,
-			String sound, boolean critical, boolean grazed, boolean dodge, boolean miss) {
+			String sound, boolean critical, boolean grazed, boolean dodge, boolean miss,
+			boolean immune) {
 		int slot = countDamageNumbersAt(side, cell);
 		int start = tick + slot * DAMAGE_STAGGER_FRAMES;
 		int dx = random.nextInt(2 * DAMAGE_JITTER_X + 1) - DAMAGE_JITTER_X;
 		int dy = random.nextInt(2 * DAMAGE_JITTER_Y + 1) - DAMAGE_JITTER_Y;
 		damageNumbers.add(new DamageNumber(side, cell, amount, start, dx, dy, icon,
-				critical, grazed, dodge, miss));
+				critical, grazed, dodge, miss, immune));
 		if (sound != null)
 			pendingSounds.add(new PendingSound(sound, start));
 		return start + DAMAGE_FLOAT_FRAMES;
@@ -1396,13 +1409,14 @@ public class BattleField extends JComponent {
 			Point2D c = geometry.cellCentre(number.side, number.cell);
 			String text = number.dodge ? gf.getText("dodgeattack")
 					: number.miss ? gf.getText("miss")
+					: number.immune ? gf.getText("immune")
 					: "-" + number.amount;
 
 			Graphics2D g2 = (Graphics2D) g.create();
 			g2.setComposite(AlphaComposite.getInstance(
 					AlphaComposite.SRC_OVER, 1f - t));
 			float fontSize = number.critical ? CRIT_DAMAGE_FONT_SIZE
-					: number.dodge || number.miss ? DODGE_FONT_SIZE
+					: number.dodge || number.miss || number.immune ? DODGE_FONT_SIZE
 					: DAMAGE_FONT_SIZE;
 			g2.setFont(g2.getFont().deriveFont(Font.BOLD, fontSize));
 			int tw = g2.getFontMetrics().stringWidth(text);
@@ -1414,7 +1428,7 @@ public class BattleField extends JComponent {
 				g2.drawImage(number.icon, x - STATUS_NUMBER_ICON - 2, iconY,
 						STATUS_NUMBER_ICON, STATUS_NUMBER_ICON, null);
 			}
-			if (number.critical || number.dodge || number.miss) {
+			if (number.critical || number.dodge || number.miss || number.immune) {
 				// A critical hit sits on its banner: the image is centred on the same
 				// spot as the number's text, so the number reads on top of it (and
 				// fades along with it). Drawn first, behind the text.
@@ -1437,7 +1451,7 @@ public class BattleField extends JComponent {
 					for (int oy = -CRIT_OUTLINE; oy <= CRIT_OUTLINE; oy++)
 						if (ox != 0 || oy != 0)
 							g2.drawString(text, x + ox, y + oy);
-				g2.setColor(number.miss ? GRAZE_DAMAGE_COLOR
+				g2.setColor(number.miss || number.immune ? GRAZE_DAMAGE_COLOR
 						: number.dodge ? DODGE_COLOR
 						: CRIT_DAMAGE_COLOR);
 				g2.drawString(text, x, y);
@@ -1503,12 +1517,16 @@ public class BattleField extends JComponent {
 			int dealt = target.applyDamage(rawDamage,
 					marker.damageType, marker.armorPiercing);
 			if (dodge)
-				spawnDamageNumber(marker.side, marker.cell, 0, null, null, false, true, true, false);
-			else if (dealt <= 0)
-				// The hit connected but its damage rounded down to nothing: a grey "MISS".
-				spawnDamageNumber(marker.side, marker.cell, 0, null, null, false, false, false, true);
-			else if (grazed)
-				spawnDamageNumber(marker.side, marker.cell, dealt, null, null, false, true, false, false);
+				spawnDamageNumber(marker.side, marker.cell, 0, null, null, false, true, true, false, false);
+			else if (dealt <= 0) {
+				// The hit connected but dealt nothing. When the target's resistance to
+				// this damage type is exactly 0 it is wholly immune — a grey "IMMUNE";
+				// otherwise the damage merely rounded down to nothing, a grey "MISS".
+				boolean immune = target.isImmuneToDamageType(marker.damageType);
+				spawnDamageNumber(marker.side, marker.cell, 0, null, null,
+						false, false, false, !immune, immune);
+			} else if (grazed)
+				spawnDamageNumber(marker.side, marker.cell, dealt, null, null, false, true, false, false, false);
 			else
 				spawnDamageNumber(marker.side, marker.cell, dealt, critical);
 			if (target.isDead()) {
@@ -2160,10 +2178,12 @@ public class BattleField extends JComponent {
 		final boolean dodge;
 		/** Whether this is a miss — a hit whose damage rounded to 0 (grey "MISS"). */
 		final boolean miss;
+		/** Whether the target is immune to the damage type — resistance 0 (grey "IMMUNE"). */
+		final boolean immune;
 
 		DamageNumber(Side side, Cell cell, int amount, int startTick, int dx, int dy,
 				BufferedImage icon, boolean critical, boolean grazed, boolean dodge,
-				boolean miss) {
+				boolean miss, boolean immune) {
 			this.side = side;
 			this.cell = cell;
 			this.amount = amount;
@@ -2175,6 +2195,7 @@ public class BattleField extends JComponent {
 			this.grazed = grazed;
 			this.dodge = dodge;
 			this.miss = miss;
+			this.immune = immune;
 		}
 	}
 
