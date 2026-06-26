@@ -176,7 +176,7 @@ final class UnitInfoDialog extends JDialog {
 			// Core stats, in two columns.
 			//sb.append(sectionHeader("Stats"));
 			sb.append("<table cellspacing='0' cellpadding='2'>");
-			sb.append(statRow(gf.getText("hinthp"), Integer.toString(r.hp()),
+			sb.append(statRow(gf.getText("health"), Integer.toString(r.hp()),
 					gf.getText("armor"), Integer.toString(r.armorHp())));
 			sb.append(statRow("Bonus Power", Integer.toString(r.power()),
 					"Bonus Critical", r.critical() + "%"));
@@ -314,7 +314,7 @@ final class UnitInfoDialog extends JDialog {
 			rows.append(kv(gf.getText("accuracy"),
 					Integer.toString(unit.getRank(rank).accuracy() + ability.getAttack())));
 		rows.append(kv(gf.getText("range"), attack.getMinRange() + "-" + attack.getMaxRange()));
-		rows.append(kv(gf.getText("line of fire"), lineOfFireLabel(ability.getLineOfFire())));
+		rows.append(kv(gf.getText("line of fire"), lineOfFireLabel(ability)));
 		if (ability.getArmorPiercingRate() > 0)
 			rows.append(kv(gf.getText("armorpiercing"), pct(ability.getArmorPiercingRate())));
 		if (ability.getCooldown() > 0)
@@ -448,15 +448,18 @@ final class UnitInfoDialog extends JDialog {
 
 	/** A readable label for an ability's line of fire (see {@link Ability}'s
 	 * {@code LOF_*} constants). */
-	private static String lineOfFireLabel(int lineOfFire) {
+	private static String lineOfFireLabel(Ability ability) {
+		int lineOfFire = ability.getLineOfFire();
 		GameFiles gf = GameFiles.active();
-		return switch (lineOfFire) {
+		String lofLabel = switch (lineOfFire) {
 			case Ability.LOF_CONTACT -> gf.getText("touch");
 			case Ability.LOF_DIRECT -> gf.getText("direct");
 			case Ability.LOF_PRECISE -> gf.getText("precise");
 			case Ability.LOF_INDIRECT -> gf.getText("indirect");
 			default -> "???";
 		};
+		lofLabel += ability.getRandomTarget() ? " (Random)" : "";
+		return lofLabel;
 	}
 
 	private static String blockingString(int blocking) {
