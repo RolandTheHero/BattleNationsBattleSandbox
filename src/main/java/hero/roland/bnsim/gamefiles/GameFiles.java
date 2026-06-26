@@ -106,6 +106,8 @@ public interface GameFiles {
 
 	File getUnitInfoButton();
 
+	File getAOETargetCircle();
+
 	// --- Active bundle + loading --------------------------------------------
 
 	/** The bundle currently loaded, or {@code null} before any has loaded. */

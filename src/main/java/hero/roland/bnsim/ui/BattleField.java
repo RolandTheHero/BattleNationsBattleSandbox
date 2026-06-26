@@ -61,7 +61,13 @@ public class BattleField extends JComponent {
 	private static final Color DROP_HIGHLIGHT = new Color(120, 200, 120);
 	private static final Color TARGET_HIGHLIGHT = new Color(60, 120, 230, 110);
 	/** Cyan highlight for the fixed tiles a WEAPON (fixed) attack will strike. */
-	private static final Color WEAPON_HIGHLIGHT = new Color(0, 220, 255, 120);
+	private static final Color WEAPON_HIGHLIGHT = new Color(0, 255, 255, 120);
+	/** AOE target footprint: a fully-struck tile (area value 1) is cyan, a
+	 * lesser-value (partial splash) tile yellow. */
+	private static final Color AOE_FULL_COLOR = WEAPON_HIGHLIGHT;
+	private static final Color AOE_PARTIAL_COLOR = new Color(255, 225, 0, 130);
+	/** The AOE target reticle is drawn at this fraction of the asset's native size. */
+	private static final double AOE_RETICLE_SCALE = 1.6;
 	/** Cyan outline traced around a selected unit's sprite: its colour, thickness
 	 * (px) and opacity (the ring is drawn half-transparent). */
 	private static final Color SELECT_SPRITE_OUTLINE = new Color(0, 255, 255);
@@ -214,6 +220,17 @@ public class BattleField extends JComponent {
 	private Set<Cell> targetable = new HashSet<>();
 	/** Fixed tiles a selected WEAPON attack will strike (cyan highlight). */
 	private Set<BattleSimulator.SideCell> weaponAffected = new HashSet<>();
+	/**
+	 * The tile the draggable AOE target reticle sits on, for a selected TARGET
+	 * ability that defines a target area; {@code null} when the selected attack has
+	 * no draggable target (no area, a WEAPON attack, or nothing selected). The
+	 * reticle previews the attack's footprint and fires the ability on its tile.
+	 */
+	private Cell aoeTarget;
+	/** Whether the AOE reticle is being dragged, and whether that drag has moved it
+	 * off the tile it was pressed on (a stationary press on it fires instead). */
+	private boolean draggingTarget;
+	private boolean targetDragMoved;
 	private Consumer<PlacedUnit> attackerSelectedListener;
 	/** Battle mode: lets enemy units be selected (view-only) for inspection. */
 	private boolean enemyViewEnabled;
@@ -237,6 +254,9 @@ public class BattleField extends JComponent {
 	/** The "cannot be targeted" circle, loaded once on first use (may stay null). */
 	private BufferedImage doNotTargetCircle;
 	private boolean doNotTargetCircleLoaded;
+	/** The draggable AOE target reticle, loaded once on first use (may stay null). */
+	private BufferedImage aoeTargetCircle;
+	private boolean aoeTargetCircleLoaded;
 	/** The critical-hit banner stamped under crit numbers, loaded once (may stay null). */
 	private BufferedImage critTab;
 	private boolean critTabLoaded;
@@ -275,7 +295,7 @@ public class BattleField extends JComponent {
 			@Override
 			public void mousePressed(java.awt.event.MouseEvent e) {
 				if (battleMode)
-					onBattleClick(e.getPoint());
+					onBattlePress(e.getPoint());
 				else if (SwingUtilities.isRightMouseButton(e))
 					cycleRank(e.getPoint());
 				else
@@ -284,7 +304,9 @@ public class BattleField extends JComponent {
 
 			@Override
 			public void mouseDragged(java.awt.event.MouseEvent e) {
-				if (!battleMode && dragging != null) {
+				if (battleMode)
+					onBattleDrag(e.getPoint());
+				else if (dragging != null) {
 					dragPoint = e.getPoint();
 					repaint();
 				}
@@ -292,7 +314,11 @@ public class BattleField extends JComponent {
 
 			@Override
 			public void mouseReleased(java.awt.event.MouseEvent e) {
-				if (!battleMode && dragging != null) {
+				if (battleMode) {
+					onBattleRelease(e.getPoint());
+					return;
+				}
+				if (dragging != null) {
 					boolean onBoard = sim.moveTo(dragging, e.getPoint());
 					PlacedUnit dropped = dragging;
 					dragging = null;
@@ -497,13 +523,67 @@ public class BattleField extends JComponent {
 		this.selectedAttack = attack;
 		targetable = new HashSet<>();
 		weaponAffected = new HashSet<>();
+		aoeTarget = null;
+		draggingTarget = false;
+		targetDragMoved = false;
 		if (selectedAttacker != null && attack != null) {
 			if (attack.getAbility().getTargetType() == Ability.TargetType.WEAPON)
 				weaponAffected = sim.weaponAffectedCells(selectedAttacker, attack);
-			else
+			else {
 				targetable = sim.targetableCells(selectedAttacker, attack);
+				// A TARGET ability with a target area gets a draggable reticle,
+				// starting on the front row's centre (see defaultAoeTarget).
+				if (hasAoeTarget(attack))
+					aoeTarget = defaultAoeTarget();
+			}
 		}
 		repaint();
+	}
+
+	/**
+	 * Whether the attack drives a draggable AOE reticle: a TARGET ability that
+	 * defines a target area (an AOE footprint to preview, drag around and fire on).
+	 */
+	private static boolean hasAoeTarget(Unit.Attack attack) {
+		Ability ability = attack.getAbility();
+		return ability.getTargetType() == Ability.TargetType.TARGET
+				&& ability.getTargetArea() != null;
+	}
+
+	/**
+	 * The reticle's starting cell: the targetable tile on the second row's centre
+	 * column, or — when that tile is out of range — the targetable tile nearest to
+	 * it. If the second row no longer exists on the target side (it has advanced past
+	 * it), the first row is used instead. {@code null} when the attack can reach
+	 * nothing.
+	 */
+	private Cell defaultAoeTarget() {
+		if (targetable.isEmpty())
+			return null;
+		Side targetSide = BattleSimulator.opponentOf(selectedAttacker.getSide());
+		int centreCol = GridGeometry.COLS / 2;
+		int centreRow = Math.min(1, GridGeometry.ROWS - 1);
+		// Fall back to the first row when the preferred row has been advanced past.
+		if (!isCellVisible(targetSide, centreCol, centreRow))
+			centreRow = 0;
+		Cell start = new Cell(centreCol, centreRow);
+		if (targetable.contains(start) && isCellVisible(targetSide, start.col(), start.row()))
+			return start;
+		// Otherwise the nearest still-existing targetable tile, measured from the
+		// chosen centre (front rows preferred).
+		Cell best = null;
+		int bestDist = Integer.MAX_VALUE;
+		for (Cell cell : targetable) {
+			if (!isCellVisible(targetSide, cell.col(), cell.row()))
+				continue;
+			int dist = Math.abs(cell.row() - centreRow) * GridGeometry.COLS
+					+ Math.abs(cell.col() - centreCol);
+			if (dist < bestDist) {
+				bestDist = dist;
+				best = cell;
+			}
+		}
+		return best;
 	}
 
 	// --- Interaction -------------------------------------------------------
@@ -537,6 +617,65 @@ public class BattleField extends JComponent {
 		}
 	}
 
+	/**
+	 * Battle-mode press. When the player presses the draggable AOE reticle's own
+	 * tile, a drag begins: a stationary press there fires the ability, while moving
+	 * the cursor repositions the reticle (see {@link #onBattleDrag} and
+	 * {@link #onBattleRelease}). Any other press falls through to normal handling.
+	 */
+	private void onBattlePress(Point p) {
+		if (phase == Phase.PLAYER && isAoeReticleInteractive() && pressedOnReticle(p)) {
+			draggingTarget = true;
+			targetDragMoved = false;
+			return;
+		}
+		onBattleClick(p);
+	}
+
+	/** Drags the AOE reticle to follow the targetable tile under the cursor. */
+	private void onBattleDrag(Point p) {
+		if (!draggingTarget)
+			return;
+		Side targetSide = BattleSimulator.opponentOf(selectedAttacker.getSide());
+		Cell cell = geometry.cellAt(targetSide, p);
+		if (cell != null && targetable.contains(cell) && !cell.equals(aoeTarget)) {
+			aoeTarget = cell;
+			targetDragMoved = true;
+			repaint();
+		}
+	}
+
+	/**
+	 * Ends an AOE reticle drag. A press that never moved the reticle is a click on
+	 * its tile and fires the ability there; a drag simply leaves the reticle where
+	 * it was moved to.
+	 */
+	private void onBattleRelease(Point p) {
+		if (!draggingTarget)
+			return;
+		boolean moved = targetDragMoved;
+		draggingTarget = false;
+		targetDragMoved = false;
+		if (!moved && phase == Phase.PLAYER && isAoeReticleInteractive())
+			tryFire(aoeTarget);
+	}
+
+	/**
+	 * Whether the AOE reticle belongs to an attack the player can fire — a selected
+	 * player unit aiming a TARGET-area ability — so it can be dragged and fired
+	 * (an enemy unit's reticle, shown for inspection, is view-only).
+	 */
+	private boolean isAoeReticleInteractive() {
+		return aoeTarget != null && selectedAttack != null && selectedAttacker != null
+				&& selectedAttacker.getSide() == Side.PLAYER;
+	}
+
+	/** Whether the pixel falls on the current AOE reticle's tile. */
+	private boolean pressedOnReticle(Point p) {
+		Side targetSide = BattleSimulator.opponentOf(selectedAttacker.getSide());
+		return aoeTarget != null && aoeTarget.equals(geometry.cellAt(targetSide, p));
+	}
+
 	private void onBattleClick(Point p) {
 		// Input is only accepted during the player's turn (not while an attack
 		// animation is playing or during the enemy's turn).
@@ -556,7 +695,15 @@ public class BattleField extends JComponent {
 			} else {
 				Cell target = geometry.cellAt(Side.ENEMY, p);
 				if (target != null && targetable.contains(target)) {
-					tryFire(target);
+					// An AOE attack moves its reticle to the clicked in-range tile
+					// (firing happens by pressing the reticle's own tile); any other
+					// TARGET attack fires straight at the clicked tile.
+					if (aoeTarget != null) {
+						aoeTarget = target;
+						repaint();
+					} else {
+						tryFire(target);
+					}
 					return;
 				}
 			}
@@ -645,6 +792,9 @@ public class BattleField extends JComponent {
 		selectedAttack = null;
 		targetable = new HashSet<>();
 		weaponAffected = new HashSet<>();
+		aoeTarget = null;
+		draggingTarget = false;
+		targetDragMoved = false;
 		if (attackerSelectedListener != null)
 			attackerSelectedListener.accept(null);
 		repaint();
@@ -669,6 +819,9 @@ public class BattleField extends JComponent {
 		selectHighlightSuppressed = true;
 		targetable = new HashSet<>();
 		weaponAffected = new HashSet<>();
+		aoeTarget = null;
+		draggingTarget = false;
+		targetDragMoved = false;
 		refreshSelectionInfo();
 		repaint();
 	}
@@ -1126,6 +1279,8 @@ public class BattleField extends JComponent {
 		drawUnits(g2);
 		// Mark enemy units the selected ability cannot hit, over their sprites.
 		drawUntargetable(g2);
+		// The draggable AOE reticle rides over the units so it stays visible.
+		drawAoeReticle(g2);
 		drawDamageAnims(g2);
 		drawOverlays(g2);
 		drawStatusApplyVisuals(g2);
@@ -1179,16 +1334,71 @@ public class BattleField extends JComponent {
 		// The aimable tiles lie on the side facing the attacker (enemy tiles for a
 		// player unit, player tiles for an enemy unit).
 		Side targetSide = BattleSimulator.opponentOf(selectedAttacker.getSide());
+		// The AOE footprint is computed first so the blue range highlight can leave
+		// out any tile the footprint already colours (cyan or yellow).
+		AoeFootprint footprint = aoeFootprint();
 		g.setColor(TARGET_HIGHLIGHT);
-		// Skip tiles a side has advanced past — those tiles no longer exist.
+		// Skip tiles a side has advanced past — those tiles no longer exist — and any
+		// the footprint already highlights.
 		for (Cell cell : targetable)
-			if (isCellVisible(targetSide, cell.col(), cell.row()))
+			if (isCellVisible(targetSide, cell.col(), cell.row())
+					&& (footprint == null || !footprint.covers(cell)))
 				g.fillPolygon(geometry.cellDiamond(targetSide, cell.col(), cell.row()));
 		// A WEAPON (fixed) attack highlights only the fixed tiles it strikes, cyan.
 		g.setColor(WEAPON_HIGHLIGHT);
 		for (BattleSimulator.SideCell sc : weaponAffected)
 			if (isCellVisible(sc.side(), sc.cell().col(), sc.cell().row()))
 				g.fillPolygon(geometry.cellDiamond(sc.side(), sc.cell().col(), sc.cell().row()));
+		// Draw the footprint over the range highlight: yellow splash first, then the
+		// cyan direct-hit tiles over it, so a target cell always reads as a direct hit.
+		if (footprint != null) {
+			fillCells(g, targetSide, footprint.splash, AOE_PARTIAL_COLOR);
+			fillCells(g, targetSide, footprint.direct, AOE_FULL_COLOR);
+		}
+	}
+
+	/**
+	 * The tiles a TARGET-area attack's footprint covers, relative to the draggable
+	 * reticle: every target-area cell (each square offset from the reticle's tile)
+	 * is a direct hit; the damage area then splashes around each of those cells, and
+	 * any tile it reaches that is not itself a target cell is a partial (splash) hit.
+	 * The areas are read from the attacker's perspective, so their x is mirrored for
+	 * the enemy — matching how the hits resolve. {@code null} when no reticle is shown.
+	 */
+	private AoeFootprint aoeFootprint() {
+		if (aoeTarget == null || selectedAttack == null)
+			return null;
+		Ability ability = selectedAttack.getAbility();
+		Ability.TargetSquare[] targetArea = ability.getTargetArea();
+		if (targetArea == null)
+			return null;
+		int xSign = selectedAttacker.getSide() == Side.PLAYER ? 1 : -1;
+		// Each target-area square lands a direct hit on its cell (cyan).
+		Set<Cell> direct = new HashSet<>();
+		for (Ability.TargetSquare square : targetArea)
+			direct.add(new Cell(aoeTarget.col() + xSign * square.getX(),
+					aoeTarget.row() - square.getY()));
+		// The damage area splashes around every target cell; tiles it reaches that
+		// are not themselves target cells are partial (splash) hits (yellow).
+		Ability.TargetSquare[] damageArea = ability.getDamageArea();
+		Set<Cell> splash = new HashSet<>();
+		if (damageArea != null)
+			for (Cell base : direct)
+				for (Ability.TargetSquare square : damageArea) {
+					Cell cell = new Cell(base.col() + xSign * square.getX(),
+							base.row() - square.getY());
+					if (!direct.contains(cell))
+						splash.add(cell);
+				}
+		return new AoeFootprint(direct, splash);
+	}
+
+	/** Fills each still-visible cell on the side with the colour. */
+	private void fillCells(Graphics2D g, Side side, Set<Cell> cells, Color color) {
+		g.setColor(color);
+		for (Cell cell : cells)
+			if (isCellVisible(side, cell.col(), cell.row()))
+				g.fillPolygon(geometry.cellDiamond(side, cell.col(), cell.row()));
 	}
 
 	/**
@@ -1216,6 +1426,29 @@ public class BattleField extends JComponent {
 			int y = (int) Math.round(c.getY() - h / 2.0);
 			g.drawImage(circle, x, y, w, h, null);
 		}
+	}
+
+	/**
+	 * Stamps the draggable AOE target reticle on its tile, centred and drawn at
+	 * {@link #AOE_RETICLE_SCALE} of the asset's native size. Drawn over the units so
+	 * it stays visible as it is dragged; the footprint it covers is drawn on the
+	 * grid layer (see {@link #drawAoeFootprint}). A no-op when no reticle is shown.
+	 */
+	private void drawAoeReticle(Graphics2D g) {
+		if (aoeTarget == null || selectedAttacker == null)
+			return;
+		BufferedImage circle = aoeTargetCircle();
+		if (circle == null || circle.getWidth() <= 0)
+			return;
+		Side targetSide = BattleSimulator.opponentOf(selectedAttacker.getSide());
+		if (!isCellVisible(targetSide, aoeTarget.col(), aoeTarget.row()))
+			return;
+		Point2D c = geometry.cellCentre(targetSide, aoeTarget);
+		int w = (int) Math.round(circle.getWidth() * AOE_RETICLE_SCALE);
+		int h = (int) Math.round(circle.getHeight() * AOE_RETICLE_SCALE);
+		int x = (int) Math.round(c.getX() - w / 2.0);
+		int y = (int) Math.round(c.getY() - h / 2.0);
+		g.drawImage(circle, x, y, w, h, null);
 	}
 
 	private void drawHitMarkers(Graphics2D g) {
@@ -2045,6 +2278,25 @@ public class BattleField extends JComponent {
 	}
 
 	/**
+	 * The bundle's draggable AOE target reticle, loaded once on first use and cached
+	 * (including a {@code null} miss, so a missing asset is not re-read each frame).
+	 */
+	private BufferedImage aoeTargetCircle() {
+		if (!aoeTargetCircleLoaded) {
+			aoeTargetCircleLoaded = true;
+			File file = GameFiles.active().getAOETargetCircle();
+			if (file != null && file.isFile()) {
+				try {
+					aoeTargetCircle = ImageIO.read(file);
+				} catch (IOException e) {
+					aoeTargetCircle = null; // best-effort: a missing asset just isn't drawn
+				}
+			}
+		}
+		return aoeTargetCircle;
+	}
+
+	/**
 	 * The bundle's critical-hit banner, loaded once on first use and cached
 	 * (including a {@code null} miss, so a missing asset is not re-read each frame).
 	 */
@@ -2072,6 +2324,24 @@ public class BattleField extends JComponent {
 			return new Color(Integer.parseInt(h, 16));
 		} catch (NumberFormatException e) {
 			return Color.WHITE;
+		}
+	}
+
+	/**
+	 * A TARGET-area attack's footprint: its direct-hit (cyan) target cells and the
+	 * partial (yellow) splash cells the damage area adds around them.
+	 */
+	private static final class AoeFootprint {
+		final Set<Cell> direct, splash;
+
+		AoeFootprint(Set<Cell> direct, Set<Cell> splash) {
+			this.direct = direct;
+			this.splash = splash;
+		}
+
+		/** Whether either set highlights the cell. */
+		boolean covers(Cell cell) {
+			return direct.contains(cell) || splash.contains(cell);
 		}
 	}
 

@@ -262,6 +262,11 @@ public abstract class AbstractGameFiles implements GameFiles {
 	}
 
 	@Override
+	public File getAOETargetCircle() {
+		return new File(bundleFolder, "battle_view_AOE@2x.png");
+	}
+
+	@Override
 	public File[] glob(String pat) {
 		FilenameFilter filter = new GlobFilter(pat);
 		Map<String, File> files = new HashMap<>();
