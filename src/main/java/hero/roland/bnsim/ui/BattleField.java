@@ -1380,7 +1380,7 @@ public class BattleField extends JComponent {
 		Ability.TargetSquare[] targetArea = ability.getTargetArea();
 		if (targetArea == null)
 			return null;
-		int xSign = selectedAttacker.getSide() == Side.PLAYER ? 1 : -1;
+		int xSign = selectedAttacker.getSide() == Side.PLAYER ? -1 : 1;
 		// Each target-area square lands a direct hit on its cell (cyan).
 		Set<Cell> direct = new HashSet<>();
 		for (Ability.TargetSquare square : targetArea)

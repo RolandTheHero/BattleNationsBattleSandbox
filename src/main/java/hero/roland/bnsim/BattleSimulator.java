@@ -378,9 +378,9 @@ public class BattleSimulator {
 				+ attacker.getAccuracy() - attacker.getOffenseReduction());
 
 		// Area offsets are authored from the player's perspective: +x is one
-		// tile to the player's right. The enemy faces the opposite way, so its
+		// tile to the player's left. The enemy faces the opposite way, so its
 		// x is mirrored; y is the same for both sides.
-		int xSign = attacker.getSide() == Side.PLAYER ? 1 : -1;
+		int xSign = attacker.getSide() == Side.PLAYER ? -1 : 1;
 
 		// Each successive tile is staggered by aoeDelay. The ripple sequence is
 		// taken from the squares' "order" when it varies, otherwise from their
@@ -499,7 +499,7 @@ public class BattleSimulator {
 		double armorPiercing = Math.max(0, Math.min(1, ability.getArmorPiercingRate()));
 		int offense = Math.max(0, attack.getWeapon().getBaseAttack() + ability.getAttack()
 				+ attacker.getAccuracy() - attacker.getOffenseReduction());
-		int xSign = attacker.getSide() == Side.PLAYER ? 1 : -1;
+		int xSign = attacker.getSide() == Side.PLAYER ? -1 : 1;
 		int[] targetSteps = sequenceSteps(targetArea);
 		int[] damageSteps = sequenceSteps(damageArea);
 
@@ -544,7 +544,7 @@ public class BattleSimulator {
 		if (damageArea == null)
 			damageArea = new TargetSquare[] { TargetSquare.SINGLE_TARGET };
 		Side targetSide = opponentOf(attacker.getSide());
-		int xSign = attacker.getSide() == Side.PLAYER ? 1 : -1;
+		int xSign = attacker.getSide() == Side.PLAYER ? -1 : 1;
 		for (TargetSquare target : targetArea) {
 			SideCell origin = weaponCell(attacker, ability, target.getX(), target.getY());
 			if (origin == null)
@@ -574,7 +574,7 @@ public class BattleSimulator {
 		if (forward <= row)
 			return null; // still on the attacker's own side (or its own tile)
 		Side side = attacker.getSide();
-		int xSign = side == Side.PLAYER ? 1 : -1;
+		int xSign = side == Side.PLAYER ? -1 : 1;
 		int col = attacker.getCell().col() + xSign * dx;
 		int cellRow = forward - row - 1;   // depth into the opponent's side
 		if (!GridGeometry.isValid(col, cellRow))
