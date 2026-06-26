@@ -21,6 +21,7 @@ import hero.roland.bnsim.model.Ability;
 import hero.roland.bnsim.model.Animation;
 import hero.roland.bnsim.model.Bitmap;
 import hero.roland.bnsim.model.StatusEffect;
+import hero.roland.bnsim.model.Text;
 import hero.roland.bnsim.model.Timeline;
 import hero.roland.bnsim.model.Unit;
 import hero.roland.bnsim.util.FileFormatException;
@@ -44,9 +45,12 @@ public abstract class AbstractGameFiles implements GameFiles {
 	private File magGlass;
 	private File fightButtonInactive;
 	private File fightButtonActive;
+	private File unitInfoButton;
 
 	// Eagerly-loaded game data (filled in by loadAll(); subclasses populate these
 	// in their load* hooks).
+	// The language loadText() reads; changed via setLanguage() to reload the text.
+	protected Text.Language language = Text.Language.EN;
 	protected final Map<String, String> text = new HashMap<>();
 	protected final Map<String, Unit> units = new HashMap<>();
 	protected final Map<String, Unit.UnitTag> unitTags = new HashMap<>();
@@ -80,6 +84,7 @@ public abstract class AbstractGameFiles implements GameFiles {
 		magGlass = new File(bundleFolder, "magGlass@2x.png");
 		fightButtonInactive = new File(bundleFolder, "fightInactive@2x.png");
 		fightButtonActive = new File(bundleFolder, "fightActive@2x.png");
+		unitInfoButton = new File(bundleFolder, "bs_main_unit_info_icon@2x.png");
 	}
 
 	// Version-specific parsing steps, called by loadAll() in dependency order.
@@ -96,7 +101,20 @@ public abstract class AbstractGameFiles implements GameFiles {
 	@Override
 	public String getText(String key) {
 		if (key == null) return null;
-		return text.get(key.toLowerCase());
+		String t = text.get(key.toLowerCase());
+		if (t == null) return key;
+		return t;
+	}
+
+	@Override
+	public Text.Language getLanguage() {
+		return language;
+	}
+
+	@Override
+	public void setLanguage(Text.Language language) throws IOException {
+		this.language = language;
+		loadText();
 	}
 
 	@Override
@@ -236,6 +254,11 @@ public abstract class AbstractGameFiles implements GameFiles {
 	@Override
 	public File getFightButtonActive() {
 		return fightButtonActive;
+	}
+
+	@Override
+	public File getUnitInfoButton() {
+		return unitInfoButton;
 	}
 
 	@Override

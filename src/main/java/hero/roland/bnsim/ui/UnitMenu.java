@@ -6,6 +6,7 @@ import java.awt.GridLayout;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.io.File;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -31,6 +32,7 @@ import javax.swing.event.DocumentListener;
 
 import hero.roland.bnsim.Side;
 import hero.roland.bnsim.gamefiles.GameFiles;
+import hero.roland.bnsim.model.Text;
 import hero.roland.bnsim.model.Unit;
 
 /**
@@ -46,6 +48,7 @@ public class UnitMenu extends JPanel {
 	/** Dropdown label for "no environment status effect" (the default). */
 	private static final String NO_ENV_EFFECT = "None";
 
+	private final JComboBox<Text.Language> languageSelector = new JComboBox<>();
 	private final JComboBox<String> mapSelector = new JComboBox<>();
 	private final JComboBox<String> envEffectSelector = new JComboBox<>();
 	private final JPanel content = new JPanel(new BorderLayout(0, 6));
@@ -73,6 +76,8 @@ public class UnitMenu extends JPanel {
 
 		JPanel north = new JPanel();
 		north.setLayout(new BoxLayout(north, BoxLayout.Y_AXIS));
+		north.add(buildLanguageSelector());
+		north.add(Box.createVerticalStrut(4));
 		north.add(buildMapSelector());
 		north.add(Box.createVerticalStrut(4));
 		north.add(buildEnvEffectSelector());
@@ -217,6 +222,38 @@ public class UnitMenu extends JPanel {
 	private void clearSide(Side side) {
 		if (sideClearer != null)
 			sideClearer.accept(side);
+	}
+
+	/**
+	 * Builds the language dropdown, listing every {@link Text.Language} with the
+	 * bundle's current language pre-selected. Choosing one re-reads the bundle's
+	 * text in that language (see {@link GameFiles#setLanguage}). Note this only
+	 * swaps the loaded strings; units and abilities already on the board keep the
+	 * names they resolved when first loaded.
+	 */
+	private JPanel buildLanguageSelector() {
+		for (Text.Language lang : Text.Language.values())
+			languageSelector.addItem(lang);
+		GameFiles active = GameFiles.active();
+		if (active != null)
+			languageSelector.setSelectedItem(active.getLanguage());
+		languageSelector.addActionListener(e -> {
+			Text.Language sel = (Text.Language) languageSelector.getSelectedItem();
+			if (sel == null)
+				return;
+			try {
+				GameFiles.active().setLanguage(sel);
+			} catch (IOException ex) {
+				// Could not read the chosen language's text files; keep whatever text
+				// was loaded before so the app stays usable.
+				ex.printStackTrace();
+			}
+		});
+
+		JPanel panel = new JPanel(new BorderLayout(4, 0));
+		panel.add(new JLabel("Language:"), BorderLayout.WEST);
+		panel.add(languageSelector, BorderLayout.CENTER);
+		return panel;
 	}
 
 	/**

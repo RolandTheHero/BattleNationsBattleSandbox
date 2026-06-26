@@ -8,7 +8,6 @@ import org.json.JSONObject;
 
 import hero.roland.bnsim.model.Ability;
 import hero.roland.bnsim.model.StatusEffect;
-import hero.roland.bnsim.model.Text;
 import hero.roland.bnsim.model.Unit;
 import hero.roland.bnsim.util.FileFormatException;
 
@@ -20,9 +19,12 @@ public class OldGameFiles extends AbstractGameFiles {
 
 	@Override
 	protected void loadText() throws IOException {
+		// Drop any previously loaded text so re-running for a new language doesn't
+		// leave strings from the old one behind.
+		text.clear();
 		try {
-			loadTextFile(Text.Language.EN.filename());
-			loadTextFile(Text.Language.EN.deltaFilename());
+			loadTextFile(language.filename());
+			loadTextFile(language.deltaFilename());
 		} catch (JSONException e) {
 			throw new IllegalArgumentException("Json type error", e);
 		}

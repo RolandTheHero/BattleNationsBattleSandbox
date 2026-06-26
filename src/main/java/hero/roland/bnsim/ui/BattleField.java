@@ -65,7 +65,7 @@ public class BattleField extends JComponent {
 	/** Cyan outline traced around a selected unit's sprite: its colour, thickness
 	 * (px) and opacity (the ring is drawn half-transparent). */
 	private static final Color SELECT_SPRITE_OUTLINE = new Color(0, 255, 255);
-	private static final int SELECT_SPRITE_OUTLINE_THICKNESS = 2;
+	private static final int SELECT_SPRITE_OUTLINE_THICKNESS = 3;
 	private static final float SELECT_SPRITE_OUTLINE_ALPHA = 0.5f;
 	private static final Color HIT_COLOR = new Color(225, 40, 40);
 	private static final Color RANK_COLOR = new Color(0, 220, 255);
@@ -1387,14 +1387,15 @@ public class BattleField extends JComponent {
 
 	/** Draws each floating damage number, rising from its tile and fading out. */
 	private void drawDamageNumbers(Graphics2D g) {
+		GameFiles gf = GameFiles.active();
 		for (DamageNumber number : damageNumbers) {
 			int elapsed = tick - number.startTick;
 			if (elapsed < 0 || elapsed >= DAMAGE_FLOAT_FRAMES)
 				continue;
 			float t = elapsed / (float) DAMAGE_FLOAT_FRAMES;
 			Point2D c = geometry.cellCentre(number.side, number.cell);
-			String text = number.dodge ? "DODGE"
-					: number.miss ? "MISS"
+			String text = number.dodge ? gf.getText("dodgeattack")
+					: number.miss ? gf.getText("miss")
 					: "-" + number.amount;
 
 			Graphics2D g2 = (Graphics2D) g.create();

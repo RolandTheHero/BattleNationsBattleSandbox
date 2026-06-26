@@ -10,6 +10,7 @@ import hero.roland.bnsim.model.Ability;
 import hero.roland.bnsim.model.Animation;
 import hero.roland.bnsim.model.Bitmap;
 import hero.roland.bnsim.model.StatusEffect;
+import hero.roland.bnsim.model.Text;
 import hero.roland.bnsim.model.Timeline;
 import hero.roland.bnsim.model.Unit;
 
@@ -50,6 +51,16 @@ public interface GameFiles {
 
 	/** The ids of every loaded status effect, sorted. */
 	String[] getStatusEffectIds();
+
+	/** The language the bundle's text is currently loaded in. */
+	Text.Language getLanguage();
+
+	/**
+	 * Reloads the bundle's text in the given language, replacing the previously
+	 * loaded text. Only the localized strings are re-read; already-built units and
+	 * abilities keep the names they resolved at load time.
+	 */
+	void setLanguage(Text.Language language) throws IOException;
 
 	// --- Sprites (loaded lazily, cached) ------------------------------------
 
@@ -92,6 +103,8 @@ public interface GameFiles {
 	File getFightButtonInactive();
 
 	File getFightButtonActive();
+
+	File getUnitInfoButton();
 
 	// --- Active bundle + loading --------------------------------------------
 

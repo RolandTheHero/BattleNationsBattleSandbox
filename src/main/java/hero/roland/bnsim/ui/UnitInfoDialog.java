@@ -168,6 +168,7 @@ final class UnitInfoDialog extends JDialog {
 	private String buildHtml() {
 		StringBuilder sb = new StringBuilder();
 		sb.append("<html><body style='width:410px; font-family:sans-serif; font-size:11px;'>");
+		GameFiles gf = GameFiles.active();
 
 		if (hasRanks) {
 			Unit.Rank r = unit.getRank(rank);
@@ -175,14 +176,14 @@ final class UnitInfoDialog extends JDialog {
 			// Core stats, in two columns.
 			//sb.append(sectionHeader("Stats"));
 			sb.append("<table cellspacing='0' cellpadding='2'>");
-			sb.append(statRow("Health", Integer.toString(r.hp()),
-					"Armor", Integer.toString(r.armorHp())));
+			sb.append(statRow(gf.getText("hinthp"), Integer.toString(r.hp()),
+					gf.getText("armor"), Integer.toString(r.armorHp())));
 			sb.append(statRow("Bonus Power", Integer.toString(r.power()),
 					"Bonus Critical", r.critical() + "%"));
-			sb.append(statRow("Defense", Integer.toString(r.defense()),
-					"Dodge", Integer.toString(r.dodge())));
-			sb.append(statRow("Bravery", Integer.toString(r.bravery()),
-					"Blocking", blockingString(unit.getBlocking())));
+			sb.append(statRow(gf.getText("defense"), Integer.toString(r.defense()),
+					gf.getText("dodge"), Integer.toString(r.dodge())));
+			sb.append(statRow(gf.getText("bravery"), Integer.toString(r.bravery()),
+					gf.getText("blocking"), blockingString(unit.getBlocking())));
 			sb.append("</table>");
 
 			// The unit's own tags (Ground, Tank, ...), shown only when it has any.
@@ -296,7 +297,7 @@ final class UnitInfoDialog extends JDialog {
 	/** One ability's block: name plus a key/value table of its combat figures. */
 	private String buildAttack(Unit.Weapon weapon, Unit.Attack attack, Ability ability) {
 		StringBuilder rows = new StringBuilder();
-
+		GameFiles gf = GameFiles.active();
 		String number;
 		if (hasRanks) {
 			int shots = ability.getShotsPerAttack() * ability.getAttacksPerUse();
@@ -307,20 +308,20 @@ final class UnitInfoDialog extends JDialog {
 		} else {
 			number = "—";
 		}
-		rows.append(row("Damage", damageTypeIcon(ability.getDamageType()), number));
+		rows.append(row(gf.getText("damage"), damageTypeIcon(ability.getDamageType()), number));
 		// Total offense: the unit's rank accuracy plus the ability's own offense.
 		if (hasRanks)
-			rows.append(kv("Offense",
+			rows.append(kv(gf.getText("accuracy"),
 					Integer.toString(unit.getRank(rank).accuracy() + ability.getAttack())));
-		rows.append(kv("Range", attack.getMinRange() + "-" + attack.getMaxRange()));
+		rows.append(kv(gf.getText("range"), attack.getMinRange() + "-" + attack.getMaxRange()));
 		if (ability.getArmorPiercingRate() > 0)
-			rows.append(kv("Armor Piercing", pct(ability.getArmorPiercingRate())));
+			rows.append(kv(gf.getText("armorpiercing"), pct(ability.getArmorPiercingRate())));
 		if (ability.getCooldown() > 0)
-			rows.append(kv("Cooldown", turns(ability.getCooldown())));
+			rows.append(kv(gf.getText("cooldown"), turns(ability.getCooldown())));
 		if (ability.getPrepTime() > 0)
-			rows.append(kv("Prep Time", turns(ability.getPrepTime())));
+			rows.append(kv(gf.getText("chargetime"), turns(ability.getPrepTime())));
 		if (ability.getAmmoRequired() > 0)
-			rows.append(kv("Ammo Cost", Integer.toString(ability.getAmmoRequired())));
+			rows.append(kv(gf.getText("ammorequired"), Integer.toString(ability.getAmmoRequired())));
 
 		StringBuilder effects = new StringBuilder();
 		for (StatusEffectChance sc : ability.getStatusEffects()) {
@@ -336,7 +337,7 @@ final class UnitInfoDialog extends JDialog {
 		// combined figure for this rank.
 		double unitCrit = hasRanks ? unit.getRank(rank).critical() / 100.0 : 0;
 		double baseCrit = unitCrit + weapon.getBaseCritical();
-		rows.append(kv("Critical", pct(baseCrit + ability.getBaseCritical())));
+		rows.append(kv(gf.getText("criticalpercent"), pct(baseCrit + ability.getBaseCritical())));
 		appendCriticalBonuses(rows, ability, baseCrit);
 
 		return "<div style='margin-left:10px; margin-top:4px;'><b>"
@@ -353,11 +354,12 @@ final class UnitInfoDialog extends JDialog {
 	 * has no tag-specific bonuses.
 	 */
 	private static void appendCriticalBonuses(StringBuilder rows, Ability ability, double baseCrit) {
+		GameFiles gf = GameFiles.active();
 		List<Map.Entry<Unit.UnitTag, Double>> bonuses =
 			new ArrayList<>(ability.getCriticalBonuses().entrySet());
 		bonuses.sort(Comparator.comparing(e -> e.getKey().name()));
 		for (Map.Entry<Unit.UnitTag, Double> bonus : bonuses)
-			rows.append(kv("Crit vs. " + esc(bonus.getKey().name()),
+			rows.append(kv(gf.getText("critpertag") + esc(bonus.getKey().name()),
 				pct(baseCrit + ability.getBaseCritical() + bonus.getValue())));
 	}
 
@@ -431,10 +433,11 @@ final class UnitInfoDialog extends JDialog {
 	}
 
 	private static String blockingString(int blocking) {
+		GameFiles gf = GameFiles.active();
 		return switch (blocking) {
-			case 0 -> "None";
-			case 1 -> "Partial";
-			case 2 -> "Blocking";
+			case 0 -> "-";
+			case 1 -> gf.getText("partial");
+			case 2 -> gf.getText("blocking");
 			default -> "???";
 		};
 	}

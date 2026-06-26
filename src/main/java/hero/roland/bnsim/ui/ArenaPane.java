@@ -175,6 +175,20 @@ public class ArenaPane extends JLayeredPane {
 		info.setFocusable(false);
 		info.setToolTipText("Show this unit's full stats, abilities and damage");
 		info.addActionListener(e -> UnitInfoDialog.show(this, unit));
+		// Swap the "!" text for the unit-info icon image when that asset is present,
+		// keeping the plain text button as the fallback when it's missing.
+		BufferedImage infoImg = loadButtonImage(GameFiles.active().getUnitInfoButton());
+		if (infoImg != null) {
+			infoImg = scaleToMax(infoImg, 24);
+			info.setText(null);
+			info.setIcon(new ImageIcon(infoImg));
+			info.setPressedIcon(new ImageIcon(darken(infoImg, 0.7f)));
+			info.setBorderPainted(false);
+			info.setContentAreaFilled(false);
+			info.setFocusPainted(false);
+			info.setBorder(BorderFactory.createEmptyBorder());
+			info.setMargin(new Insets(0, 0, 0, 0));
+		}
 
 		JPanel nameRow = new JPanel(new BorderLayout(4, 0));
 		nameRow.setOpaque(false);
