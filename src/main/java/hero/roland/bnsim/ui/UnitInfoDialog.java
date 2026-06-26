@@ -314,6 +314,7 @@ final class UnitInfoDialog extends JDialog {
 			rows.append(kv(gf.getText("accuracy"),
 					Integer.toString(unit.getRank(rank).accuracy() + ability.getAttack())));
 		rows.append(kv(gf.getText("range"), attack.getMinRange() + "-" + attack.getMaxRange()));
+		rows.append(kv(gf.getText("line of fire"), lineOfFireLabel(ability.getLineOfFire())));
 		if (ability.getArmorPiercingRate() > 0)
 			rows.append(kv(gf.getText("armorpiercing"), pct(ability.getArmorPiercingRate())));
 		if (ability.getCooldown() > 0)
@@ -443,6 +444,19 @@ final class UnitInfoDialog extends JDialog {
 	private static String turns(int n) {
 		GameFiles gf = GameFiles.active();
 		return String.format(gf.getText("chargestats"), n);
+	}
+
+	/** A readable label for an ability's line of fire (see {@link Ability}'s
+	 * {@code LOF_*} constants). */
+	private static String lineOfFireLabel(int lineOfFire) {
+		GameFiles gf = GameFiles.active();
+		return switch (lineOfFire) {
+			case Ability.LOF_CONTACT -> gf.getText("touch");
+			case Ability.LOF_DIRECT -> gf.getText("direct");
+			case Ability.LOF_PRECISE -> gf.getText("precise");
+			case Ability.LOF_INDIRECT -> gf.getText("indirect");
+			default -> "???";
+		};
 	}
 
 	private static String blockingString(int blocking) {

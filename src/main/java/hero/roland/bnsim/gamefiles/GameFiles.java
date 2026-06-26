@@ -108,6 +108,8 @@ public interface GameFiles {
 
 	File getAOETargetCircle();
 
+	File getRankInsignia();
+
 	// --- Active bundle + loading --------------------------------------------
 
 	/** The bundle currently loaded, or {@code null} before any has loaded. */

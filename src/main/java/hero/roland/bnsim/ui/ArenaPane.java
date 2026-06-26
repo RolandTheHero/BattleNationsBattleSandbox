@@ -192,6 +192,7 @@ public class ArenaPane extends JLayeredPane {
 
 		JPanel nameRow = new JPanel(new BorderLayout(4, 0));
 		nameRow.setOpaque(false);
+		nameRow.add(makeRankInsignia(unit), BorderLayout.WEST);
 		nameRow.add(name, BorderLayout.CENTER);
 		nameRow.add(info, BorderLayout.EAST);
 		nameRow.setAlignmentX(CENTER_ALIGNMENT);
@@ -314,6 +315,44 @@ public class ArenaPane extends JLayeredPane {
 		JLabel label = new JLabel("Ammo: " + (ammo < 0 ? "∞" : Integer.toString(ammo)));
 		label.setFont(label.getFont().deriveFont(Font.PLAIN, 11f));
 		return label;
+	}
+
+	/** Largest dimension (px) the rank insignia is scaled to in the weapons box. */
+	private static final int RANK_INSIGNIA_SIZE = 32;
+
+	/**
+	 * A label showing the {@link GameFiles#getRankInsignia()} image with the unit's
+	 * current rank number drawn centred on top of it. Falls back to a plain bold
+	 * rank-number text label when the insignia image is missing.
+	 */
+	private JLabel makeRankInsignia(PlacedUnit unit) {
+		String text = Integer.toString(unit.getRank());
+		BufferedImage img = loadButtonImage(GameFiles.active().getRankInsignia());
+		if (img == null) {
+			JLabel label = new JLabel(text);
+			label.setFont(label.getFont().deriveFont(Font.BOLD));
+			return label;
+		}
+		img = scaleToMax(img, RANK_INSIGNIA_SIZE);
+		int w = img.getWidth(), h = img.getHeight();
+		BufferedImage out = new BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB);
+		Graphics2D g = out.createGraphics();
+		g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+		g.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING,
+				RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
+		g.drawImage(img, 0, 0, null);
+		g.setFont(g.getFont().deriveFont(Font.BOLD, h * 0.5f));
+		FontMetrics fm = g.getFontMetrics();
+		int tx = (w - fm.stringWidth(text)) / 2;
+		int ty = (h - fm.getHeight()) / 2 + fm.getAscent();
+		// Dark shadow under cyan text so the number reads on the badge, matching the
+		// in-field rank badge (see BattleField.drawRankBadge).
+		g.setColor(new Color(0, 0, 0, 160));
+		g.drawString(text, tx + 1, ty + 1);
+		g.setColor(new Color(255, 255, 255));
+		g.drawString(text, tx, ty);
+		g.dispose();
+		return new JLabel(new ImageIcon(out));
 	}
 
 	/**

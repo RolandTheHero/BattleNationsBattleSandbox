@@ -46,6 +46,7 @@ public abstract class AbstractGameFiles implements GameFiles {
 	private File fightButtonInactive;
 	private File fightButtonActive;
 	private File unitInfoButton;
+	private File rankInsignia;
 
 	// Eagerly-loaded game data (filled in by loadAll(); subclasses populate these
 	// in their load* hooks).
@@ -85,6 +86,7 @@ public abstract class AbstractGameFiles implements GameFiles {
 		fightButtonInactive = new File(bundleFolder, "fightInactive@2x.png");
 		fightButtonActive = new File(bundleFolder, "fightActive@2x.png");
 		unitInfoButton = new File(bundleFolder, "bs_main_unit_info_icon@2x.png");
+		rankInsignia = new File(bundleFolder, "icon_spSmall@2x~ipad.png");
 	}
 
 	// Version-specific parsing steps, called by loadAll() in dependency order.
@@ -264,6 +266,11 @@ public abstract class AbstractGameFiles implements GameFiles {
 	@Override
 	public File getAOETargetCircle() {
 		return new File(bundleFolder, "battle_view_AOE@2x.png");
+	}
+
+	@Override
+	public File getRankInsignia() {
+		return rankInsignia;
 	}
 
 	@Override
