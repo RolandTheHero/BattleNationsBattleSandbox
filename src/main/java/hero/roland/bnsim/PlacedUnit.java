@@ -261,9 +261,15 @@ public class PlacedUnit {
 		// HP modifier, so a unit immune to the type (mod 0) takes no HP damage.
 		double hpDamage = (rawToHp + rawOverflow) * hpMod;
 
+		// The floating number must equal the HP and armor actually removed, so derive it
+		// from the integer deltas rather than rounding (hpDamage + armorAbsorbed) on its
+		// own: a hit that each component rounds away to nothing (e.g. 0.5 armor that leaves
+		// the rounded armor unchanged) would otherwise still display as 1.
+		int hpBefore = currentHp;
+		int armorBefore = currentArmor;
 		currentArmor = (int) Math.round(currentArmor - armorAbsorbed);
 		currentHp -= (int) Math.round(hpDamage);
-		return (int) Math.round(hpDamage + armorAbsorbed);
+		return (hpBefore - currentHp) + (armorBefore - currentArmor);
 	}
 
 	/**
@@ -364,8 +370,8 @@ public class PlacedUnit {
 			StatusEffect def = e.getEffect();
 			double raw = e.nextTickRawDamage();
 			int dealt = raw > 0
-					? applyDamage(raw, def.getDamageType(), def.getArmorPiercingRate())
-					: 0;
+				? applyDamage(raw, def.getDamageType(), def.getArmorPiercingRate())
+				: 0;
 			e.onTurnPassed();
 			if (dealt > 0)
 				ticks.add(new StatusTick(def, dealt));
