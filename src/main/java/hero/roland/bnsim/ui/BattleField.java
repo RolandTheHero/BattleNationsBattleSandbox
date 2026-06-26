@@ -420,6 +420,16 @@ public class BattleField extends JComponent {
 	}
 
 	/**
+	 * Sets whether a side's units slide one row forward to fill an emptied front
+	 * line. When disabled, units hold their cells and no advance slide plays. Driven
+	 * by the UnitMenu toggle and read live as each turn ends (see
+	 * {@link #beginAdvanceSlide}).
+	 */
+	public void setAdvanceEnabled(boolean enabled) {
+		sim.getRules().setAdvanceEnabled(enabled);
+	}
+
+	/**
 	 * Sets the status effect applied to a side at the start of each of its turns —
 	 * i.e. whenever the turn changes to it. {@code id} is a loaded status-effect id
 	 * (one of the "env" effects offered by the UnitMenu dropdown), or {@code null}
@@ -1074,9 +1084,10 @@ public class BattleField extends JComponent {
 	private void beginAdvanceSlide() {
 		Side side = pendingAdvanceSide;
 		pendingAdvanceSide = null;
-		// No gap to close (front row occupied, or the side has no units left): just
-		// hand off to the next turn without sliding.
-		if (!sim.isFrontRowEmpty(side) || !sim.hasUnits(side)) {
+		// Nothing to slide — advancing turned off, the front row still occupied, or
+		// the side has no units left: just hand off to the next turn without sliding.
+		if (!sim.getRules().isAdvanceEnabled() || !sim.isFrontRowEmpty(side)
+				|| !sim.hasUnits(side)) {
 			nextTurnAfter(BattleSimulator.opponentOf(side));
 			return;
 		}

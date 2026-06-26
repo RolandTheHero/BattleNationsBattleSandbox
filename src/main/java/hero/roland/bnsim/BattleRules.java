@@ -15,6 +15,9 @@ package hero.roland.bnsim;
  *     its targetable list (see {@link hero.roland.bnsim.model.Ability#canTarget}).
  * <li>{@code enforceImmunities} — whether units' status-effect immunities apply
  *     (see {@link hero.roland.bnsim.model.Unit#isImmuneTo}).
+ * <li>{@code advanceEnabled} — whether a side's units slide one row forward to fill
+ *     an emptied front line (see {@link hero.roland.bnsim.ui.BattleField}'s advance
+ *     slide). When off, units hold their cells for the whole battle.
  * </ul>
  */
 public class BattleRules {
@@ -22,6 +25,7 @@ public class BattleRules {
 	private boolean combatRulesEnabled = true;
 	private boolean enforceTargetTypes = true;
 	private boolean enforceImmunities = true;
+	private boolean advanceEnabled = true;
 
 	/** Whether ammo, reloads, cooldowns and prep time are tracked this battle. */
 	public boolean isCombatRulesEnabled() {
@@ -48,5 +52,14 @@ public class BattleRules {
 
 	public void setEnforceImmunities(boolean enforce) {
 		this.enforceImmunities = enforce;
+	}
+
+	/** Whether a side's units slide forward to fill an emptied front line. */
+	public boolean isAdvanceEnabled() {
+		return advanceEnabled;
+	}
+
+	public void setAdvanceEnabled(boolean enabled) {
+		this.advanceEnabled = enabled;
 	}
 }

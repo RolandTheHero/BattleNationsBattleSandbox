@@ -59,6 +59,7 @@ public class UnitMenu extends JPanel {
 	private final JCheckBox cooldownToggle = new JCheckBox("Cooldowns & ammo", true);
 	private final JCheckBox targetTypesToggle = new JCheckBox("Target types", true);
 	private final JCheckBox statusImmunitiesToggle = new JCheckBox("Status immunities", true);
+	private final JCheckBox advanceToggle = new JCheckBox("Units advancing", true);
 
 	private final List<Unit> allUnits = new ArrayList<>();
 
@@ -69,6 +70,7 @@ public class UnitMenu extends JPanel {
 	private Consumer<Boolean> combatRulesListener;
 	private Consumer<Boolean> targetTypesListener;
 	private Consumer<Boolean> statusImmunitiesListener;
+	private Consumer<Boolean> advanceListener;
 	private Runnable languageChangedListener;
 
 	public UnitMenu() {
@@ -122,12 +124,20 @@ public class UnitMenu extends JPanel {
 		statusImmunitiesToggle.setAlignmentX(LEFT_ALIGNMENT);
 		statusImmunitiesToggle.addActionListener(e -> fireStatusImmunities());
 
+		// Move-forward toggle: when enabled a side's units slide one row forward to
+		// fill an emptied front line; when disabled units hold their cells.
+		advanceToggle.setToolTipText(
+				"Whether units move forward to fill an emptied front row.");
+		advanceToggle.setAlignmentX(LEFT_ALIGNMENT);
+		advanceToggle.addActionListener(e -> fireAdvance());
+
 		JPanel top = new JPanel();
 		top.setLayout(new BoxLayout(top, BoxLayout.Y_AXIS));
 		searchPanel.setAlignmentX(LEFT_ALIGNMENT);
 		top.add(cooldownToggle);
 		top.add(targetTypesToggle);
 		top.add(statusImmunitiesToggle);
+		top.add(advanceToggle);
 		top.add(Box.createVerticalStrut(4));
 		top.add(searchPanel);
 
@@ -218,6 +228,20 @@ public class UnitMenu extends JPanel {
 	private void fireStatusImmunities() {
 		if (statusImmunitiesListener != null)
 			statusImmunitiesListener.accept(statusImmunitiesToggle.isSelected());
+	}
+
+	/**
+	 * Sets the callback invoked when the move-forward toggle changes, and
+	 * immediately pushes its current value so the field starts in sync.
+	 */
+	public void setAdvanceListener(Consumer<Boolean> listener) {
+		this.advanceListener = listener;
+		fireAdvance();
+	}
+
+	private void fireAdvance() {
+		if (advanceListener != null)
+			advanceListener.accept(advanceToggle.isSelected());
 	}
 
 	private void clearSide(Side side) {
