@@ -124,6 +124,17 @@ public class ArenaPane extends JLayeredPane {
 		return field;
 	}
 
+	/**
+	 * Re-applies the freshly loaded text language to the battle controls and the
+	 * battlefield: re-styles the localised Pass button (its label comes from the
+	 * loaded text) and refreshes the battlefield, which rebuilds the selected
+	 * unit's attack panel in the new language. Called after the language is switched.
+	 */
+	public void refreshLanguage() {
+		stylePassButton();
+		field.refreshAttacker();
+	}
+
 	/** Called with {@code true} when entering battle mode, {@code false} when leaving. */
 	public void setOnBattleModeChanged(Consumer<Boolean> listener) {
 		this.onBattleModeChanged = listener;
@@ -396,15 +407,16 @@ public class ArenaPane extends JLayeredPane {
 	 */
 	/**
 	 * Gives the Pass button the {@link GameFiles#getPassButton()} image as its
-	 * background, with "Pass" centred on top of it and the default button chrome
-	 * removed. Falls back to the plain "Pass Turn" text button if the image is
-	 * missing.
+	 * background, with the loaded "pass" text centred on top of it and the default
+	 * button chrome removed. When the image is missing it falls back to a plain
+	 * text button, but the label is still set from the loaded text either way.
 	 */
 	private void stylePassButton() {
+		String passText = GameFiles.active().getText("pass");
+		passButton.setText(passText);
 		BufferedImage img = loadButtonImage(GameFiles.active().getPassButton());
 		if (img == null)
 			return;
-		passButton.setText("Pass");
 		passButton.setIcon(new ImageIcon(img));
 		// Darken the image while the button is held down for press feedback.
 		passButton.setPressedIcon(new ImageIcon(darken(img, 0.7f)));
@@ -418,7 +430,7 @@ public class ArenaPane extends JLayeredPane {
 		// Size the label to fill most of the button face (leaving a margin for the
 		// image's border) rather than using a fixed point size.
 		Font base = passButton.getFont().deriveFont(Font.BOLD);
-		passButton.setFont(fitFont(base, "Pass",
+		passButton.setFont(fitFont(base, passText,
 				Math.round(img.getWidth() * 0.7f), Math.round(img.getHeight() * 0.5f)));
 	}
 

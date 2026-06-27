@@ -29,6 +29,7 @@ import javax.swing.SwingUtilities;
 import hero.roland.bnsim.PlacedUnit;
 import hero.roland.bnsim.gamefiles.GameFiles;
 import hero.roland.bnsim.model.Ability;
+import hero.roland.bnsim.model.Ability.AttackDirection;
 import hero.roland.bnsim.model.Ability.DamageType;
 import hero.roland.bnsim.model.Ability.StatusEffectChance;
 import hero.roland.bnsim.model.StatusEffect;
@@ -294,6 +295,24 @@ final class UnitInfoDialog extends JDialog {
 		return "Tags: " + sb.toString();
 	}
 
+	/**
+	 * The unit types an ability is allowed to target as a comma-separated list of
+	 * names, or an empty string when the ability is unrestricted (it may target
+	 * anything). Names are listed in tag-name order so the row is stable from one
+	 * open to the next.
+	 */
+	private static String buildTargetableTags(Ability ability) {
+		List<Unit.UnitTag> tags = new ArrayList<>(ability.getTargetableTags());
+		tags.sort(Comparator.comparing(Unit.UnitTag::name));
+		StringBuilder sb = new StringBuilder();
+		for (Unit.UnitTag tag : tags) {
+			if (sb.length() > 0)
+				sb.append(", ");
+			sb.append(esc(tag.name()));
+		}
+		return sb.toString();
+	}
+
 	/** One ability's block: name plus a key/value table of its combat figures. */
 	private String buildAttack(Unit.Weapon weapon, Unit.Attack attack, Ability ability) {
 		StringBuilder rows = new StringBuilder();
@@ -312,13 +331,19 @@ final class UnitInfoDialog extends JDialog {
 		// Total offense: the unit's rank accuracy plus the ability's own offense.
 		if (hasRanks)
 			rows.append(kv(gf.getText("accuracy"),
-					Integer.toString(unit.getRank(rank).accuracy() + ability.getAttack())));
-		rows.append(kv(gf.getText("range"), attack.getMinRange() + "-" + attack.getMaxRange()));
+				Integer.toString(unit.getRank(rank).accuracy() + ability.getAttack())));
+		String attackDirStr = ability.getAttackDirection().equals(AttackDirection.BACK) ? " (Back)" : "";
+		rows.append(kv(gf.getText("range"), attack.getMinRange() + "-" + attack.getMaxRange() + attackDirStr));
 		rows.append(kv(gf.getText("line of fire"), lineOfFireLabel(ability)));
+		String targets = buildTargetableTags(ability);
+		if (!targets.isEmpty())
+			rows.append(kv(gf.getText("targets"), targets));
 		if (ability.getArmorPiercingRate() > 0)
 			rows.append(kv(gf.getText("armorpiercing"), pct(ability.getArmorPiercingRate())));
 		if (ability.getCooldown() > 0)
 			rows.append(kv(gf.getText("cooldown"), turns(ability.getCooldown())));
+		if (ability.getGlobalCooldown() > 0)
+			rows.append(kv("Global " + gf.getText("cooldown"), turns(ability.getGlobalCooldown())));
 		if (ability.getPrepTime() > 0)
 			rows.append(kv(gf.getText("chargetime"), turns(ability.getPrepTime())));
 		if (ability.getAmmoRequired() > 0)

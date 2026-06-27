@@ -31,7 +31,7 @@ public class BattleFrame extends JFrame {
 		menu.setTargetTypesListener(arena.getField()::setTargetTypesEnabled);
 		menu.setStatusImmunitiesListener(arena.getField()::setStatusImmunitiesEnabled);
 		menu.setAdvanceListener(arena.getField()::setAdvanceEnabled);
-		menu.setLanguageChangedListener(arena.getField()::refreshAttacker);
+		menu.setLanguageChangedListener(arena::refreshLanguage);
 
 		arena.setOnBattleModeChanged(battle -> {
 			menu.setVisible(!battle);

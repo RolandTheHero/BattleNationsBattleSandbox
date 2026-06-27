@@ -203,6 +203,17 @@ public class Ability {
 		return false;
 	}
 
+	/**
+	 * The unit types this ability is allowed to target, as an unmodifiable view.
+	 * Empty when the ability is unrestricted and may target anything (see
+	 * {@link #canTarget}).
+	 */
+	public Set<UnitTag> getTargetableTags() {
+		return targetableTags == null
+			? Collections.emptySet()
+			: Collections.unmodifiableSet(targetableTags);
+	}
+
 	protected static double getDouble(JSONObject json, String name,
 			double defaultVal) {
 		return json.optDouble(name, defaultVal);
