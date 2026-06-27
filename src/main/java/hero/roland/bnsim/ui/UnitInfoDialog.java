@@ -324,15 +324,12 @@ final class UnitInfoDialog extends JDialog {
 		if (ability.getAmmoRequired() > 0)
 			rows.append(kv(gf.getText("ammorequired"), Integer.toString(ability.getAmmoRequired())));
 
-		StringBuilder effects = new StringBuilder();
 		for (StatusEffectChance sc : ability.getStatusEffects()) {
-			if (effects.length() > 0)
-				effects.append(", ");
+			StringBuilder effects = new StringBuilder();
 			effects.append(esc(effectName(sc.effect())))
-					.append(' ').append(muted("(" + pct(sc.chance()) + ")"));
+				.append(muted(" (" + pct(sc.chance()) + ", " + turns(sc.effect().getDuration()) + ")"));
+			rows.append(kv(gf.getText("statstunefffam"), effects.toString()));
 		}
-		if (effects.length() > 0)
-			rows.append(kv("Effects", effects.toString()));
 		// An ability's critical chance stacks on top of the unit's own critical
 		// stat (an integer percent) and the weapon's base critical, so show the
 		// combined figure for this rank.
