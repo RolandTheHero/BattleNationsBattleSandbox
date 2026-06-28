@@ -78,6 +78,12 @@ public class BattleField extends JComponent {
 	private static final Color HP_COLOR = new Color(70, 210, 60);
 	private static final Color ARMOR_COLOR = new Color(0, 200, 255);
 	private static final Color DAMAGE_COLOR = new Color(235, 45, 45);
+	/** A struck unit's sprite flashes this colour, fading from {@link #HIT_FLASH_ALPHA}
+	 * to nothing over {@link #HIT_FLASH_FRAMES}, and shakes left-right by up to
+	 * {@link #HIT_SHAKE_MAX} pixels scaled by the fraction of health the hit removed. */
+	private static final Color HIT_FLASH_COLOR = new Color(255, 45, 45);
+	private static final float HIT_FLASH_ALPHA = 0.7f;
+	private static final int HIT_SHAKE_MAX = 16;
 
 	/** Frames a floating damage number lives, and how far it rises (pixels). */
 	private static final int DAMAGE_FLOAT_FRAMES = 40;
@@ -122,6 +128,8 @@ public class BattleField extends JComponent {
 	private static final int FRAME_DELAY = 32;
 	/** Frames a struck tile stays red before fully fading out. */
 	private static final int HIT_FADE = 26;
+	/** Frames a damaged unit's sprite stays tinted red and shaking. */
+	private static final int HIT_FLASH_FRAMES = 16;
 	/** Frames for a health bar to finish draining (~1 second). */
 	private static final int BAR_ANIM_FRAMES = 1000 / FRAME_DELAY;
 	/** Frames the "effect applied" icon shows for (~1 second). */
@@ -1226,6 +1234,8 @@ public class BattleField extends JComponent {
 				// Play the effect's sound as its damage number appears.
 				String sound = family != null ? family.getSound() : null;
 				spawnDamageNumber(side, unit.getCell(), st.damageDealt(), icon, sound, false);
+				// Flash and shake the unit for the status damage, as for a direct hit.
+				unit.registerHit(st.damageDealt(), tick);
 			}
 			if (unit.isDead())
 				beginDying(unit);
@@ -1762,6 +1772,9 @@ public class BattleField extends JComponent {
 			}
 			int dealt = target.applyDamage(rawDamage,
 					marker.damageType, marker.armorPiercing);
+			// Flash the struck unit red and shake it in proportion to the health lost.
+			if (dealt > 0)
+				target.registerHit(dealt, tick);
 			if (dodge)
 				spawnDamageNumber(marker.side, marker.cell, 0, null, null, false, true, true, false, false);
 			else if (dealt <= 0) {
@@ -2026,6 +2039,10 @@ public class BattleField extends JComponent {
 		Graphics2D g2 = (Graphics2D) g.create();
 		g2.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, alpha));
 
+		// A recently struck unit shakes horizontally, the jitter fading over the next
+		// few frames (0 when it isn't shaking, so this is a no-op outside battle).
+		centreX += hitShakeOffset(unit);
+
 		if (unit.isPlayingDeathAnimation()) {
 			// Once the health bar has drained, the death animation replaces the
 			// sprite; with no death animation nothing is drawn (it is off the board).
@@ -2047,8 +2064,11 @@ public class BattleField extends JComponent {
 
 		if (!drawAnimation(g2, anim, frame, centreX, centreY))
 			drawToken(g2, unit, centreX, centreY);
-		else if (battleMode)
+		else if (battleMode) {
 			drawStatusPulse(g2, unit, anim, frame);
+			// Red damage flash over the sprite, on top of any status pulse.
+			drawHitFlash(g2, unit, anim, frame);
+		}
 		g2.dispose();
 	}
 
@@ -2176,6 +2196,35 @@ public class BattleField extends JComponent {
 		float alpha = PULSE_MIN_ALPHA + wave * (PULSE_MAX_ALPHA - PULSE_MIN_ALPHA);
 
 		anim.drawFrameTinted(frame, g, parseHexColor(family.getColorHex()), alpha);
+	}
+
+	/**
+	 * Horizontal shake offset (px) for a unit struck within the last
+	 * {@link #HIT_FLASH_FRAMES} frames: a left-right jitter whose amplitude fades to
+	 * nothing over that window and scales with the fraction of the unit's health the
+	 * hit removed (see {@link PlacedUnit#getHitFraction}). 0 when the unit isn't shaking.
+	 */
+	private double hitShakeOffset(PlacedUnit unit) {
+		int elapsed = tick - unit.getHitTick();
+		if (elapsed < 0 || elapsed >= HIT_FLASH_FRAMES)
+			return 0;
+		double decay = 1.0 - (double) elapsed / HIT_FLASH_FRAMES;
+		double amplitude = HIT_SHAKE_MAX * unit.getHitFraction() * decay;
+		return amplitude * Math.sin(elapsed * 2.0);
+	}
+
+	/**
+	 * Tints a just-struck unit's sprite red over its normal frame, fading from
+	 * {@link #HIT_FLASH_ALPHA} to nothing across {@link #HIT_FLASH_FRAMES}. Relies on
+	 * {@code anim} already being positioned by the preceding sprite draw, exactly as
+	 * {@link #drawStatusPulse} does. A no-op when the unit isn't currently flashing.
+	 */
+	private void drawHitFlash(Graphics2D g, PlacedUnit unit, Animation anim, int frame) {
+		int elapsed = tick - unit.getHitTick();
+		if (elapsed < 0 || elapsed >= HIT_FLASH_FRAMES)
+			return;
+		float alpha = HIT_FLASH_ALPHA * (1f - (float) elapsed / HIT_FLASH_FRAMES);
+		anim.drawFrameTinted(frame, g, HIT_FLASH_COLOR, alpha);
 	}
 
 	/** Draws the "effect applied" icons sinking and fading from afflicted tiles. */

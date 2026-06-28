@@ -44,6 +44,12 @@ public class PlacedUnit {
 	private int lastHp = Integer.MIN_VALUE;
 	private int lastArmor = Integer.MIN_VALUE;
 
+	/** Damage-flash state: the tick the unit was last damaged and the fraction of its
+	 * max health (HP + armor) that hit removed, driving its red flash and the
+	 * proportional shake. {@code hitTick} stays very negative until the first hit. */
+	private int hitTick = Integer.MIN_VALUE;
+	private double hitFraction;
+
 	private Animation animation;
 	private boolean animationLoaded;
 
@@ -138,6 +144,9 @@ public class PlacedUnit {
 		displayHp = lastHp = currentHp;
 		displayArmor = lastArmor = currentArmor;
 		hpRate = armorRate = 0;
+		// Clear any lingering damage flash/shake from a previous battle.
+		hitTick = Integer.MIN_VALUE;
+		hitFraction = 0;
 		statusEffects.clear();
 	}
 
@@ -178,6 +187,34 @@ public class PlacedUnit {
 	/** Whether the animated bars have finished easing to the real health/armor. */
 	public boolean barsSettled() {
 		return displayHp == currentHp && displayArmor == currentArmor;
+	}
+
+	/**
+	 * Records that the unit has just taken {@code damage} points of damage at frame
+	 * {@code tick}, arming its damage flash and shake. The shake's intensity scales
+	 * with the fraction of the unit's maximum health (HP + armor) the hit removed.
+	 * Several hits landing on the same tick keep the largest fraction, so a barrage
+	 * shakes by its hardest blow. A non-positive {@code damage} is ignored.
+	 */
+	public void registerHit(int damage, int tick) {
+		if (damage <= 0)
+			return;
+		int maxTotal = Math.max(1, getMaxHp() + getMaxArmor());
+		double fraction = Math.min(1.0, (double) damage / maxTotal);
+		hitFraction = (tick == hitTick) ? Math.max(hitFraction, fraction) : fraction;
+		hitTick = tick;
+	}
+
+	/** The tick at which this unit was last damaged (for the hit flash and shake);
+	 * a very negative value until it is first hit. */
+	public int getHitTick() {
+		return hitTick;
+	}
+
+	/** The fraction (0..1) of this unit's max health removed by its last hit, which
+	 * scales the shake amplitude. */
+	public double getHitFraction() {
+		return hitFraction;
 	}
 
 	public int getCurrentHp() {
