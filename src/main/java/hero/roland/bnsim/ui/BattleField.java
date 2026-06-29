@@ -359,7 +359,11 @@ public class BattleField extends JComponent {
 	public void placeUnit(Unit unit, Side side) {
 		if (unit == null)
 			return;
-		sim.addUnit(unit, side);
+		PlacedUnit placed = sim.addUnit(unit, side);
+		// Start its idle loop at the current tick so units placed at different times
+		// don't all animate in lockstep.
+		if (placed != null)
+			placed.beginIdle(tick);
 		repaint();
 	}
 
@@ -604,7 +608,7 @@ public class BattleField extends JComponent {
 			else {
 				targetable = sim.targetableCells(selectedAttacker, attack);
 				// A TARGET ability with a target area gets a draggable reticle,
-				// starting on the front row's centre (see defaultAoeTarget).
+				// starting on the centre column (see defaultAoeTarget).
 				if (hasAoeTarget(attack))
 					aoeTarget = defaultAoeTarget();
 			}
@@ -623,32 +627,35 @@ public class BattleField extends JComponent {
 	}
 
 	/**
-	 * The reticle's starting cell: the targetable tile on the second row's centre
-	 * column, or — when that tile is out of range — the targetable tile nearest to
-	 * it. If the second row no longer exists on the target side (it has advanced past
-	 * it), the first row is used instead. {@code null} when the attack can reach
-	 * nothing.
+	 * The reticle's starting cell: a targetable tile on the centre column,
+	 * preferring the second row, then the front row, then the back row. Rows that
+	 * have been advanced past (no longer drawn on the target side) are skipped, so
+	 * the first still-drawn, targetable tile among those wins. If the centre column
+	 * offers no targetable tile in any of those rows, the nearest targetable tile to
+	 * the second-row centre is used. {@code null} when the attack can reach nothing.
 	 */
 	private Cell defaultAoeTarget() {
 		if (targetable.isEmpty())
 			return null;
 		Side targetSide = BattleSimulator.opponentOf(selectedAttacker.getSide());
 		int centreCol = GridGeometry.COLS / 2;
-		int centreRow = Math.min(1, GridGeometry.ROWS - 1);
-		// Fall back to the first row when the preferred row has been advanced past.
-		if (!isCellVisible(targetSide, centreCol, centreRow))
-			centreRow = 0;
-		Cell start = new Cell(centreCol, centreRow);
-		if (targetable.contains(start) && isCellVisible(targetSide, start.col(), start.row()))
-			return start;
-		// Otherwise the nearest still-existing targetable tile, measured from the
-		// chosen centre (front rows preferred).
+		int secondRow = Math.min(1, GridGeometry.ROWS - 1);
+		// Prefer the centre column: the second row first, then the front row, then
+		// the back row. The first that is a still-drawn, targetable tile wins.
+		int[] preferredRows = { secondRow, 0, GridGeometry.ROWS - 1 };
+		for (int row : preferredRows) {
+			Cell cell = new Cell(centreCol, row);
+			if (targetable.contains(cell) && isCellVisible(targetSide, centreCol, row))
+				return cell;
+		}
+		// None of the centre-column rows can be hit; fall back to the nearest
+		// still-existing targetable tile, measured from the second-row centre.
 		Cell best = null;
 		int bestDist = Integer.MAX_VALUE;
 		for (Cell cell : targetable) {
 			if (!isCellVisible(targetSide, cell.col(), cell.row()))
 				continue;
-			int dist = Math.abs(cell.row() - centreRow) * GridGeometry.COLS
+			int dist = Math.abs(cell.row() - secondRow) * GridGeometry.COLS
 					+ Math.abs(cell.col() - centreCol);
 			if (dist < bestDist) {
 				bestDist = dist;
@@ -1713,8 +1720,11 @@ public class BattleField extends JComponent {
 		if (spawnId == null)
 			return;
 		Unit spawn = Unit.get(spawnId);
-		if (spawn != null)
-			sim.spawnAt(spawn, dying.getSide(), dying.getCell());
+		if (spawn != null) {
+			PlacedUnit placed = sim.spawnAt(spawn, dying.getSide(), dying.getCell());
+			if (placed != null)
+				placed.beginIdle(tick); // its own idle timeline, like a freshly placed unit
+		}
 	}
 
 	/** Plays any queued sounds whose scheduled tick has arrived. */
@@ -2138,7 +2148,9 @@ public class BattleField extends JComponent {
 
 		Animation attack = unit.getActiveAttack(tick);
 		Animation anim = (attack != null) ? attack : unit.getAnimation();
-		int frame = (attack != null) ? (tick - unit.getAttackStartTick()) : tick;
+		int frame = (attack != null)
+				? (tick - unit.getAttackStartTick())
+				: unit.getIdleFrame(tick);
 
 		// The selected unit gets a cyan outline traced around its sprite, drawn
 		// beneath it so only the ring sticking out past its edges shows. Hidden while

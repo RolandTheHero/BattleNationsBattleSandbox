@@ -53,6 +53,16 @@ public class PlacedUnit {
 	private Animation animation;
 	private boolean animationLoaded;
 
+	/**
+	 * Reference tick for this unit's looping idle animation: the idle frame shown is
+	 * {@code tick - idleStartTick}, so each unit advances on its own timeline instead
+	 * of a shared global clock. Set when the unit is placed (see {@link #beginIdle}),
+	 * so units placed at different times start out of phase, and reset when an attack
+	 * ends so the idle resumes from its first frame rather than jumping to the phase
+	 * the rest of the field happens to be at.
+	 */
+	private int idleStartTick;
+
 	/** A one-shot attack animation that temporarily replaces the idle. */
 	private Animation attackAnimation;
 	private int attackStartTick;
@@ -626,6 +636,25 @@ public class PlacedUnit {
 	}
 
 	/**
+	 * (Re)starts this unit's looping idle animation from {@code tick}, so its first
+	 * frame is shown at that tick. Called when the unit appears on the field (its
+	 * placement tick) and when an attack ends, giving each unit an idle timeline of
+	 * its own rather than sharing the global one.
+	 */
+	public void beginIdle(int tick) {
+		this.idleStartTick = tick;
+	}
+
+	/**
+	 * The frame of this unit's looping idle animation to draw at {@code tick},
+	 * measured from when its idle loop began (see {@link #beginIdle}) so each unit
+	 * runs on its own timeline.
+	 */
+	public int getIdleFrame(int tick) {
+		return tick - idleStartTick;
+	}
+
+	/**
 	 * Begins playing a one-shot attack animation (non-looping) from the given
 	 * tick. While it is playing, {@link #getActiveAttack} returns it; once it
 	 * finishes the unit reverts to its idle animation.
@@ -644,8 +673,12 @@ public class PlacedUnit {
 	 */
 	public Animation getActiveAttack(int tick) {
 		if (attackAnimation != null
-				&& tick - attackStartTick >= attackAnimation.getEndFrame())
+				&& tick - attackStartTick >= attackAnimation.getEndFrame()) {
+			// Attack finished: resume the idle loop from its own first frame at the
+			// tick the attack ended, so it doesn't jump to the shared global phase.
+			beginIdle(attackStartTick + attackAnimation.getEndFrame());
 			attackAnimation = null;
+		}
 		return attackAnimation;
 	}
 
