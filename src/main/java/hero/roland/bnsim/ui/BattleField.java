@@ -146,6 +146,14 @@ public class BattleField extends JComponent {
 	private int tick;
 	private boolean battleMode;
 
+	/**
+	 * Zoom applied to everything drawn on the battlefield (grids, units, health
+	 * bars and the rest of the field visuals), scaled about the centre of the
+	 * component. The background image and the overlaid battle controls are left at
+	 * native size. 1 = no scaling; see {@link #setFieldScale}.
+	 */
+	private double fieldScale = 1.0;
+
 	/** Status effect applied to a side at the start of each of its turns (whenever
 	 * the turn changes to it); null = none. Set via the UnitMenu "Environment" dropdown. */
 	private StatusEffect environmentStatusEffect;
@@ -299,32 +307,35 @@ public class BattleField extends JComponent {
 		MouseInputAdapter mouse = new MouseInputAdapter() {
 			@Override
 			public void mousePressed(java.awt.event.MouseEvent e) {
+				Point p = toFieldPoint(e.getPoint());
 				if (battleMode)
-					onBattlePress(e.getPoint());
+					onBattlePress(p);
 				else if (SwingUtilities.isRightMouseButton(e))
-					cycleRank(e.getPoint());
+					cycleRank(p);
 				else
-					beginDrag(e.getPoint());
+					beginDrag(p);
 			}
 
 			@Override
 			public void mouseDragged(java.awt.event.MouseEvent e) {
+				Point p = toFieldPoint(e.getPoint());
 				if (battleMode)
-					onBattleDrag(e.getPoint());
+					onBattleDrag(p);
 				else if (dragging != null) {
-					dragPoint = e.getPoint();
+					dragPoint = p;
 					repaint();
 				}
 			}
 
 			@Override
 			public void mouseReleased(java.awt.event.MouseEvent e) {
+				Point p = toFieldPoint(e.getPoint());
 				if (battleMode) {
-					onBattleRelease(e.getPoint());
+					onBattleRelease(p);
 					return;
 				}
 				if (dragging != null) {
-					boolean onBoard = sim.moveTo(dragging, e.getPoint());
+					boolean onBoard = sim.moveTo(dragging, p);
 					PlacedUnit dropped = dragging;
 					dragging = null;
 					dragPoint = null;
@@ -445,6 +456,20 @@ public class BattleField extends JComponent {
 	 */
 	public void setEnvironmentStatusEffect(String id) {
 		environmentStatusEffect = id != null ? StatusEffect.get(id) : null;
+	}
+
+	/**
+	 * Sets the zoom applied to everything drawn on the battlefield — the grids,
+	 * units, health bars and the rest of the field visuals — scaled about the
+	 * centre of the field. The background image and the overlaid battle controls
+	 * (weapons box, View Enemy / Pass / End Battle buttons) are not affected. A
+	 * factor of 1 draws at native size, 1.5 draws everything half again as large.
+	 * Non-positive values are ignored (treated as 1). Driven by the UnitMenu's
+	 * field-scale box.
+	 */
+	public void setFieldScale(double scale) {
+		this.fieldScale = scale > 0 ? scale : 1.0;
+		repaint();
 	}
 
 	/** Listener notified when the selected attacker changes (null = cleared). */
@@ -602,6 +627,22 @@ public class BattleField extends JComponent {
 	}
 
 	// --- Interaction -------------------------------------------------------
+
+	/**
+	 * Maps a pixel in the component's coordinate space into the unscaled field
+	 * space the {@linkplain #geometry geometry} and simulation work in, undoing
+	 * the {@link #fieldScale} zoom (applied about the field centre when painting).
+	 * All mouse input is routed through this so clicks line up with the scaled
+	 * drawing.
+	 */
+	private Point toFieldPoint(Point screen) {
+		if (fieldScale == 1.0)
+			return screen;
+		double cx = getWidth() / 2.0, cy = getHeight() / 2.0;
+		int x = (int) Math.round(cx + (screen.x - cx) / fieldScale);
+		int y = (int) Math.round(cy + (screen.y - cy) / fieldScale);
+		return new Point(x, y);
+	}
 
 	private void beginDrag(Point p) {
 		dragging = sim.pick(p);
@@ -1276,6 +1317,17 @@ public class BattleField extends JComponent {
 		}
 
 		geometry.setViewport(getWidth(), getHeight());
+
+		// Zoom the battlefield itself — grids, units, bars and every other field
+		// visual — about the centre of the component, leaving the background (drawn
+		// above) and the overlaid Swing controls unscaled. Mouse input is mapped back
+		// through toFieldPoint so it stays aligned with this scaled drawing.
+		if (fieldScale != 1.0) {
+			double cx = getWidth() / 2.0, cy = getHeight() / 2.0;
+			g2.translate(cx, cy);
+			g2.scale(fieldScale, fieldScale);
+			g2.translate(-cx, -cy);
+		}
 
 		drawGrid(g2, Side.ENEMY);
 		drawGrid(g2, Side.PLAYER);
