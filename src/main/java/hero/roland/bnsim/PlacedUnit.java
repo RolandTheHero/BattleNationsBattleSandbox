@@ -386,19 +386,19 @@ public class PlacedUnit {
 	}
 
 	/**
-	 * The effect this unit should pulse with at the given animation tick: the most
-	 * recently applied effect that has a family and whose apply animation has
-	 * already begun ({@code displayStartTick <= tick}), or {@code null} if none
-	 * apply yet. Gating on the display tick keeps the pulse from showing during the
-	 * attack, before the effect's apply icon starts playing.
+	 * The effects this unit should pulse with at the given animation tick, in the
+	 * order they were applied (oldest first): every active effect that has a family
+	 * and whose apply animation has already begun ({@code displayStartTick <= tick}).
+	 * Gating on the display tick keeps the pulse from showing during the attack,
+	 * before each effect's apply icon starts playing. The UI cycles its colour
+	 * through this list one pulse at a time; an empty list means no pulse.
 	 */
-	public ActiveStatusEffect getPulseEffect(int tick) {
-		for (int i = statusEffects.size() - 1; i >= 0; i--) {
-			ActiveStatusEffect e = statusEffects.get(i);
+	public List<ActiveStatusEffect> getPulseEffects(int tick) {
+		List<ActiveStatusEffect> pulsing = new ArrayList<>();
+		for (ActiveStatusEffect e : statusEffects)
 			if (e.getEffect().getFamily() != null && e.getDisplayStartTick() <= tick)
-				return e;
-		}
-		return null;
+				pulsing.add(e);
+		return pulsing;
 	}
 
 	/**

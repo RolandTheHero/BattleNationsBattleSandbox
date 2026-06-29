@@ -2259,26 +2259,46 @@ public class BattleField extends JComponent {
 	}
 
 	/**
-	 * Pulses the afflicted unit's own sprite in its status family's colour,
-	 * oscillating at the family's pulse speed by blending a colour overlay masked
-	 * to the sprite shape over the just-drawn unit. The pulse only begins once the
-	 * effect's apply icon starts playing, and is timed from that moment so it eases
-	 * up from nothing rather than snapping mid-cycle. {@code anim}/{@code frame} are
-	 * the animation and frame already drawn for this unit, so the tint lines up
-	 * exactly with the sprite.
+	 * Pulses the afflicted unit's own sprite in its status families' colours,
+	 * oscillating by blending a colour overlay masked to the sprite shape over the
+	 * just-drawn unit. When the unit carries several afflictions the pulse cycles
+	 * through each one's colour, giving each a single beat (a full fade in/out) at
+	 * its family's pulse speed before advancing to the next and looping. Colours
+	 * swap at the dim trough of each beat so the change isn't abrupt. The pulse only
+	 * begins once an effect's apply icon starts playing, and is timed from the first
+	 * such moment so it eases up from nothing rather than snapping mid-cycle.
+	 * {@code anim}/{@code frame} are the animation and frame already drawn for this
+	 * unit, so the tint lines up exactly with the sprite.
 	 */
 	private void drawStatusPulse(Graphics2D g, PlacedUnit unit, Animation anim, int frame) {
-		ActiveStatusEffect effect = unit.getPulseEffect(tick);
-		if (effect == null)
+		List<ActiveStatusEffect> effects = unit.getPulseEffects(tick);
+		if (effects.isEmpty())
 			return;
-		StatusEffect.StatusFamily family = effect.getEffect().getFamily();
-		double speed = Math.max(0.1, family.getPulseSpeed());     // seconds per pulse
-		double period = speed * 1000.0 / FRAME_DELAY;             // frames per pulse
-		double elapsed = tick - effect.getDisplayStartTick();
-		double phase = (elapsed % period) / period;
+
+		// One beat per effect, back to back, looping; each beat lasts its family's
+		// pulse speed. Walk the beat timeline to find which effect is pulsing now.
+		double[] periods = new double[effects.size()];
+		double total = 0;
+		int startTick = Integer.MAX_VALUE;
+		for (int i = 0; i < effects.size(); i++) {
+			double speed = Math.max(0.1, effects.get(i).getEffect().getFamily().getPulseSpeed());
+			periods[i] = speed * 1000.0 / FRAME_DELAY;           // frames per beat
+			total += periods[i];
+			startTick = Math.min(startTick, effects.get(i).getDisplayStartTick());
+		}
+
+		double pos = (((tick - startTick) % total) + total) % total;  // frames into the cycle
+		int idx = 0;
+		while (pos >= periods[idx]) {
+			pos -= periods[idx];
+			idx++;
+		}
+
+		double phase = pos / periods[idx];
 		float wave = (float) (0.5 - 0.5 * Math.cos(2 * Math.PI * phase));
 		float alpha = PULSE_MIN_ALPHA + wave * (PULSE_MAX_ALPHA - PULSE_MIN_ALPHA);
 
+		StatusEffect.StatusFamily family = effects.get(idx).getEffect().getFamily();
 		anim.drawFrameTinted(frame, g, parseHexColor(family.getColorHex()), alpha);
 	}
 
