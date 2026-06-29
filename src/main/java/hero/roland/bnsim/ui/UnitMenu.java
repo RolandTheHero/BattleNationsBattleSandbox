@@ -2,7 +2,9 @@ package hero.roland.bnsim.ui;
 
 import java.awt.BorderLayout;
 import java.awt.Dimension;
+import java.awt.FlowLayout;
 import java.awt.GridLayout;
+import java.awt.Insets;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.io.File;
@@ -27,6 +29,7 @@ import javax.swing.JPanel;
 import javax.swing.JScrollPane;
 import javax.swing.JTextField;
 import javax.swing.ListSelectionModel;
+import javax.swing.SwingConstants;
 import javax.swing.event.DocumentEvent;
 import javax.swing.event.DocumentListener;
 import javax.swing.text.AbstractDocument;
@@ -34,6 +37,7 @@ import javax.swing.text.AttributeSet;
 import javax.swing.text.BadLocationException;
 import javax.swing.text.DocumentFilter;
 
+import hero.roland.bnsim.GridGeometry;
 import hero.roland.bnsim.Side;
 import hero.roland.bnsim.gamefiles.GameFiles;
 import hero.roland.bnsim.model.Text;
@@ -61,6 +65,12 @@ public class UnitMenu extends JPanel {
 	private final JList<Unit> unitList = new JList<>(listModel);
 	private final JTextField search = new JTextField();
 	private final JTextField scaleField = new JTextField("1", 4);
+	// Start with text so the labels report a real (non-zero) preferred height when
+	// their fixed size is captured in gridStepperRow; refreshGridLabels keeps them
+	// current after that.
+	private final JLabel rowsValue = new JLabel(Integer.toString(GridGeometry.ROWS), SwingConstants.CENTER);
+	private final JLabel colsValue = new JLabel(Integer.toString(GridGeometry.COLS), SwingConstants.CENTER);
+	private final JLabel backRowColsValue = new JLabel(Integer.toString(GridGeometry.BACK_ROW_COLS), SwingConstants.CENTER);
 	private final JCheckBox cooldownToggle = new JCheckBox("Cooldowns & ammo", true);
 	private final JCheckBox targetTypesToggle = new JCheckBox("Target types", true);
 	private final JCheckBox statusImmunitiesToggle = new JCheckBox("Status immunities", true);
@@ -77,7 +87,14 @@ public class UnitMenu extends JPanel {
 	private Consumer<Boolean> statusImmunitiesListener;
 	private Consumer<Boolean> advanceListener;
 	private Consumer<Double> scaleListener;
+	private GridDimensionsListener gridDimensionsListener;
 	private Runnable languageChangedListener;
+
+	/** Callback for the grid-size boxes: the new per-side rows, front-row columns
+	 * and back-row columns. */
+	public interface GridDimensionsListener {
+		void onChange(int rows, int cols, int backRowCols);
+	}
 
 	public UnitMenu() {
 		setLayout(new BorderLayout());
@@ -92,6 +109,8 @@ public class UnitMenu extends JPanel {
 		north.add(buildEnvEffectSelector());
 		north.add(Box.createVerticalStrut(4));
 		north.add(buildScaleSelector());
+		north.add(Box.createVerticalStrut(4));
+		north.add(buildGridSizeSelector());
 		add(north, BorderLayout.NORTH);
 
 		buildContent();
@@ -461,6 +480,98 @@ public class UnitMenu extends JPanel {
 				+ current.substring(offset + length);
 			return result.matches("\\d*\\.?\\d*");
 		}
+	}
+
+	/**
+	 * Builds the grid-size controls: three rows of {@code [-] value [+]} stepper
+	 * buttons setting the per-side row count, front-row column count and back-row
+	 * column count of the battlefield (see {@link BattleField#setGridDimensions}).
+	 * The value is display-only — it cannot be typed into — and each button steps it
+	 * by one, resizing the board immediately. Values are clamped to a valid range,
+	 * so the shown numbers always reflect what is actually in force.
+	 */
+	private JPanel buildGridSizeSelector() {
+		JPanel panel = new JPanel();
+		panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
+		panel.add(gridStepperRow("Rows:", rowsValue,
+				() -> changeRows(-1), () -> changeRows(1),
+				"Number of rows per side (the front line is the first row)."));
+		panel.add(Box.createVerticalStrut(2));
+		panel.add(gridStepperRow("Cols:", colsValue,
+				() -> changeCols(-1), () -> changeCols(1),
+				"Number of cells across the front rows."));
+		panel.add(Box.createVerticalStrut(2));
+		panel.add(gridStepperRow("Back row cols:", backRowColsValue,
+				() -> changeBackRowCols(-1), () -> changeBackRowCols(1),
+				"Width of the narrower back row (at most the column count)."));
+		refreshGridLabels();
+		return panel;
+	}
+
+	/**
+	 * A "label: [-] value [+]" stepper row for one grid dimension. The value label is
+	 * read-only; the minus/plus buttons run the given step actions.
+	 */
+	private JPanel gridStepperRow(String label, JLabel value,
+			Runnable onMinus, Runnable onPlus, String tip) {
+		value.setHorizontalAlignment(SwingConstants.CENTER);
+		value.setPreferredSize(new Dimension(28, value.getPreferredSize().height));
+		value.setToolTipText(tip);
+		JPanel stepper = new JPanel(new FlowLayout(FlowLayout.RIGHT, 2, 0));
+		stepper.add(stepButton("−", onMinus, tip)); // − (minus sign)
+		stepper.add(value);
+		stepper.add(stepButton("+", onPlus, tip));
+
+		JPanel panel = new JPanel(new BorderLayout(4, 0));
+		panel.add(new JLabel(label), BorderLayout.WEST);
+		panel.add(stepper, BorderLayout.EAST);
+		return panel;
+	}
+
+	/** A small, non-focusable stepper button running {@code action} when clicked. */
+	private JButton stepButton(String text, Runnable action, String tip) {
+		JButton button = new JButton(text);
+		button.setMargin(new Insets(0, 6, 0, 6));
+		button.setFocusable(false);
+		button.setToolTipText(tip);
+		button.addActionListener(e -> action.run());
+		return button;
+	}
+
+	/** Sets the callback invoked when a grid-size value changes. */
+	public void setGridDimensionsListener(GridDimensionsListener listener) {
+		this.gridDimensionsListener = listener;
+	}
+
+	private void changeRows(int delta) {
+		applyDimensions(GridGeometry.ROWS + delta, GridGeometry.COLS, GridGeometry.BACK_ROW_COLS);
+	}
+
+	private void changeCols(int delta) {
+		applyDimensions(GridGeometry.ROWS, GridGeometry.COLS + delta, GridGeometry.BACK_ROW_COLS);
+	}
+
+	private void changeBackRowCols(int delta) {
+		applyDimensions(GridGeometry.ROWS, GridGeometry.COLS, GridGeometry.BACK_ROW_COLS + delta);
+	}
+
+	/**
+	 * Resizes the battlefield to the given dimensions (via the listener) and then
+	 * refreshes the value labels from the geometry, so they show the clamped values
+	 * actually in force (e.g. a back-row count never exceeds the column count, and a
+	 * shrunk column count pulls the back row down with it).
+	 */
+	private void applyDimensions(int rows, int cols, int backRowCols) {
+		if (gridDimensionsListener != null)
+			gridDimensionsListener.onChange(rows, cols, backRowCols);
+		refreshGridLabels();
+	}
+
+	/** Updates the three value labels to the geometry's current dimensions. */
+	private void refreshGridLabels() {
+		rowsValue.setText(Integer.toString(GridGeometry.ROWS));
+		colsValue.setText(Integer.toString(GridGeometry.COLS));
+		backRowColsValue.setText(Integer.toString(GridGeometry.BACK_ROW_COLS));
 	}
 
 	private void loadUnits() {

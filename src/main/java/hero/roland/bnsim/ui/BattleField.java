@@ -363,6 +363,38 @@ public class BattleField extends JComponent {
 		repaint();
 	}
 
+	/**
+	 * Resizes the battlefield grid (setup mode): sets the per-side rows, front-row
+	 * columns and back-row columns, then rebuilds the simulation's occupancy grids
+	 * to match. Units that still fit on a valid cell are kept; any whose cell no
+	 * longer exists are removed. Values are clamped to a valid range (see
+	 * {@link GridGeometry#setDimensions}). Driven by the UnitMenu's grid-size boxes,
+	 * which are only reachable during setup (the menu is hidden in battle).
+	 */
+	public void setGridDimensions(int rows, int cols, int backRowCols) {
+		int oldRows = GridGeometry.ROWS, oldCols = GridGeometry.COLS;
+		int oldBack = GridGeometry.BACK_ROW_COLS;
+		GridGeometry.setDimensions(rows, cols, backRowCols);
+		// A box committing its unchanged value (e.g. on focus loss) must not rebuild
+		// the board or drop the selection — only an actual shape change does.
+		if (GridGeometry.ROWS == oldRows && GridGeometry.COLS == oldCols
+				&& GridGeometry.BACK_ROW_COLS == oldBack)
+			return;
+		sim.resizeGrids();
+		for (Side s : Side.values())
+			rowsAdvanced.put(s, 0);
+		// The board shape changed: drop any drag/selection so nothing points at a
+		// cell that may no longer exist.
+		dragging = null;
+		dragPoint = null;
+		clearSelection();
+		setPreferredSize(new Dimension(
+			GridGeometry.combinedWidth() + 120,
+			GridGeometry.combinedHeight() + 120));
+		revalidate();
+		repaint();
+	}
+
 	/** Removes all units from the given side (setup mode). */
 	public void clearSide(Side side) {
 		sim.clearSide(side);
@@ -1301,8 +1333,8 @@ public class BattleField extends JComponent {
 	protected void paintComponent(Graphics g) {
 		super.paintComponent(g);
 		Graphics2D g2 = (Graphics2D) g.create();
-		g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING,
-				RenderingHints.VALUE_ANTIALIAS_ON);
+		g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+		//g2.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
 		if (background != null) {
 			// Scale proportionally to cover the component, cropping the overflow.
 			int cw = getWidth(), ch = getHeight();

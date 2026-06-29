@@ -24,12 +24,17 @@ import java.awt.geom.Point2D;
  */
 public class GridGeometry {
 
-	/** Width (in cells) of the front rows, and number of rows per side. */
-	public static final int COLS = 5;
-	public static final int ROWS = 3;
+	/**
+	 * Width (in cells) of the front rows, and number of rows per side. Adjustable
+	 * at setup time via {@link #setDimensions} (the UnitMenu grid-size boxes); the
+	 * simulation's occupancy grids must be rebuilt afterwards (see
+	 * {@link BattleSimulator#resizeGrids}).
+	 */
+	public static int COLS = 5;
+	public static int ROWS = 3;
 
 	/** Width of each side's back row (the rest of the row is empty). */
-	public static final int BACK_ROW_COLS = 3;
+	public static int BACK_ROW_COLS = 3;
 
 	/** Empty rows between the player and enemy front lines. */
 	public static final int GAP_ROWS = 1;
@@ -46,18 +51,37 @@ public class GridGeometry {
 	public static final int HALF_W = GridPoint.GRID_X; // 100
 	public static final int HALF_H = GridPoint.GRID_Y; // 50
 
-	/** Columns trimmed from each end of the back row so it stays centred. */
-	private static final int BACK_ROW_OFFSET = (COLS - BACK_ROW_COLS) / 2;
-
 	/** Pixel anchor of absolute lattice cell (0,0)'s centre. */
 	private final Point origin = new Point();
+
+	/**
+	 * Sets the grid shape used by both sides: {@code rows} per side (front line is
+	 * row 0), front rows {@code cols} wide, and the back row {@code backRowCols}
+	 * wide and centred. Each value is clamped to keep the grid valid — at least 1
+	 * row/column, and a back row no wider than the front rows (otherwise its cells
+	 * could fall outside the occupancy grid). After calling this, rebuild the
+	 * simulation's grids (see {@link BattleSimulator#resizeGrids}) so they match the
+	 * new shape.
+	 */
+	public static void setDimensions(int rows, int cols, int backRowCols) {
+		ROWS = Math.max(1, rows);
+		COLS = Math.max(1, cols);
+		BACK_ROW_COLS = Math.max(1, Math.min(backRowCols, COLS));
+	}
+
+	/** Columns trimmed from each end of the back row so it stays centred. */
+	private static int backRowOffset() {
+		return (COLS - BACK_ROW_COLS) / 2;
+	}
 
 	/** Whether a (col, row) cell exists on a side (row 0 = front line). */
 	public static boolean isValid(int col, int row) {
 		if (row < 0 || row >= ROWS)
 			return false;
-		if (row == ROWS - 1) // back row: narrower and centred
-			return col >= BACK_ROW_OFFSET && col < BACK_ROW_OFFSET + BACK_ROW_COLS;
+		if (row == ROWS - 1) { // back row: narrower and centred
+			int offset = backRowOffset();
+			return col >= offset && col < offset + BACK_ROW_COLS;
+		}
 		return col >= 0 && col < COLS;
 	}
 

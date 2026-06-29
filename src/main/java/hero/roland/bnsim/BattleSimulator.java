@@ -52,6 +52,32 @@ public class BattleSimulator {
 		}
 	}
 
+	/**
+	 * Rebuilds each side's occupancy grid to the current {@link GridGeometry}
+	 * dimensions, after they have been changed via
+	 * {@link GridGeometry#setDimensions}. Units that still sit on a cell that
+	 * remains valid in the new shape are kept on that cell; any whose cell no
+	 * longer exists are dropped. Per-side advancement is reset, as the grid shape
+	 * has changed. Call this only outside battle (during setup).
+	 */
+	public void resizeGrids() {
+		for (Side side : Side.values()) {
+			PlacedUnit[][] oldGrid = grids.get(side);
+			PlacedUnit[][] newGrid = new PlacedUnit[GridGeometry.COLS][GridGeometry.ROWS];
+			if (oldGrid != null)
+				for (int col = 0; col < oldGrid.length; col++)
+					for (int row = 0; row < oldGrid[col].length; row++) {
+						PlacedUnit unit = oldGrid[col][row];
+						// Keep a unit only where its cell still exists in the new shape;
+						// isValid bounds col/row to the new grid, so the index is safe.
+						if (unit != null && GridGeometry.isValid(col, row))
+							newGrid[col][row] = unit;
+					}
+			grids.put(side, newGrid);
+			rowsAdvanced.put(side, 0);
+		}
+	}
+
 	public GridGeometry getGeometry() {
 		return geometry;
 	}
