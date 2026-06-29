@@ -12,9 +12,11 @@ import java.awt.geom.Point2D;
  * {@link #ROWS} rows where row 0 is the front line; the front rows are
  * {@link #COLS} cells wide and the back row is narrower ({@link #BACK_ROW_COLS}
  * cells, centred). The player's front line and the enemy's front line face each
- * other across {@link #GAP_ROWS} empty row(s), which places the player grid
- * towards the bottom-left and the enemy grid towards the top-right, parallel —
- * matching the in-game battlefield.
+ * other across {@link #GAP_ROWS} empty row(s) — but the enemy grid is then
+ * pulled {@link #ENEMY_GAP_CLOSE} of a row toward the player, leaving a half-tile
+ * gap between the two front lines rather than a full one. This places the player
+ * grid towards the bottom-left and the enemy grid towards the top-right,
+ * parallel — matching the in-game battlefield.
  *
  * <p>Tiles use the game's native size ({@link GridPoint#GRID_X}&times;2 wide by
  * {@link GridPoint#GRID_Y}&times;2 tall) so unit animations draw at their
@@ -31,6 +33,14 @@ public class GridGeometry {
 
 	/** Empty rows between the player and enemy front lines. */
 	public static final int GAP_ROWS = 1;
+
+	/**
+	 * Rows by which the enemy grid is pulled toward the player past the
+	 * {@link #GAP_ROWS} gap, closing the space between the two front lines. At 0.5
+	 * the enemy's front line sits half a tile from the player's instead of a full
+	 * tile. Applied to the enemy side only.
+	 */
+	public static final double ENEMY_GAP_CLOSE = 0.5;
 
 	/** Half the width / height of a single diamond tile, in pixels (native). */
 	public static final int HALF_W = GridPoint.GRID_X; // 100
@@ -51,45 +61,52 @@ public class GridGeometry {
 		return col >= 0 && col < COLS;
 	}
 
-	/** Maps a side-local row (0 = front line) to the shared lattice row. */
-	private static int absRow(Side side, int row) {
-		return side == Side.PLAYER ? (ROWS + GAP_ROWS) + row : (ROWS - 1) - row;
+	/**
+	 * Maps a side-local row (0 = front line) to the shared lattice row. The enemy
+	 * side is pulled {@link #ENEMY_GAP_CLOSE} rows toward the player (higher lattice
+	 * rows), shrinking the gap between the front lines; the result is fractional for
+	 * the enemy, so this returns a {@code double}.
+	 */
+	private static double absRow(Side side, int row) {
+		return side == Side.PLAYER
+			? (ROWS + GAP_ROWS) + row
+			: (ROWS - 1) - row + ENEMY_GAP_CLOSE;
 	}
 
 	/** Bounding box of the whole lattice in (u = col-row, v = col+row) space. */
-	private static int[] bounds() {
-		int minU = Integer.MAX_VALUE, maxU = Integer.MIN_VALUE;
-		int minV = Integer.MAX_VALUE, maxV = Integer.MIN_VALUE;
+	private static double[] bounds() {
+		double minU = Double.POSITIVE_INFINITY, maxU = Double.NEGATIVE_INFINITY;
+		double minV = Double.POSITIVE_INFINITY, maxV = Double.NEGATIVE_INFINITY;
 		for (Side side : Side.values())
 			for (int row = 0; row < ROWS; row++)
 				for (int col = 0; col < COLS; col++) {
 					if (!isValid(col, row))
 						continue;
-					int ar = absRow(side, row);
-					int u = col - ar, v = col + ar;
+					double ar = absRow(side, row);
+					double u = col - ar, v = col + ar;
 					minU = Math.min(minU, u);
 					maxU = Math.max(maxU, u);
 					minV = Math.min(minV, v);
 					maxV = Math.max(maxV, v);
 				}
-		return new int[] { minU, maxU, minV, maxV };
+		return new double[] { minU, maxU, minV, maxV };
 	}
 
 	/** Pixel width spanned by both grids together (including diamond tips). */
 	public static int combinedWidth() {
-		int[] b = bounds();
-		return (b[1] - b[0] + 2) * HALF_W;
+		double[] b = bounds();
+		return (int) Math.round((b[1] - b[0] + 2) * HALF_W);
 	}
 
 	/** Pixel height spanned by both grids together (including diamond tips). */
 	public static int combinedHeight() {
-		int[] b = bounds();
-		return (b[3] - b[2] + 2) * HALF_H;
+		double[] b = bounds();
+		return (int) Math.round((b[3] - b[2] + 2) * HALF_H);
 	}
 
 	/** Recentres the battlefield for a drawing surface of the given size. */
 	public void setViewport(int width, int height) {
-		int[] b = bounds();
+		double[] b = bounds();
 		double centreU = (b[0] + b[1]) / 2.0;
 		double centreV = (b[2] + b[3]) / 2.0;
 		origin.x = (int) Math.round(width / 2.0 - centreU * HALF_W);
@@ -98,7 +115,7 @@ public class GridGeometry {
 
 	/** Pixel centre of the given cell on the given side. */
 	public Point2D.Double cellCentre(Side side, int col, int row) {
-		int ar = absRow(side, row);
+		double ar = absRow(side, row);
 		double x = origin.x + (col - ar) * (double) HALF_W;
 		double y = origin.y + (col + ar) * (double) HALF_H;
 		return new Point2D.Double(x, y);
@@ -161,11 +178,13 @@ public class GridGeometry {
 	public Cell cellAt(Side side, Point2D point) {
 		double a = (point.getX() - origin.x) / HALF_W;  // col - absRow
 		double b = (point.getY() - origin.y) / HALF_H;  // col + absRow
-		int col = (int) Math.round((a + b) / 2);
-		int absRow = (int) Math.round((b - a) / 2);
-		int row = side == Side.PLAYER
-				? absRow - (ROWS + GAP_ROWS)
-				: (ROWS - 1) - absRow;
+		double absRow = (b - a) / 2.0;
+		int col = (int) Math.round((a + b) / 2.0);
+		// Invert absRow() — the enemy's lattice rows are shifted by ENEMY_GAP_CLOSE,
+		// so undo that shift before rounding to a side-local row.
+		int row = (int) Math.round(side == Side.PLAYER
+			? absRow - (ROWS + GAP_ROWS)
+			: (ROWS - 1) + ENEMY_GAP_CLOSE - absRow);
 		if (!isValid(col, row))
 			return null;
 		return new Cell(col, row);
