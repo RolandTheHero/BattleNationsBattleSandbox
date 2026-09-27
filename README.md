@@ -9,11 +9,10 @@ The modifications to the BaNG are as follows:
 
 Other work in this project is original based off of the game Battle Nations.
 
-A copy of the Battle Nations game files is required. This project does not include them!
+A copy of the Battle Nations game files is required. This project does not include them! Currently, only pre-Madrona versions of the game files can be loaded.
 
 Battle Nations is (C) Madrona Games, Inc.
-
-Currently, only pre-Madrona versions of the game files can be loaded.
+This tool is an unofficial community project. When sharing screenshots, videos or other media of this tool, you must make clear that it comes from this tool and not from the original game.
 
 ## How to Use
 1. Make sure you have Java installed.
