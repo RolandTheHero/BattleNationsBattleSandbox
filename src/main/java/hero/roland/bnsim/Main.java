@@ -19,10 +19,11 @@ import hero.roland.bnsim.gamefiles.GameFiles;
 import hero.roland.bnsim.ui.BattleFrame;
 
 public class Main {
-
     private static final String WELCOME_TEXT =
         "<html><div style='text-align: center; width: 320px;'>"
-        + "Welcome to a Battle Nations Battle Sandbox by RolandTheHero.<br><br>"
+        + "Welcome to Battle Nations Battle Sandbox.<br><br>"
+        + "This is an unofficial tool for simulating battles. It is not affiliated with Madrona Games, and its simulations may not accurately reflect the official game. "
+        + "If you publicly share media created with this tool, please make it clear that it was created using this tool and not from official game content.<br><br>"
         + "Select the folder where the game files are located to get started."
         + "</div></html>";
 
