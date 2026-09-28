@@ -15,7 +15,7 @@ Battle Nations is (C) Madrona Games, Inc.
 This tool is an unofficial community project. When sharing screenshots, videos or other media of this tool, you must make clear that it comes from this tool and not from the original game.
 
 ## How to Use
-1. Make sure you have Java installed.
+1. Make sure you have Java installed (minimum version 16).
 2. Clone this repository.
 3. Run the Main file.
 4. Select the game files folder when prompted.

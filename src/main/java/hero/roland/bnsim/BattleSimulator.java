@@ -408,11 +408,11 @@ public class BattleSimulator {
 		// x is mirrored; y is the same for both sides.
 		int xSign = attacker.getSide() == Side.PLAYER ? -1 : 1;
 
-		// Each successive tile is staggered by aoeDelay. The ripple sequence is
+		// Each successive target tile is staggered by aoeDelay; the damage area
+		// splashed around a target tile lands all at once. The ripple sequence is
 		// taken from the squares' "order" when it varies, otherwise from their
 		// position in the array, so a multi-tile area always ripples.
 		int[] targetSteps = sequenceSteps(targetArea);
-		int[] damageSteps = sequenceSteps(damageArea);
 
 		if (ability.getRandomTarget()) {
 			for (int shot = 0; shot < shots; shot++) {
@@ -426,7 +426,7 @@ public class BattleSimulator {
 					// is its pick probability (consumed by pickWeighted), not a
 					// damage multiplier — so the target contribution here is 1.
 					addImpact(result, targetSide, aim, hit, shot, damageArea,
-							damageSteps, aoeDelay, xSign, rollDamage(minDamage, maxDamage),
+							aoeDelay, xSign, rollDamage(minDamage, maxDamage),
 							damageType, armorPiercing, 1.0, crit, offense);
 				}
 			}
@@ -440,7 +440,7 @@ public class BattleSimulator {
 					// The target square's value is its authored damagePercent; combine
 					// it with the damage area's so a splash authored in either area scales.
 					addImpact(result, targetSide, aim, targetArea[t], targetSteps[t],
-							damageArea, damageSteps, aoeDelay, xSign,
+							damageArea, aoeDelay, xSign,
 							rollDamage(minDamage, maxDamage), damageType, armorPiercing,
 							targetArea[t].getValue(), crit, offense);
 				}
@@ -449,7 +449,8 @@ public class BattleSimulator {
 	}
 
 	/**
-	 * Adds one shot's damage-area tiles, each staggered by the aoe delay. A struck
+	 * Adds one shot's damage-area tiles. They all land together, delayed by the aoe
+	 * delay times the target square's step (the damage area itself does not ripple). A struck
 	 * tile's multiplier is the product of its target-square value and its
 	 * damage-area value (the game authors the per-tile splash percentage in either
 	 * area), so {@code targetValue} is the contribution of the target square — it is
@@ -459,7 +460,7 @@ public class BattleSimulator {
 	 */
 	private void addImpact(List<Hit> result, Side targetSide, Cell aim,
 			TargetSquare target, int targetStep, TargetSquare[] damageArea,
-			int[] damageSteps, int aoeDelay, int xSign, int baseDamage,
+			int aoeDelay, int xSign, int baseDamage,
 			Ability.DamageType damageType, double armorPiercing, double targetValue,
 			boolean critical, int attackerOffense) {
 		int baseCol = aim.col() + xSign * target.getX();
@@ -467,12 +468,12 @@ public class BattleSimulator {
 		// The crit flag rides along on every tile the shot splashes to; its damage
 		// boost is applied where the hit lands, after the defender's graze roll (a
 		// grazed hit never crits), so the raw damage carried here is pre-crit.
+		int delay = Math.max(0, aoeDelay * targetStep);
 		for (int d = 0; d < damageArea.length; d++) {
 			int col = baseCol + xSign * damageArea[d].getX();
 			int row = baseRow - damageArea[d].getY();
 			if (!GridGeometry.isValid(col, row))
 				continue;
-			int delay = Math.max(0, aoeDelay * (targetStep + damageSteps[d]));
 			double value = targetValue * damageArea[d].getValue();
 			double rawDamage = baseDamage * value;
 			result.add(new Hit(targetSide, new Cell(col, row), delay,
@@ -527,7 +528,6 @@ public class BattleSimulator {
 				+ attacker.getAccuracy() - attacker.getOffenseReduction());
 		int xSign = attacker.getSide() == Side.PLAYER ? -1 : 1;
 		int[] targetSteps = sequenceSteps(targetArea);
-		int[] damageSteps = sequenceSteps(damageArea);
 
 		// Each target square is a fixed tile relative to the unit; tiles that stay
 		// on the attacker's own side are skipped. The damage area then splashes
@@ -544,7 +544,7 @@ public class BattleSimulator {
 				// The impact is positioned at the precomputed origin (SINGLE_TARGET, so
 				// no extra offset), but still scaled by the fixed tile's damagePercent.
 				addImpact(result, targetSide, origin.cell(), TargetSquare.SINGLE_TARGET,
-						targetSteps[t], damageArea, damageSteps, aoeDelay, xSign,
+						targetSteps[t], damageArea, aoeDelay, xSign,
 						rollDamage(minDamage, maxDamage), damageType, armorPiercing,
 						targetArea[t].getValue(), crit, offense);
 			}
