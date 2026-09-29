@@ -3,8 +3,6 @@ package hero.roland.bnsim.model;
 import java.util.HashMap;
 import java.util.Map;
 
-import org.json.JSONObject;
-
 import hero.roland.bnsim.gamefiles.GameFiles;
 
 public class StatusEffect {
@@ -31,35 +29,39 @@ public class StatusEffect {
         return GameFiles.active().getStatusEffect(id);
     }
 
-    public StatusEffect(GameFiles gf, JSONObject stats) {
-        duration = stats.optInt("duration", 1);
-        diminishing = stats.optBoolean("dot_Diminishing", true);
-        abilityDamageMultiplier = stats.optDouble("dot_AbilityDamageMult", 0d);
-        diminishing = stats.optBoolean("dot_Diminishing", true);
-        String damageTypeStr = stats.optString("dot_DamageType", null);
-        if (damageTypeStr != null) {
-            damageType = Ability.DamageType.fromString(damageTypeStr);
-        }
-        family = gf.getStatusFamily(stats.optString("family", null));
-        armorPiercingRate = stats.optDouble("dot_apPercent", 0);
-        bonusDamage = stats.optInt("dot_BonusDamage", 0);
+    /**
+     * A status effect's data as parsed from the game files. A {@link GameFiles}
+     * loader fills one in and passes it to {@link StatusEffect#StatusEffect(Definition)};
+     * see the matching fields of {@link StatusEffect} for what each value means.
+     */
+    public static class Definition {
+        public int duration = 1;
+        public boolean diminishing = true;
+        public double abilityDamageMultiplier;
+        public double armorPiercingRate;
+        /** {@code null} for an effect that deals no damage. */
+        public Ability.DamageType damageType;
+        public int bonusDamage;
+        public StatusFamily family;
+        public boolean blockAction, blockMovement, damageBreak;
+        public Map<Ability.DamageType, Double> damageMods = new HashMap<>();
+        public Map<Ability.DamageType, Double> armorDamageMods = new HashMap<>();
+    }
 
-        // Stun/Freeze
-        blockAction = stats.optBoolean("stun_BlockAction", false);
-        blockMovement = stats.optBoolean("stun_BlockMovement", false);
-        damageBreak = stats.optBoolean("stun_DamageBreak", false);
-        JSONObject stunDamageModsJson = stats.optJSONObject("stun_DamageMods");
-        if (stunDamageModsJson != null) {
-            for (String key : stunDamageModsJson.keySet()) {
-                damageMods.put(Ability.DamageType.fromString(key), stunDamageModsJson.getDouble(key));
-            }
-        }
-        JSONObject armorDamageModsJson = stats.optJSONObject("stun_ArmorDamageMods");
-        if (armorDamageModsJson != null) {
-            for (String key : armorDamageModsJson.keySet()) {
-                armorDamageMods.put(Ability.DamageType.fromString(key), armorDamageModsJson.getDouble(key));
-            }
-        }
+    /** Builds a status effect from its parsed data. */
+    public StatusEffect(Definition def) {
+        duration = def.duration;
+        diminishing = def.diminishing;
+        abilityDamageMultiplier = def.abilityDamageMultiplier;
+        armorPiercingRate = def.armorPiercingRate;
+        damageType = def.damageType;
+        bonusDamage = def.bonusDamage;
+        family = def.family;
+        blockAction = def.blockAction;
+        blockMovement = def.blockMovement;
+        damageBreak = def.damageBreak;
+        damageMods.putAll(def.damageMods);
+        armorDamageMods.putAll(def.armorDamageMods);
     }
     protected StatusEffect() {}
 
@@ -102,13 +104,14 @@ public class StatusEffect {
         protected String sound; // Name of the sound file
         protected String uiIcon; // Name of the icon file
 
-        public StatusFamily(JSONObject json) {
-            colorHex = json.optString("colorHex", "#FFFFFF");
-            displayName = json.optString("displayName", "seUnknown");
-            effectIcon = json.optString("effectIcon", "suppressor_firemod_icon") + "@2x.png";
-            pulseSpeed = json.optDouble("pulseSpeed", 1d);
-            sound = json.optString("sound", null);
-            uiIcon = json.optString("uiIcon", "BN_iconFireMod") + "@2x.png";
+        public StatusFamily(String colorHex, String displayName, String effectIcon,
+                double pulseSpeed, String sound, String uiIcon) {
+            this.colorHex = colorHex;
+            this.displayName = displayName;
+            this.effectIcon = effectIcon;
+            this.pulseSpeed = pulseSpeed;
+            this.sound = sound;
+            this.uiIcon = uiIcon;
         }
         protected StatusFamily() {}
 

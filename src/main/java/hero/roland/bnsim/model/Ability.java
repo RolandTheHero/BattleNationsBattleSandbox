@@ -1,15 +1,26 @@
+/*
+ * Battle Nations Battle Sandbox
+ *
+ * Adapted from Battle Nations Animation Grabber (BaNG),
+ * https://github.com/bobmath/BattleNationsAnimation
+ * Copyright (C) 2014 Robert Mathews. Licensed under the GNU General Public
+ * License version 2; see the LICENSE file.
+ *
+ * Modified 2026 by RolandTheHero; the git history records each change and
+ * its date.
+ */
+
 package hero.roland.bnsim.model;
 
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
-
-import org.json.JSONArray;
-import org.json.JSONObject;
 
 import hero.roland.bnsim.gamefiles.GameFiles;
 import hero.roland.bnsim.model.Unit.UnitTag;
@@ -54,137 +65,94 @@ public class Ability {
 	private double damageDistraction;
 	private int damageDistractionBonus;
 
+	/**
+	 * An ability's data as parsed from the game files. A {@link GameFiles} loader
+	 * fills one in and passes it to {@link Ability#Ability(GameFiles, String, Definition)};
+	 * the ability copies the values, so the definition is not retained. Rates and
+	 * chances are fractions (0-1), not the percentages the files author them as.
+	 */
+	public static class Definition {
+		public String nameId;
+		/** Name of the ability's icon image. */
+		public String icon;
+		public String frontAnimName, backAnimName;
+		public String infantryHitSound, vehicleHitSound;
+		public double damageFromWeapon = 1, damageFromUnit = 1;
+		public double armorPiercingRate;
+		public int damageBonus;
+		public int shotsPerAttack = 1, attacksPerUse = 1;
+		public int minRange = 1, maxRange = 1;
+		/** One of the {@code LOF_*} constants. */
+		public int lineOfFire;
+		public boolean capture;
+		/** Frames (at 20 per second) between successive squares of the target area. */
+		public int aoeDelay;
+		/** {@code null} when the ability has no target area. */
+		public TargetType targetType;
+		public DamageType damageType;
+		public AttackDirection attackDirection = AttackDirection.FRONT;
+		public boolean randomTarget;
+		/** {@code null} when the ability has none. */
+		public TargetSquare[] targetArea, damageArea;
+		public List<StatusEffectChance> statusEffects = new ArrayList<>();
+		public double baseCritical;
+		/** Extra critical chance added when the target has the keyed unit type. */
+		public Map<UnitTag, Double> criticalBonuses = new HashMap<>();
+		public int cooldown, globalCooldown, ammoRequired, prepTime;
+		/** Empty when the ability may target anything. */
+		public Set<UnitTag> targetableTags = new HashSet<>();
+		public int attack;
+		public double secondaryDamageRatio;
+		public double damageDistraction;
+		public int damageDistractionBonus;
+	}
+
 	private Ability() {
 		tag = "none";
 		minRange = 1;
 		maxRange = 5;
+		statusEffects = new StatusEffectChance[0];
 	}
 
-	public Ability(GameFiles gf, String tag, JSONObject json, JSONObject dmgAnim) {
+	/** Builds an ability from its parsed data. */
+	public Ability(GameFiles gf, String tag, Definition def) {
 		this.gf = gf;
 		this.tag = tag;
-		nameId = json.optString("name", null);
-		icon = json.getString("icon");
-		if (!icon.endsWith(".png")) icon += "@2x.png";
-		infantryHitSound = json.optString("inf_hitsound", null);
-        vehicleHitSound = json.optString("veh_hitsound", null);
-		initAnimation(json, dmgAnim);
-		initStats(json.getJSONObject("stats"));
-		//initPrereqs(json.getJSONObject("reqs"));
-	}
-
-	private void initAnimation(JSONObject json, JSONObject dmgAnim) {
-		String animType = json.optString("damageAnimationType", null);
-		if (animType == null) return;
-		JSONObject dmg = dmgAnim.getJSONObject(animType);
-		if (dmg == null) return;
-		frontAnimationName = dmg.optString("front", null);
-		backAnimationName = dmg.optString("back", null);
-	}
-
-	private void initStats(JSONObject stats) {
-		if (stats == null) return;
-		damageBonus = stats.optInt("damage", 0);
-		damageFromWeapon = getDouble(stats, "damageFromWeapon", 1);
-		damageFromUnit = getDouble(stats, "damageFromUnit", 1);
-		minRange = stats.optInt("minRange", 1);
-		maxRange = stats.optInt("maxRange", 1);
-		shotsPerAttack = stats.optInt("shotsPerAttack", 1);
-		attacksPerUse = stats.optInt("attacksPerUse", 1);
-		lineOfFire = stats.optInt("lineOfFire", 0);
-		capture = stats.getBoolean("capture");
-        String attackDirectionStr = stats.optString("attackDirection", "front");
-        if (attackDirectionStr.equalsIgnoreCase("front"))
-            attackDirection = AttackDirection.FRONT;
-        else attackDirection = AttackDirection.BACK;
-        damageType = DamageType.fromString(stats.getJSONArray("damageType").getString(0));
-		damageArea = initArea(stats.optJSONObject("damageArea"), false);
-		JSONObject targ = stats.optJSONObject("targetArea");
-		if (targ != null) {
-			String targetTypeStr = targ.optString("type", "Target");
-			targetType = TargetType.fromString(targetTypeStr);
-			randomTarget = targ.getBoolean("random");
-			aoeDelay = (int) Math.round(getDouble(targ, "aoeOrderDelay", 0) * 20);
-			targetArea = initArea(targ, randomTarget);
-		}
-        armorPiercingRate = stats.optDouble("armorPiercingPercent", 0);
-		// "statusEffects" maps each effect id to its chance (percent) of applying.
-		JSONObject statusEffectsJSON = stats.optJSONObject("statusEffects");
-		if (statusEffectsJSON == null) {
-			statusEffects = new StatusEffectChance[0];
-		} else {
-			statusEffects = new StatusEffectChance[statusEffectsJSON.length()];
-			int i = 0;
-			for (String effectId : statusEffectsJSON.keySet()) {
-				StatusEffect effect = gf.getStatusEffect(effectId);
-				double chance = statusEffectsJSON.optDouble(effectId, 0d) / 100.0; // Chance is from 0 to 100, so normalise to 0-1.
-				statusEffects[i++] = new StatusEffectChance(effect, chance);
-			}
-		}
-		// Base critical-hit chance, stored 0-1 (authored as a percent). "criticalBonuses"
-		// maps a unit-type name (a UnitTag, e.g. "Tank") to extra chance (percent) added
-		// when the target has that tag — see getCriticalRate. How these ultimately combine
-		// isn't settled yet; for now matching bonuses are summed onto the base.
-		baseCritical = stats.optDouble("criticalHitPercent", 5d) / 100;
-		criticalBonuses = new HashMap<>();
-		JSONObject criticalBonusesJson = stats.optJSONObject("criticalBonuses");
-		if (criticalBonusesJson != null) {
-			for (String key : criticalBonusesJson.keySet()) {
-				double critBonus = criticalBonusesJson.getDouble(key);
-				if (key.equals("Battleships")) key = "Battleship"; // Game file typo
-				UnitTag tag = gf.getUnitTag(key);
-				if (tag == null) throw new IllegalArgumentException("Unknown unit tag in ability " + this.tag + ": " + key);
-				criticalBonuses.put(tag, critBonus / 100);
-			}
-		}
-		cooldown = stats.optInt("abilityCooldown", 0);
-		globalCooldown = stats.optInt("globalCooldown", 0);
-		ammoRequired = stats.optInt("ammoRequired", 0);
-		prepTime = stats.optInt("chargeTime", 0);
-		initTargets(stats.optJSONArray("targets"));
-		attack = stats.optInt("attack", 0);
-		secondaryDamageRatio = stats.optDouble("secondaryDamagePercent", 0d) / 100;
-		damageDistraction = stats.optDouble("damage_distraction", 0d);
-		damageDistractionBonus = stats.optInt("damage_distractionBonus", 0);
-	}
-
-	// private void initPrereqs(JSONObject json) {
-	// 	if (json == null || json.isEmpty()) return;
-	// 	prereqs = new HashMap<String,Prerequisites>();
-	// 	for (Map.Entry<String,JsonValue> item : json.entrySet()) {
-	// 		JsonObject reqs = (JsonObject) item.getValue();
-	// 		Prerequisites pre = Prerequisites.create(
-	// 				reqs.getJsonObject("prereq"));
-	// 		if (pre != null)
-	// 			prereqs.put(item.getKey(), pre);
-	// 	}
-	// }
-
-	private static TargetSquare[] initArea(JSONObject area, boolean random) {
-		if (area == null) return null;
-		JSONArray data = area.optJSONArray("data");
-		if (data == null) return null;
-
-		double weight = 0;
-		if (random) {
-			for (Object item : data)
-				weight += getDouble((JSONObject) item, "weight", 0);
-		}
-
-		TargetSquare[] squares = new TargetSquare[data.length()];
-		for (int i = 0; i < squares.length; i++)
-			squares[i] = new TargetSquare(data.getJSONObject(i), weight);
-		return squares;
-	}
-
-	private void initTargets(JSONArray arr) {
-		targetableTags = new HashSet<>();
-		if (arr == null) return;
-		for (int i = 0; i < arr.length(); i++) {
-			UnitTag tag = gf.getUnitTag(arr.getString(i));
-			if (tag != null)
-				targetableTags.add(tag);
-		}
+		nameId = def.nameId;
+		icon = def.icon;
+		frontAnimationName = def.frontAnimName;
+		backAnimationName = def.backAnimName;
+		infantryHitSound = def.infantryHitSound;
+		vehicleHitSound = def.vehicleHitSound;
+		damageFromWeapon = def.damageFromWeapon;
+		damageFromUnit = def.damageFromUnit;
+		armorPiercingRate = def.armorPiercingRate;
+		damageBonus = def.damageBonus;
+		shotsPerAttack = def.shotsPerAttack;
+		attacksPerUse = def.attacksPerUse;
+		minRange = def.minRange;
+		maxRange = def.maxRange;
+		lineOfFire = def.lineOfFire;
+		capture = def.capture;
+		aoeDelay = def.aoeDelay;
+		targetType = def.targetType;
+		damageType = def.damageType;
+		attackDirection = def.attackDirection;
+		randomTarget = def.randomTarget;
+		targetArea = def.targetArea == null ? null : def.targetArea.clone();
+		damageArea = def.damageArea == null ? null : def.damageArea.clone();
+		statusEffects = def.statusEffects.toArray(new StatusEffectChance[0]);
+		baseCritical = def.baseCritical;
+		criticalBonuses = new HashMap<>(def.criticalBonuses);
+		cooldown = def.cooldown;
+		globalCooldown = def.globalCooldown;
+		ammoRequired = def.ammoRequired;
+		prepTime = def.prepTime;
+		targetableTags = new HashSet<>(def.targetableTags);
+		attack = def.attack;
+		secondaryDamageRatio = def.secondaryDamageRatio;
+		damageDistraction = def.damageDistraction;
+		damageDistractionBonus = def.damageDistractionBonus;
 	}
 
 	/**
@@ -214,11 +182,6 @@ public class Ability {
 			: Collections.unmodifiableSet(targetableTags);
 	}
 
-	protected static double getDouble(JSONObject json, String name,
-			double defaultVal) {
-		return json.optDouble(name, defaultVal);
-	}
-
 	/** The ability with the given tag from the active bundle, or {@code null}. */
 	public static Ability get(String tag) {
 		return GameFiles.active().getAbility(tag);
@@ -234,7 +197,7 @@ public class Ability {
 		return "none".equals(tag) ? "(None)" : tag;
 	}
 
-	/** Bundle-relative path to this ability's icon image, or {@code null}. */
+	/** Name of this ability's icon image, or {@code null}. */
 	public String getIcon() {
 		return icon;
 	}
@@ -432,19 +395,17 @@ public class Ability {
 		private TargetSquare() {
 			value = chance = 1;
 		}
-		protected TargetSquare(JSONObject json, double weight) {
-			if (weight == 0) {
-				value = getDouble(json, "damagePercent", 100d) / 100;
-				chance = 1;
-				order = json.optInt("order", 0);
-			}
-			else
-				value = chance = getDouble(json, "weight", 0) / weight;
-			JSONObject pos = json.optJSONObject("pos");
-			if (pos != null) {
-				x = pos.optInt("x", 0);
-				y = pos.optInt("y", 0);
-			}
+		/**
+		 * A square at offset ({@code x}, {@code y}) from the target, hit in AOE
+		 * sequence {@code order}, taking fraction {@code value} of the damage with
+		 * probability {@code chance} (both 0-1).
+		 */
+		public TargetSquare(int x, int y, int order, double value, double chance) {
+			this.x = x;
+			this.y = y;
+			this.order = order;
+			this.value = value;
+			this.chance = chance;
 		}
 		private TargetSquare(TargetSquare a, TargetSquare b) {
 			x = a.x + b.x;

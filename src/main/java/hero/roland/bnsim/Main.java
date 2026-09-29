@@ -24,6 +24,7 @@ public class Main {
         + "Welcome to Battle Nations Battle Sandbox.<br><br>"
         + "This is an unofficial tool for simulating battles. It is not affiliated with Madrona Games, and its simulations may not accurately reflect the official game. "
         + "If you publicly share media created with this tool, please make it clear that it was created using this tool and not from official game content.<br><br>"
+        + "This is free software under the GNU GPL v2 and comes with ABSOLUTELY NO WARRANTY; see LICENSE and THIRD_PARTY_NOTICES.md.<br><br>"
         + "Select the folder where the game files are located to get started."
         + "</div></html>";
 

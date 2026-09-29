@@ -11,7 +11,6 @@ import java.awt.RenderingHints;
 import java.awt.geom.Point2D;
 import java.awt.geom.Rectangle2D;
 import java.awt.image.BufferedImage;
-import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -25,7 +24,6 @@ import java.util.Random;
 import java.util.Set;
 import java.util.function.Consumer;
 
-import javax.imageio.ImageIO;
 import javax.swing.JComponent;
 import javax.swing.SwingUtilities;
 import javax.swing.Timer;
@@ -287,7 +285,7 @@ public class BattleField extends JComponent {
 		setPreferredSize(new Dimension(
 				GridGeometry.combinedWidth() + 120,
 				GridGeometry.combinedHeight() + 120));
-		setBackgroundImage("BattleMap.png"); // default battlefield background
+		setBackgroundImage(defaultBackground());
 
 		animationTimer = new Timer(FRAME_DELAY, e -> {
 			tick++;
@@ -566,21 +564,26 @@ public class BattleField extends JComponent {
 		return null;
 	}
 
+	/** The bundle's default battlefield background's name, or {@code null} if it has none. */
+	private static String defaultBackground() {
+		try {
+			String[] names = GameFiles.active().getBackgroundNames();
+			return names.length > 0 ? names[0] : null;
+		} catch (IOException e) {
+			return null;
+		}
+	}
+
 	/**
-	 * Sets the battlefield background to the named bundle image, scaled to fill
-	 * the component. A null or unreadable file falls back to a plain background.
+	 * Sets the battlefield background to the named one (see
+	 * {@link GameFiles#getBackgroundNames}), scaled to fill the component. A null,
+	 * unknown or unreadable background falls back to a plain background.
 	 */
 	public void setBackgroundImage(String name) {
-		background = null;
-		if (name != null) {
-			File file = GameFiles.active().file(name);
-			if (file.isFile()) {
-				try {
-					background = ImageIO.read(file);
-				} catch (IOException e) {
-					background = null; // best-effort: keep the plain background
-				}
-			}
+		try {
+			background = GameFiles.active().getBackground(name);
+		} catch (IOException e) {
+			background = null; // best-effort: keep the plain background
 		}
 		repaint();
 	}
@@ -2423,72 +2426,43 @@ public class BattleField extends JComponent {
 			return null;
 		if (iconCache.containsKey(name))
 			return iconCache.get(name);
-		BufferedImage img = null;
-		File file = GameFiles.active().file(name);
-		if (file.isFile()) {
-			try {
-				img = ImageIO.read(file);
-			} catch (IOException e) {
-				img = null; // best-effort: a missing icon just isn't drawn
-			}
-		}
+		BufferedImage img = GameFiles.active().getImage(name); // null: a missing icon just isn't drawn
 		iconCache.put(name, img);
 		return img;
 	}
 
 	/**
 	 * The bundle's "do not target" circle, loaded once on first use and cached
-	 * (including a {@code null} miss, so a missing asset is not re-read each frame).
+	 * (including a {@code null} miss, so a missing asset is not looked up each frame).
 	 */
 	private BufferedImage doNotTargetCircle() {
 		if (!doNotTargetCircleLoaded) {
 			doNotTargetCircleLoaded = true;
-			File file = GameFiles.active().getDoNotTargetCircle();
-			if (file != null && file.isFile()) {
-				try {
-					doNotTargetCircle = ImageIO.read(file);
-				} catch (IOException e) {
-					doNotTargetCircle = null; // best-effort: a missing asset just isn't drawn
-				}
-			}
+			doNotTargetCircle = GameFiles.active().getDoNotTargetCircle();
 		}
 		return doNotTargetCircle;
 	}
 
 	/**
 	 * The bundle's draggable AOE target reticle, loaded once on first use and cached
-	 * (including a {@code null} miss, so a missing asset is not re-read each frame).
+	 * (including a {@code null} miss, so a missing asset is not looked up each frame).
 	 */
 	private BufferedImage aoeTargetCircle() {
 		if (!aoeTargetCircleLoaded) {
 			aoeTargetCircleLoaded = true;
-			File file = GameFiles.active().getAOETargetCircle();
-			if (file != null && file.isFile()) {
-				try {
-					aoeTargetCircle = ImageIO.read(file);
-				} catch (IOException e) {
-					aoeTargetCircle = null; // best-effort: a missing asset just isn't drawn
-				}
-			}
+			aoeTargetCircle = GameFiles.active().getAOETargetCircle();
 		}
 		return aoeTargetCircle;
 	}
 
 	/**
 	 * The bundle's critical-hit banner, loaded once on first use and cached
-	 * (including a {@code null} miss, so a missing asset is not re-read each frame).
+	 * (including a {@code null} miss, so a missing asset is not looked up each frame).
 	 */
 	private BufferedImage critTab() {
 		if (!critTabLoaded) {
 			critTabLoaded = true;
-			File file = GameFiles.active().getCritTab();
-			if (file != null && file.isFile()) {
-				try {
-					critTab = ImageIO.read(file);
-				} catch (IOException e) {
-					critTab = null; // best-effort: a missing asset just isn't drawn
-				}
-			}
+			critTab = GameFiles.active().getCritTab();
 		}
 		return critTab;
 	}

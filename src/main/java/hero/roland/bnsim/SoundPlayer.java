@@ -1,12 +1,9 @@
 package hero.roland.bnsim;
 
-import java.io.BufferedInputStream;
+import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
-import java.io.File;
-import java.io.FileInputStream;
 import java.io.InputStream;
 import java.nio.ByteBuffer;
-import java.nio.file.Files;
 import java.util.Arrays;
 import java.util.concurrent.CountDownLatch;
 import java.util.function.BooleanSupplier;
@@ -25,14 +22,17 @@ import javazoom.jl.decoder.Decoder;
 import javazoom.jl.decoder.Header;
 import javazoom.jl.decoder.SampleBuffer;
 
+import hero.roland.bnsim.model.Sound;
+
 /**
  * Plays short one-shot sound effects and (via {@link #streamMp3}) streamed
- * music, each on a daemon thread so several can overlap. MP3 is decoded with
- * JLayer and {@code .caf} files with a built-in decoder: their codec is read
- * from the CAF audio description, IMA4 ADPCM is decoded in-process and AAC via
- * JAAD. All decoded audio is scaled by the {@linkplain #setVolume master
- * volume} so volume changes apply live. WAV/AU/AIFF use Java Sound. Playback is
- * best-effort: a missing or unsupported file is silently ignored.
+ * music, each on a daemon thread so several can overlap. Sounds are played from
+ * memory by format: MP3 is decoded with JLayer and CAF with a built-in decoder
+ * (its codec is read from the CAF audio description, IMA4 ADPCM is decoded
+ * in-process and AAC via JAAD). All decoded audio is scaled by the
+ * {@linkplain #setVolume master volume} so volume changes apply live. WAV/AU/AIFF
+ * use Java Sound. Playback is best-effort: a missing or unsupported sound is
+ * silently ignored.
  */
 public final class SoundPlayer {
 
@@ -50,34 +50,30 @@ public final class SoundPlayer {
 		return volume;
 	}
 
-	/** Plays the given sound file once, asynchronously. */
-	public static void play(File file) {
-		if (file == null || !file.isFile())
+	/** Plays the given sound once, asynchronously. */
+	public static void play(Sound sound) {
+		if (sound == null)
 			return;
-		Thread thread = new Thread(() -> playBlocking(file), "sound-fx");
+		Thread thread = new Thread(() -> playBlocking(sound), "sound-fx");
 		thread.setDaemon(true);
 		thread.start();
 	}
 
-	private static void playBlocking(File file) {
+	private static void playBlocking(Sound sound) {
 		try {
-			String name = file.getName().toLowerCase();
-			if (name.endsWith(".mp3")) {
-				try (InputStream in = new BufferedInputStream(new FileInputStream(file))) {
-					streamMp3(in, () -> true);
-				}
-			} else if (name.endsWith(".caf")) {
-				playCaf(file);
-			} else {
-				playClip(file);
+			switch (sound.format()) {
+			case "mp3" -> streamMp3(new ByteArrayInputStream(sound.data()), () -> true);
+			case "caf" -> playCaf(sound.data());
+			default -> playClip(sound.data());
 			}
 		} catch (Exception e) {
-			// Best-effort: ignore unreadable or unsupported audio.
+			// Best-effort: skip unreadable or unsupported audio, but say why.
+			System.err.println("Could not play a " + sound.format() + " sound: " + e);
 		}
 	}
 
-	private static void playClip(File file) throws Exception {
-		try (AudioInputStream audio = AudioSystem.getAudioInputStream(file)) {
+	private static void playClip(byte[] data) throws Exception {
+		try (AudioInputStream audio = AudioSystem.getAudioInputStream(new ByteArrayInputStream(data))) {
 			Clip clip = AudioSystem.getClip();
 			CountDownLatch done = new CountDownLatch(1);
 			clip.addLineListener(event -> {
@@ -107,8 +103,7 @@ public final class SoundPlayer {
 	 * description and decoding to 16-bit PCM: IMA4 ADPCM in-process, AAC via
 	 * JAAD. Other codecs are ignored (best-effort).
 	 */
-	private static void playCaf(File file) throws Exception {
-		byte[] bytes = Files.readAllBytes(file.toPath());
+	private static void playCaf(byte[] bytes) throws Exception {
 		CafInfo caf = parseCaf(bytes);
 		if (caf == null || caf.dataOffset < 0 || caf.channels < 1)
 			return;
@@ -419,6 +414,39 @@ public final class SoundPlayer {
 				line.close();
 			}
 			bitstream.close();
+		}
+	}
+
+	/**
+	 * Plays 16-bit PCM WAV data, scaling each sample by the current master
+	 * volume (so volume changes apply live). Stops early once {@code running}
+	 * returns {@code false}.
+	 */
+	static void streamWav(byte[] wav, BooleanSupplier running) throws Exception {
+		try (AudioInputStream audio = AudioSystem.getAudioInputStream(new ByteArrayInputStream(wav))) {
+			AudioFormat format = audio.getFormat();
+			if (format.getEncoding() != AudioFormat.Encoding.PCM_SIGNED || format.getSampleSizeInBits() != 16
+					|| format.isBigEndian())
+				return; // only what FsbAudio writes: signed 16-bit little-endian
+			SourceDataLine line = AudioSystem.getSourceDataLine(format);
+			try {
+				line.open(format);
+				line.start();
+				byte[] bytes = new byte[8192];
+				short[] samples = new short[bytes.length / 2];
+				int n;
+				while (running.getAsBoolean() && (n = audio.read(bytes)) > 0) {
+					int count = n / 2;
+					for (int i = 0; i < count; i++)
+						samples[i] = (short) ((bytes[i * 2] & 0xff) | (bytes[i * 2 + 1] << 8));
+					byte[] out = scale(samples, 0, count, volume);
+					line.write(out, 0, out.length);
+				}
+				if (running.getAsBoolean())
+					line.drain(); // finished naturally: let the buffer play out
+			} finally {
+				line.close();
+			}
 		}
 	}
 

@@ -8,7 +8,6 @@ import java.awt.FlowLayout;
 import java.awt.Font;
 import java.awt.Insets;
 import java.awt.Window;
-import java.io.File;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -541,15 +540,11 @@ final class UnitInfoDialog extends JDialog {
 				+ "' height='" + DAMAGE_ICON_SIZE + "'>";
 	}
 
-	/** A {@code file:} URL for a bundle icon file, or {@code null} if missing. */
-	private static String iconUrl(String filename) {
-		if (filename == null)
+	/** A URL serving a bundle image from memory (see {@link ImageUrls}), or {@code null} if missing. */
+	private static String iconUrl(String name) {
+		if (name == null || GameFiles.active().getImage(name) == null)
 			return null;
-		File file = GameFiles.active().file(filename);
-		if (file == null || !file.isFile())
-			return null;
-		// Encodes spaces in the path (e.g. "Folder of Everything") for a valid URL.
-		return file.toURI().toString();
+		return ImageUrls.url(name);
 	}
 
 	/** A damage type's enum name as a spaced, title-cased label (e.g. "Depth Charge"). */

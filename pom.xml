@@ -31,9 +31,32 @@
             <artifactId>jaad</artifactId>
             <version>0.8.7</version>
         </dependency>
+        <!-- Pure-Java Vorbis decoder for the remaster's FSB5 sound banks. -->
+        <dependency>
+            <groupId>org.jcraft</groupId>
+            <artifactId>jorbis</artifactId>
+            <version>0.0.17</version>
+            <scope>compile</scope>
+        </dependency>
     </dependencies>
 
     <build>
+        <resources>
+            <resource>
+                <directory>src/main/resources</directory>
+            </resource>
+            <!-- Ships the licence and third-party notices (required by the bundled
+                 libraries' licences) inside the jar. -->
+            <resource>
+                <directory>${project.basedir}</directory>
+                <targetPath>META-INF</targetPath>
+                <includes>
+                    <include>LICENSE</include>
+                    <include>THIRD_PARTY_NOTICES.md</include>
+                    <include>licenses/*</include>
+                </includes>
+            </resource>
+        </resources>
         <plugins>
             <!-- Bundles the dependencies into one runnable jar. -->
             <plugin>

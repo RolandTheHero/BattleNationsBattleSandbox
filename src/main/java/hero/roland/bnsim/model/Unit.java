@@ -1,15 +1,25 @@
+/*
+ * Battle Nations Battle Sandbox
+ *
+ * Adapted from Battle Nations Animation Grabber (BaNG),
+ * https://github.com/bobmath/BattleNationsAnimation
+ * Copyright (C) 2014 Robert Mathews. Licensed under the GNU General Public
+ * License version 2; see the LICENSE file.
+ *
+ * Modified 2026 by RolandTheHero; the git history records each change and
+ * its date.
+ */
+
 package hero.roland.bnsim.model;
 
 import java.io.IOException;
-import java.util.Arrays;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
-
-import org.json.JSONArray;
-import org.json.JSONObject;
 
 import hero.roland.bnsim.gamefiles.GameFiles;
 import hero.roland.bnsim.model.Ability.TargetSquare;
@@ -20,14 +30,61 @@ public class Unit implements Comparable<Unit> {
 	/** The bundle this unit was loaded from. */
 	private final GameFiles gf;
 
-    private int blocking;
-	private String id, nameId, shortNameId, side;
-	private String backAnimName, frontAnimName, deathAnimName;
-	private Rank[] ranks;
-	private Weapon[] weapons;
-    private UnitTag[] tags;
-	private Set<StatusEffect.StatusFamily> statusEffectImmunities;
-	private String deathSpawnedUnit;
+    private final int blocking;
+	private final String id, nameId, shortNameId, side;
+	private final String backAnimName, frontAnimName, deathAnimName;
+	private final Rank[] ranks;
+	private final Weapon[] weapons;
+    private final UnitTag[] tags;
+	private final Set<StatusEffect.StatusFamily> statusEffectImmunities;
+	private final String deathSpawnedUnit;
+
+	/**
+	 * A unit's data as parsed from the game files. A {@link GameFiles} loader
+	 * fills one in and passes it to {@link Unit#Unit(GameFiles, String, Definition)};
+	 * the unit copies the values, so the definition is not retained.
+	 */
+	public static class Definition {
+		public String nameId, shortNameId, side;
+		public String backAnimName, frontAnimName, deathAnimName;
+		/** One of {@link #NONE}, {@link #PARTIAL} or {@link #BLOCKING}. */
+		public int blocking;
+		/** The unit's own tags, in file order; a {@code null} entry is an unresolved tag. */
+		public List<UnitTag> tags = new ArrayList<>();
+		public Set<StatusEffect.StatusFamily> statusEffectImmunities = new HashSet<>();
+		/** The id of the unit that takes this unit's tile when it dies, or {@code null}. */
+		public String deathSpawnedUnit;
+		/** Stats per rank, lowest rank first. */
+		public List<Rank> ranks = new ArrayList<>();
+		/** The unit's weapons, in display order. */
+		public List<WeaponDefinition> weapons = new ArrayList<>();
+	}
+
+	/** A weapon's data as parsed from the game files; see {@link Definition}. */
+	public static class WeaponDefinition {
+		/** The weapon's slot name (e.g. {@code primary}), shown when it has no name. */
+		public String tag;
+		public String nameId;
+		public String frontAnimName, backAnimName;
+		/** Frames after the attack animation starts before the hit lands. */
+		public int hitDelay;
+		public String firesound;
+		/** Frames after the attack starts before the fire sound plays. */
+		public int firesoundFrame;
+		public int minDamage, maxDamage;
+		public int rangeBonus;
+		/** Infinite if -1. */
+		public int ammo;
+		/** Turns to reload the ammo back to full. */
+		public int reloadTime;
+		/** Added to the ability's attack when computing total offense. */
+		public int baseAttack;
+		/** Base critical chance, 0-1. */
+		public double baseCritRate;
+		/** The tags of the abilities this weapon can use, in order; a
+		 * {@code null} or unknown tag becomes {@link Ability#NO_ABILITY}. */
+		public List<String> abilities = new ArrayList<>();
+	}
 
 	/** The unit with the given id from the active bundle, or {@code null}. */
 	public static Unit get(String id) {
@@ -39,59 +96,25 @@ public class Unit implements Comparable<Unit> {
 		return GameFiles.active().getUnits();
 	}
 
-	public Unit(GameFiles gf, String id, JSONObject json) {
+	/** Builds a unit from its parsed data. Abilities its weapons use must already
+	 * be loaded into {@code gf}. */
+	public Unit(GameFiles gf, String id, Definition def) {
 		this.gf = gf;
 		this.id = id;
-		nameId = json.optString("name", null);
-		shortNameId = json.optString("shortName", null);
-		side = json.optString("side", "Other");
-		backAnimName = json.optString("backIdleAnimation", null);
-		frontAnimName = json.optString("frontIdleAnimation", null);
-        blocking = json.optInt("blocking", NONE);
-		initWeapons(json.optJSONObject("weapons"));
-		initRanks(json.getJSONArray("stats"));
-        JSONArray tags = json.optJSONArray("tags");
-        if (tags != null) {
-            this.tags = new UnitTag[tags.length()];
-            for (int i = 0; i < tags.length(); i++)
-                this.tags[i] = gf.getUnitTag(tags.getString(i));
-        }
-		JSONArray statusEffectImmunitiesJson = json.optJSONArray("statusEffectImmunities", new JSONArray());
-		statusEffectImmunities = new HashSet<StatusEffect.StatusFamily>();
-		for (int i = 0; i < statusEffectImmunitiesJson.length(); i++) {
-			statusEffectImmunities.add(gf.getStatusFamily(statusEffectImmunitiesJson.getString(i)));
-		}
-		deathSpawnedUnit = json.optString("deathSpawnedUnit", null);
-		deathAnimName = json.optString("deathAnimationName", "troopdeath");
-	}
-
-	private void initRanks(JSONArray json) {
-		ranks = new Rank[json.length()];
-		for (int i = 0; i < ranks.length; i++)
-			ranks[i] = new Rank(json.getJSONObject(i));
-	}
-
-	private void initWeapons(JSONObject json) {
-		if (json == null || json.isEmpty()) {
-			this.weapons = new Weapon[0];
-			return;
-		}
-		Map<String,Weapon> weapons = new HashMap<String,Weapon>();
-		for (String key : json.keySet()) {
-			Weapon weap = new Weapon(key, json.getJSONObject(key));
-			String name = key;
-			switch (name) {
-			case "primary": name = "1primary"; break;
-			case "secondary": name = "2secondary"; break;
-			}
-			weapons.put(name, weap);
-		}
-		String[] names = new String[weapons.size()];
-		names = weapons.keySet().toArray(names);
-		Arrays.sort(names);
-		this.weapons = new Weapon[names.length];
-		for (int i = 0; i < names.length; i++)
-			this.weapons[i] = weapons.get(names[i]);
+		nameId = def.nameId;
+		shortNameId = def.shortNameId;
+		side = def.side;
+		backAnimName = def.backAnimName;
+		frontAnimName = def.frontAnimName;
+		deathAnimName = def.deathAnimName;
+		blocking = def.blocking;
+		tags = def.tags.toArray(new UnitTag[0]);
+		statusEffectImmunities = new HashSet<>(def.statusEffectImmunities);
+		deathSpawnedUnit = def.deathSpawnedUnit;
+		ranks = def.ranks.toArray(new Rank[0]);
+		weapons = new Weapon[def.weapons.size()];
+		for (int i = 0; i < weapons.length; i++)
+			weapons[i] = new Weapon(def.weapons.get(i));
 	}
 
 	public String getId() {
@@ -133,7 +156,7 @@ public class Unit implements Comparable<Unit> {
 	 * {@link #hasTag} for hierarchy-aware membership).
 	 */
 	public UnitTag[] getTags() {
-		return tags == null ? new UnitTag[0] : tags.clone();
+		return tags.clone();
 	}
 
 	/**
@@ -144,7 +167,7 @@ public class Unit implements Comparable<Unit> {
 	 * hit them. A {@code null} query tag matches nothing.
 	 */
 	public boolean hasTag(UnitTag tag) {
-		if (tag == null || tags == null)
+		if (tag == null)
 			return false;
 		for (UnitTag t : tags)
 			if (t != null && t.isA(tag))
@@ -226,103 +249,60 @@ public class Unit implements Comparable<Unit> {
 		}
 	}
 
-	public class Rank {
-		private int power;
-        private int accuracy;
-        private int bravery;
-        private int critical;
-        private int defense;
-        private int hp;
-        private int armorHp;
-        private int dodge;
-        private Map<Ability.DamageType, Double> damageMods = new HashMap<>();
-        private Map<Ability.DamageType, Double> armorDamageMods = new HashMap<>();
-		//private Prerequisites prereq;
-		protected Rank(JSONObject json) {
-			power = json.optInt("power", 0);
-            accuracy = json.optInt("accuracy", 0);
-            bravery = json.optInt("bravery", 0);
-            critical = json.optInt("critical", 0);
-            defense = json.optInt("defense", 0);
-            hp = json.optInt("hp", 10);
-            armorHp = json.optInt("armorHp", 0);
-            dodge = json.optInt("dodge", 0);
-            JSONObject mods = json.optJSONObject("damageMods");
-            if (mods != null) {
-                for (String key : mods.keySet()) {
-                    Ability.DamageType type = Ability.DamageType.fromString(key);
-                    damageMods.put(type, mods.optDouble(key, 1));
-                }
-            }
-            JSONObject armorMods = json.optJSONObject("armorDamageMods");
-            if (armorMods != null) {
-                for (String key : armorMods.keySet()) {
-                    Ability.DamageType type = Ability.DamageType.fromString(key);
-                    armorDamageMods.put(type, armorMods.optDouble(key, 1));
-                }
-            }
-			//prereq = Prerequisites.create(json.optJSONObject("prereqsForLevel"));
+	/** A unit's stats at one rank. Damage-type modifiers not listed default to 1. */
+	public record Rank(int power, int accuracy, int bravery, int critical, int defense,
+			int hp, int armorHp, int dodge,
+			Map<Ability.DamageType, Double> damageMods,
+			Map<Ability.DamageType, Double> armorDamageMods) {
+		public Rank {
+			// Copied into HashMaps (not Map.copyOf) so a lookup with a null type
+			// returns the default rather than throwing.
+			damageMods = Collections.unmodifiableMap(new HashMap<>(damageMods));
+			armorDamageMods = Collections.unmodifiableMap(new HashMap<>(armorDamageMods));
 		}
-		public int power() { return power; }
-        public int accuracy() { return accuracy; }
-        public int bravery() { return bravery; }
-        public int critical() { return critical; }
-        public int defense() { return defense; }
-        public int hp() { return hp; }
-        public int armorHp() { return armorHp; }
-        public int dodge() { return dodge; }
         public double damageMod(Ability.DamageType type) {
             return damageMods.getOrDefault(type, 1.0);
         }
         public double armorDamageMod(Ability.DamageType type) {
             return armorDamageMods.getOrDefault(type, 1.0);
         }
-		// public int getMinLevel() {
-		// 	return prereq == null ? 0 : prereq.getMinLevel();
-		// }
 	}
 
 	public class Weapon {
-		private String nameId, tag;
-		private String frontAnimationName, backAnimationName;
-		private Attack[] attacks;
-		private int hitDelay;
-		private int minDamage, maxDamage;
-		private int rangeBonus;
-        private String firesound;
-        private int firesoundFrame;
-		private int ammo; // Infinite if -1
-		private int reloadTime; // Turns to reload the ammo back to full
-		private int baseAttack; // Added to the ability's attack when calculating total offense
-		private double baseCritRate;
+		private final String nameId, tag;
+		private final String frontAnimationName, backAnimationName;
+		private final Attack[] attacks;
+		private final int hitDelay;
+		private final int minDamage, maxDamage;
+		private final int rangeBonus;
+        private final String firesound;
+        private final int firesoundFrame;
+		private final int ammo; // Infinite if -1
+		private final int reloadTime; // Turns to reload the ammo back to full
+		private final int baseAttack; // Added to the ability's attack when calculating total offense
+		private final double baseCritRate;
 
 		protected Weapon() {
-			tag = "none";
-			attacks = new Attack[0];
+			this(new WeaponDefinition());
 		}
-		protected Weapon(String tag, JSONObject json) {
-			this.tag = tag;
-			nameId = json.optString("name", null);
-			frontAnimationName = json.optString("frontattackAnimation", null);
-			backAnimationName = json.optString("backattackAnimation", null);
-			firesoundFrame = json.optInt("firesoundFrame", 0);
-			hitDelay = json.optInt("damageAnimationDelay", 0) + firesoundFrame;
-            firesound = json.optString("firesound", null);
-			initStats(json.optJSONObject("stats"));
-			JSONArray abilities = json.getJSONArray("abilities");
-			attacks = new Attack[abilities.length()];
+		protected Weapon(WeaponDefinition def) {
+			tag = def.tag != null ? def.tag : "none";
+			nameId = def.nameId;
+			frontAnimationName = def.frontAnimName;
+			backAnimationName = def.backAnimName;
+			hitDelay = def.hitDelay;
+            firesound = def.firesound;
+			firesoundFrame = def.firesoundFrame;
+			minDamage = def.minDamage;
+			maxDamage = def.maxDamage;
+			rangeBonus = def.rangeBonus;
+			ammo = def.ammo;
+			reloadTime = def.reloadTime;
+			baseAttack = def.baseAttack;
+			baseCritRate = def.baseCritRate;
+			attacks = new Attack[def.abilities.size()];
 			for (int i = 0; i < attacks.length; i++)
-				attacks[i] = new Attack(abilities.optString(i, null), this);
-		}
-		private void initStats(JSONObject json) {
-			if (json == null) return;
-			minDamage = json.optInt("base_damage_min", 0);
-			maxDamage = json.optInt("base_damage_max", 0);
-			rangeBonus = json.optInt("rangeBonus", 0);
-			ammo = json.optInt("ammo", -1);
-			reloadTime = json.optInt("reloadTime", 0);
-			baseAttack = json.optInt("base_ATK", 0);
-			baseCritRate = json.optDouble("base_critPercent", 0d) / 100;
+				attacks[i] = new Attack(def.abilities.get(i), this);
 		}
 		public String getName() {
 			String name = gf.getText(nameId);

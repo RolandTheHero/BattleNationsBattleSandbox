@@ -1,3 +1,15 @@
+/*
+ * Battle Nations Battle Sandbox
+ *
+ * Adapted from Battle Nations Animation Grabber (BaNG),
+ * https://github.com/bobmath/BattleNationsAnimation
+ * Copyright (C) 2014 Robert Mathews. Licensed under the GNU General Public
+ * License version 2; see the LICENSE file.
+ *
+ * Modified 2026 by RolandTheHero; the git history records each change and
+ * its date.
+ */
+
 package hero.roland.bnsim.model;
 
 import java.awt.TexturePaint;
@@ -8,33 +20,36 @@ import java.util.HashSet;
 import java.util.Set;
 
 import hero.roland.bnsim.gamefiles.GameFiles;
-import hero.roland.bnsim.util.FileFormatException;
-import hero.roland.bnsim.util.LittleEndianInputStream;
 
+/**
+ * A sprite sheet that {@link Frame}s cut their quads from. The texture spans
+ * {@code 0x8000} texture units on each axis, whatever its pixel size.
+ */
 public class Bitmap {
 
 	/** Bitmaps whose texture has been replaced in memory, held from GC so the
 	 *  change survives (the bundle's cache holds only soft references). */
 	private static Set<Bitmap> modified = new HashSet<Bitmap>();
 
-	private String name;
-	private int width, height, bits;
-	private TexturePaint texture, originalTexture;
+	private final String name;
+	private final int width, height, bits;
+	private TexturePaint texture;
+	private final TexturePaint originalTexture;
 
 	/** The bitmap with the given name from the active bundle (cached there). */
 	public static Bitmap get(String name) throws IOException {
 		return GameFiles.active().getBitmap(name);
 	}
 
-	/** Reads a fresh bitmap by name from the given bundle. */
-	public static Bitmap read(GameFiles gf, String name) throws IOException {
-		Bitmap bmp = new Bitmap(name);
-		bmp.readFrom(gf);
-		return bmp;
-	}
-
-	private Bitmap(String name) {
+	/** A sprite sheet with the given image; {@code bits} is the colour depth per
+	 *  pixel it was stored with (informational). */
+	public Bitmap(String name, BufferedImage image, int bits) {
 		this.name = name;
+		this.width = image.getWidth();
+		this.height = image.getHeight();
+		this.bits = bits;
+		texture = new TexturePaint(image, new Rectangle2D.Double(0, 0, 0x8000, 0x8000));
+		originalTexture = texture;
 	}
 
 	public String getName() {
@@ -65,88 +80,6 @@ public class Bitmap {
 	public void restoreTexture() {
 		texture = originalTexture;
 		modified.remove(this);
-	}
-
-	private void readFrom(GameFiles gf) throws IOException {
-		LittleEndianInputStream in = new LittleEndianInputStream(gf.open(name + "_0.z2raw"));
-		try {
-			int ver = in.readInt();
-			if (ver < 0 || ver > 1)
-				throw new FileFormatException("Unrecognized version");
-			width = in.readInt();
-			height = in.readInt();
-			bits = in.readInt();
-			BufferedImage im = new BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB);
-			if (ver == 0)
-				readRaw(im, in);
-			else
-				readRLE(im, in);
-			texture = new TexturePaint(im, new Rectangle2D.Double(0, 0, 0x8000, 0x8000));
-			originalTexture = texture;
-		}
-		catch (ArrayIndexOutOfBoundsException e) {
-			throw new FileFormatException("Invalid array index", e);
-		}
-		finally {
-			in.close();
-		}
-	}
-
-	private void readRaw(BufferedImage im, LittleEndianInputStream in)
-			throws IOException {
-		for (int y = 0; y < height; y++)
-			for (int x = 0; x < width; x++)
-				im.setRGB(x, y, readPix(in));
-	}
-
-	private void readRLE(BufferedImage im, LittleEndianInputStream in)
-			throws IOException {
-		in.readInt(); // length
-		int palSize = in.readInt();
-		if (palSize < 1 || palSize > 256)
-			throw new FileFormatException("Invalid palette size");
-		int[] pal = new int[palSize];
-		for (int i = 0; i < palSize; i++)
-			pal[i] = readPix(in);
-
-		int x = 0;
-		int y = 0;
-		while (y < height) {
-			int c = in.readByte();
-			int num = (c >> 1) + 1;
-			if ((c & 1) == 0) {
-				for (int i = 0; i < num; i++) {
-					im.setRGB(x, y, pal[in.readByte()]);
-					if (++x >= width) { x = 0; y++; }
-				}
-			}
-			else {
-				int pix = pal[in.readByte()];
-				for (int i = 0; i < num; i++) {
-					im.setRGB(x, y, pix);
-					if (++x >= width) { x = 0; y++; }
-				}
-			}
-		}
-	}
-
-	private int readPix(LittleEndianInputStream in) throws IOException {
-		int r, g, b, a;
-		if (bits == 4) {
-			int p = in.readByte();
-			a = (p & 0xf) * 0x11;
-			b = ((p >> 4) & 0xf) * 0x11;
-			p = in.readByte();
-			g = (p & 0xf) * 0x11;
-			r = ((p >> 4) & 0xf) * 0x11;
-		}
-		else {
-			r = in.readByte();
-			g = in.readByte();
-			b = in.readByte();
-			a = in.readByte();
-		}
-		return (a << 24) | (r << 16) | (g << 8) | b;
 	}
 
 }
