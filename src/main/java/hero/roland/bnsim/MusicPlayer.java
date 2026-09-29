@@ -1,15 +1,14 @@
 package hero.roland.bnsim;
 
-import java.io.BufferedInputStream;
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.InputStream;
+import java.io.ByteArrayInputStream;
+
+import hero.roland.bnsim.model.Sound;
 
 /**
- * Plays an MP3 file on a background daemon thread, looping until stopped, at the
- * shared {@link SoundPlayer} master volume. Used for the battle background
- * music. Playback is best-effort: a missing or unreadable file is silently
- * ignored.
+ * Plays an MP3 or 16-bit PCM WAV sound on a background daemon thread, looping
+ * until stopped, at the shared {@link SoundPlayer} master volume. Used for the
+ * battle background music. Playback is best-effort: a missing or unreadable
+ * sound is silently ignored.
  */
 public class MusicPlayer {
 
@@ -17,25 +16,29 @@ public class MusicPlayer {
 	private Thread thread;
 	private volatile boolean running;
 
-	/** Starts looping the given MP3 file, replacing any current playback. */
-	public void loop(File file) {
+	/** Starts looping the given sound, replacing any current playback. */
+	public void loop(Sound sound) {
 		stop();
-		if (file == null || !file.isFile())
+		if (sound == null)
 			return;
 		synchronized (lock) {
 			running = true;
-			thread = new Thread(() -> playLoop(file), "battle-music");
+			thread = new Thread(() -> playLoop(sound), "battle-music");
 			thread.setDaemon(true);
 			thread.start();
 		}
 	}
 
-	private void playLoop(File file) {
+	private void playLoop(Sound sound) {
 		while (running) {
-			try (InputStream in = new BufferedInputStream(new FileInputStream(file))) {
-				SoundPlayer.streamMp3(in, () -> running);
+			try {
+				if (sound.format().equals("wav"))
+					SoundPlayer.streamWav(sound.data(), () -> running);
+				else
+					SoundPlayer.streamMp3(new ByteArrayInputStream(sound.data()), () -> running);
 			} catch (Exception e) {
-				break; // unreadable/undecodable file: give up silently
+				System.err.println("Could not play music: " + e);
+				break; // unreadable/undecodable sound: give up
 			}
 		}
 	}

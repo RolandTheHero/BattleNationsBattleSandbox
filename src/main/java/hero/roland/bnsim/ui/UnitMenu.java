@@ -7,12 +7,9 @@ import java.awt.GridLayout;
 import java.awt.Insets;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
-import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Set;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 
@@ -326,18 +323,19 @@ public class UnitMenu extends JPanel {
 
 	/**
 	 * Builds the battlefield-background dropdown (shown where the menu toggle used
-	 * to be), listing the bundle's {@code BattleMap*.png} files with
-	 * {@code BattleMap.png} as the default. Selecting one notifies the
-	 * {@linkplain #setBackgroundSelector background selector}.
+	 * to be), listing the bundle's backgrounds with its default selected.
+	 * Selecting one notifies the {@linkplain #setBackgroundSelector background
+	 * selector}.
 	 */
 	private JPanel buildMapSelector() {
-		Set<String> names = new LinkedHashSet<>();
-		names.add("BattleMap.png"); // default, listed first
-		for (File f : GameFiles.active().glob("BattleMap*.png"))
-			names.add(f.getName());
-		for (String n : names)
-			mapSelector.addItem(n);
-		mapSelector.setSelectedItem("BattleMap.png");
+		try {
+			for (String name : GameFiles.active().getBackgroundNames())
+				mapSelector.addItem(name);
+		} catch (IOException e) {
+			// No backgrounds: leave the dropdown empty.
+		}
+		if (mapSelector.getItemCount() > 0)
+			mapSelector.setSelectedIndex(0);
 		mapSelector.addActionListener(e -> {
 			Object sel = mapSelector.getSelectedItem();
 			if (sel != null && backgroundSelector != null)

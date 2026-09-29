@@ -1,52 +1,49 @@
+/*
+ * Battle Nations Battle Sandbox
+ *
+ * Adapted from Battle Nations Animation Grabber (BaNG),
+ * https://github.com/bobmath/BattleNationsAnimation
+ * Copyright (C) 2014 Robert Mathews. Licensed under the GNU General Public
+ * License version 2; see the LICENSE file.
+ *
+ * Modified 2026 by RolandTheHero; the git history records each change and
+ * its date.
+ */
+
 package hero.roland.bnsim.gamefiles;
 
+import java.awt.image.BufferedImage;
 import java.io.File;
-import java.io.FileInputStream;
-import java.io.FilenameFilter;
 import java.io.IOException;
-import java.io.InputStream;
-import java.io.InputStreamReader;
 import java.lang.ref.SoftReference;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
-
-import org.json.JSONException;
-import org.json.JSONObject;
-import org.json.JSONTokener;
+import java.util.Set;
 
 import hero.roland.bnsim.model.Ability;
 import hero.roland.bnsim.model.Animation;
 import hero.roland.bnsim.model.Bitmap;
+import hero.roland.bnsim.model.Sound;
 import hero.roland.bnsim.model.StatusEffect;
 import hero.roland.bnsim.model.Text;
 import hero.roland.bnsim.model.Timeline;
 import hero.roland.bnsim.model.Unit;
-import hero.roland.bnsim.util.FileFormatException;
-import hero.roland.bnsim.util.GlobFilter;
 
 /**
  * Base class for a loaded bundle. Owns all of a bundle's data — the game-data
- * maps and the lazily-built sprite caches — and the raw file access; the actual
- * parsing of each kind of data is left to {@code protected} hooks so a game
- * version with a different file format can override only what differs.
+ * maps and the lazily-built sprite, image and sound caches (all in memory); the
+ * actual parsing of each kind of data is left to {@code protected} hooks so a
+ * game version with a different file format can override only what differs.
  *
  * <p>The eager game data is filled in once by {@link #loadAll()} (called by
- * {@link GameFiles#load}); the sprite layer (timelines, bitmaps) is read on
- * demand and cached.
+ * {@link GameFiles#load}); sprites, images and sounds are read on demand and
+ * cached.
  */
 public abstract class AbstractGameFiles implements GameFiles {
 	protected final File bundleFolder;
-	private File passButton;
-	private File doNotTargetCircle;
-	private File critTab;
-	private File magGlass;
-	private File fightButtonInactive;
-	private File fightButtonActive;
-	private File unitInfoButton;
-	private File rankInsignia;
 
 	// Eagerly-loaded game data (filled in by loadAll(); subclasses populate these
 	// in their load* hooks).
@@ -63,14 +60,22 @@ public abstract class AbstractGameFiles implements GameFiles {
 	private Map<String, String> timelinePackageIndex;          // animation name (lc) -> package
 	private final Map<String, Timeline> timelineCache = new HashMap<>();
 	private final Map<String, SoftReference<Bitmap>> bitmapCache = new HashMap<>();
+	private List<String> backgroundNames;
+	// Softly held: a large background is ~50 MB, so the JVM may drop unused ones.
+	private final Map<String, SoftReference<BufferedImage>> backgroundCache = new HashMap<>();
+	// Images and sounds by requested name, softly held; names known to be missing
+	// are remembered so they aren't looked up again.
+	private final Map<String, SoftReference<BufferedImage>> imageCache = new HashMap<>();
+	private final Map<String, SoftReference<Sound>> soundCache = new HashMap<>();
+	private final Set<String> missingImages = new HashSet<>(), missingSounds = new HashSet<>();
 
 	protected AbstractGameFiles(File bundleFolder) {
 		this.bundleFolder = bundleFolder;
 	}
 
 	/**
-	 * Loads all eager game data (in dependency order) and records the standalone
-	 * asset files. Sprite data is left to load lazily.
+	 * Loads all eager game data (in dependency order). Sprite data is left to
+	 * load lazily.
 	 */
 	void loadAll() throws IOException {
 		loadText();
@@ -79,14 +84,6 @@ public abstract class AbstractGameFiles implements GameFiles {
 		loadUnitTags();
 		loadAbilities();
 		loadUnits();
-		passButton = new File(bundleFolder, "button_passInactive@2x.png");
-		doNotTargetCircle = new File(bundleFolder, "doNotTarget_circle@2x.png");
-		critTab = new File(bundleFolder, "CritTab@2x.png");
-		magGlass = new File(bundleFolder, "magGlass@2x.png");
-		fightButtonInactive = new File(bundleFolder, "fightInactive@2x.png");
-		fightButtonActive = new File(bundleFolder, "fightActive@2x.png");
-		unitInfoButton = new File(bundleFolder, "bs_main_unit_info_icon@2x.png");
-		rankInsignia = new File(bundleFolder, "icon_spSmall@2x~ipad.png");
 	}
 
 	// Version-specific parsing steps, called by loadAll() in dependency order.
@@ -97,6 +94,23 @@ public abstract class AbstractGameFiles implements GameFiles {
 	protected abstract void loadAbilities() throws IOException;
 	protected abstract void loadUnits() throws IOException;
 	protected abstract void loadUnitTags() throws IOException;
+
+	// Version-specific sprite reading, called lazily and cached by the getters.
+
+	/** Maps every animation name (lowercased) to the package that holds it. */
+	protected abstract Map<String, String> buildTimelineIndex() throws IOException;
+	/** Reads every timeline in a package, keyed by lowercased name. */
+	protected abstract Map<String, Timeline> readTimelinePackage(String pack) throws IOException;
+	/** Reads a package's sprite sheet. */
+	protected abstract Bitmap readBitmap(String pack) throws IOException;
+	/** The names of the battlefield backgrounds, the default first. */
+	protected abstract List<String> listBackgrounds() throws IOException;
+	/** Reads a battlefield background, or returns {@code null} if there is none by that name. */
+	protected abstract BufferedImage readBackground(String name) throws IOException;
+	/** Reads the image with the given (old-format) name, or returns {@code null} if there is none. */
+	protected abstract BufferedImage readImage(String name) throws IOException;
+	/** Reads the sound with the given (old-format) name, or returns {@code null} if there is none. */
+	protected abstract Sound readSound(String name) throws IOException;
 
 	// --- Game-data getters ---------------------------------------------------
 
@@ -164,14 +178,14 @@ public abstract class AbstractGameFiles implements GameFiles {
 	public Timeline getTimeline(String name) throws IOException {
 		if (name == null) return null;
 		if (timelinePackageIndex == null)
-			timelinePackageIndex = Timeline.buildPackageIndex(this);
+			timelinePackageIndex = buildTimelineIndex();
 		String lc = name.toLowerCase();
 		if (!timelineCache.containsKey(lc)) {
 			String pack = timelinePackageIndex.get(lc);
 			if (pack == null) return null;
 			// Mark as attempted so a name missing from its package is not re-read every call.
 			timelineCache.put(lc, null);
-			timelineCache.putAll(Timeline.readPackage(this, pack));
+			timelineCache.putAll(readTimelinePackage(pack));
 		}
 		return timelineCache.get(lc);
 	}
@@ -191,104 +205,121 @@ public abstract class AbstractGameFiles implements GameFiles {
 		if (ref != null)
 			bmp = ref.get();
 		if (bmp == null) {
-			bmp = Bitmap.read(this, name);
+			bmp = readBitmap(name);
 			bitmapCache.put(lc, new SoftReference<>(bmp));
 		}
 		return bmp;
 	}
 
-	// --- Raw file access -----------------------------------------------------
+	// --- Background getters --------------------------------------------------
 
 	@Override
-	public JSONObject readJson(String filename) throws IOException {
-		File file = new File(bundleFolder, filename);
-		String content = Files.readString(file.toPath());
-		return new JSONObject(content);
+	public synchronized String[] getBackgroundNames() throws IOException {
+		if (backgroundNames == null)
+			backgroundNames = List.copyOf(listBackgrounds());
+		return backgroundNames.toArray(new String[0]);
 	}
 
 	@Override
-	public JSONObject readJson(InputStream in) throws IOException {
-		try {
-			InputStreamReader reader = new InputStreamReader(in, StandardCharsets.UTF_8);
-			return new JSONObject(new JSONTokener(reader));
-		} catch (JSONException e) {
-			throw new FileFormatException("Json parse error", e);
-		} finally {
-			in.close();
+	public synchronized BufferedImage getBackground(String name) throws IOException {
+		if (name == null) return null;
+		SoftReference<BufferedImage> ref = backgroundCache.get(name);
+		BufferedImage image = ref == null ? null : ref.get();
+		if (image == null) {
+			image = readBackground(name);
+			if (image != null)
+				backgroundCache.put(name, new SoftReference<>(image));
 		}
+		return image;
+	}
+
+	// --- Image and sound getters --------------------------------------------
+
+	@Override
+	public synchronized BufferedImage getImage(String name) {
+		return cached(name, imageCache, missingImages, this::readImage);
 	}
 
 	@Override
-	public InputStream open(String filename) throws IOException {
-		return new FileInputStream(new File(bundleFolder, filename));
+	public synchronized Sound getSound(String name) {
+		return cached(name, soundCache, missingSounds, this::readSound);
+	}
+
+	/** Reads one asset by name. */
+	private interface Reader<T> {
+		T read(String name) throws IOException;
+	}
+
+	/**
+	 * The cached asset for {@code name}, reading it on a miss. Unreadable assets
+	 * count as missing: the program treats images and sounds as optional.
+	 */
+	private static <T> T cached(String name, Map<String, SoftReference<T>> cache, Set<String> missing,
+			Reader<T> reader) {
+		if (name == null || missing.contains(name))
+			return null;
+		SoftReference<T> ref = cache.get(name);
+		T value = ref == null ? null : ref.get();
+		if (value == null) {
+			try {
+				value = reader.read(name);
+			} catch (IOException | RuntimeException e) {
+				System.err.println("Could not load " + name + ": " + e);
+				value = null;
+			}
+			if (value == null)
+				missing.add(name);
+			else
+				cache.put(name, new SoftReference<>(value));
+		}
+		return value;
+	}
+
+	// The standalone UI images, by their old-format file names; a subclass's
+	// readImage() maps them to its own assets, or it overrides these outright.
+
+	@Override
+	public BufferedImage getPassButton() {
+		return getImage("button_passInactive@2x.png");
 	}
 
 	@Override
-	public File file(String filename) {
-		return new File(bundleFolder, filename);
+	public BufferedImage getDoNotTargetCircle() {
+		return getImage("doNotTarget_circle@2x.png");
 	}
 
 	@Override
-	public File getPassButton() {
-		return passButton;
+	public BufferedImage getCritTab() {
+		return getImage("CritTab@2x.png");
 	}
 
 	@Override
-	public File getDoNotTargetCircle() {
-		return doNotTargetCircle;
+	public BufferedImage getMagGlass() {
+		return getImage("magGlass@2x.png");
 	}
 
 	@Override
-	public File getCritTab() {
-		return critTab;
+	public BufferedImage getFightButtonInactive() {
+		return getImage("fightInactive@2x.png");
 	}
 
 	@Override
-	public File getMagGlass() {
-		return magGlass;
+	public BufferedImage getFightButtonActive() {
+		return getImage("fightActive@2x.png");
 	}
 
 	@Override
-	public File getFightButtonInactive() {
-		return fightButtonInactive;
+	public BufferedImage getUnitInfoButton() {
+		return getImage("bs_main_unit_info_icon@2x.png");
 	}
 
 	@Override
-	public File getFightButtonActive() {
-		return fightButtonActive;
+	public BufferedImage getAOETargetCircle() {
+		return getImage("battle_view_AOE@2x.png");
 	}
 
 	@Override
-	public File getUnitInfoButton() {
-		return unitInfoButton;
-	}
-
-	@Override
-	public File getAOETargetCircle() {
-		return new File(bundleFolder, "battle_view_AOE@2x.png");
-	}
-
-	@Override
-	public File getRankInsignia() {
-		return rankInsignia;
-	}
-
-	@Override
-	public File[] glob(String pat) {
-		FilenameFilter filter = new GlobFilter(pat);
-		Map<String, File> files = new HashMap<>();
-		addFiles(files, bundleFolder.listFiles(filter));
-		String[] names = files.keySet().toArray(new String[0]);
-		Arrays.sort(names);
-		File[] result = new File[names.length];
-		for (int i = 0; i < names.length; i++)
-			result[i] = files.get(names[i]);
-		return result;
-	}
-
-	private static void addFiles(Map<String, File> dest, File[] src) {
-		if (src != null)
-			for (File file : src)
-				dest.put(file.getName().toLowerCase(), file);
+	public BufferedImage getRankInsignia() {
+		return getImage("icon_spSmall@2x~ipad.png");
 	}
 }

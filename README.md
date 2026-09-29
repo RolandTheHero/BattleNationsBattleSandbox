@@ -6,10 +6,13 @@ Parts of BaNG is used to parse unit stats and play animations.
 The modifications to the BaNG are as follows:
 - The JSON library used (javax.json) is switched out for [org.json](https://mvnrepository.com/artifact/org.json/json).
 - Added the parsing of more attributes of various files.
+- Added parsing of Madrona's Unity game files.
 
-Other work in this project is original based off of the game Battle Nations.
+Other work in this project is almost entirely (99.9%+) AI generated.
 
-A copy of the Battle Nations game files is required. This project does not include them! Currently, only pre-Madrona versions of the game files can be loaded.
+A copy of the Battle Nations game files is required. This project does not include them! Both the pre-Madrona bundle folder and an install of the Madrona (Unity) version can be loaded.
+
+This project is licensed under the GNU General Public License, version 2 (see [LICENSE](LICENSE)). It includes and adapts third-party code and data under compatible licences; see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for the credits and notices.
 
 Battle Nations is (C) Madrona Games, Inc.
 This tool is an unofficial community project. When sharing screenshots, videos or other media of this tool, you must make clear that it comes from this tool and not from the original game.

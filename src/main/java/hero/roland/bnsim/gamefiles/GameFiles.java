@@ -1,14 +1,25 @@
+/*
+ * Battle Nations Battle Sandbox
+ *
+ * Adapted from Battle Nations Animation Grabber (BaNG),
+ * https://github.com/bobmath/BattleNationsAnimation
+ * Copyright (C) 2014 Robert Mathews. Licensed under the GNU General Public
+ * License version 2; see the LICENSE file.
+ *
+ * Modified 2026 by RolandTheHero; the git history records each change and
+ * its date.
+ */
+
 package hero.roland.bnsim.gamefiles;
 
+import java.awt.image.BufferedImage;
 import java.io.File;
 import java.io.IOException;
-import java.io.InputStream;
-
-import org.json.JSONObject;
 
 import hero.roland.bnsim.model.Ability;
 import hero.roland.bnsim.model.Animation;
 import hero.roland.bnsim.model.Bitmap;
+import hero.roland.bnsim.model.Sound;
 import hero.roland.bnsim.model.StatusEffect;
 import hero.roland.bnsim.model.Text;
 import hero.roland.bnsim.model.Timeline;
@@ -18,8 +29,8 @@ import hero.roland.bnsim.model.Unit;
  * A loaded set of game files: the units, abilities, status effects, text and
  * sprite assets the simulator draws on. Different game versions store these
  * differently, so each version is a separate implementation that holds its own
- * data and parses its own files; see {@link AbstractGameFiles} and
- * {@link OldGameFiles}.
+ * data and parses its own files into the model classes; see
+ * {@link AbstractGameFiles}, {@link OldGameFiles} and {@link NewGameFiles}.
  *
  * <p>One bundle is "active" at a time (see {@link #active()}). The model classes'
  * static lookups ({@code Unit.get}, {@code Animation.get}, ...) delegate here, so
@@ -73,42 +84,45 @@ public interface GameFiles {
 	/** The bitmap (sprite sheet) with the given name. */
 	Bitmap getBitmap(String name) throws IOException;
 
-	// --- Raw file access -----------------------------------------------------
+	// --- Battlefield backgrounds (loaded lazily, cached in memory) -----------
 
-	/** Reads and parses a JSON file from the bundle folder. */
-	JSONObject readJson(String filename) throws IOException;
+	/** The names of the available battlefield backgrounds, the default first. */
+	String[] getBackgroundNames() throws IOException;
 
-	/** Reads and parses JSON from a stream, closing it afterwards. */
-	JSONObject readJson(InputStream in) throws IOException;
+	/** The battlefield background with the given name, or {@code null} if there is none. */
+	BufferedImage getBackground(String name) throws IOException;
 
-	/** Opens a file in the bundle folder for reading. */
-	InputStream open(String filename) throws IOException;
+	// --- Images and sounds (loaded lazily, cached in memory) -----------------
+	// Names are the old format's file names (e.g. damageBullet@2x.png); the
+	// remaster's loader maps them to its own assets. Anything missing or
+	// unreadable comes back null, and callers carry on without it.
 
-	/** A file inside the loaded bundle folder (may not exist). */
-	File file(String filename);
+	/** The image with the given name, or {@code null}. */
+	BufferedImage getImage(String name);
 
-	/** The bundle files whose names match the given glob pattern. */
-	File[] glob(String pat);
+	/** The sound with the given name (the extension may be left off), or {@code null}. */
+	Sound getSound(String name);
 
-	/** The "Pass" button background image (an {@code @2x} asset; may not exist). */
-	File getPassButton();
+	/** The "Pass" button background image, or {@code null}. */
+	BufferedImage getPassButton();
 
-	/** The image marking units that cannot be targeted (an {@code @2x} asset; may not exist). */
-	File getDoNotTargetCircle();
+	/** The image marking units that cannot be targeted, or {@code null}. */
+	BufferedImage getDoNotTargetCircle();
 
-	File getCritTab();
+	/** The splat drawn behind a critical hit's damage number, or {@code null}. */
+	BufferedImage getCritTab();
 
-	File getMagGlass();
+	BufferedImage getMagGlass();
 
-	File getFightButtonInactive();
+	BufferedImage getFightButtonInactive();
 
-	File getFightButtonActive();
+	BufferedImage getFightButtonActive();
 
-	File getUnitInfoButton();
+	BufferedImage getUnitInfoButton();
 
-	File getAOETargetCircle();
+	BufferedImage getAOETargetCircle();
 
-	File getRankInsignia();
+	BufferedImage getRankInsignia();
 
 	// --- Active bundle + loading --------------------------------------------
 
@@ -124,14 +138,14 @@ public interface GameFiles {
 
 	/**
 	 * Loads the game files in {@code folder}, makes the result the active bundle,
-	 * and returns it. The implementation chosen determines how the files are
-	 * parsed, so differently-formatted game versions can be supported here.
+	 * and returns it. A Unity remaster install (or its bundle folder) is read with
+	 * {@link NewGameFiles}; anything else is taken to be an old-format bundle
+	 * folder and read with {@link OldGameFiles}.
 	 */
 	static GameFiles load(File folder) throws IOException {
-		// TODO: detect the game version (e.g. by probing file names/formats) and
-		// pick a matching AbstractGameFiles subclass. Only the current format exists
-		// today, so always use StandardGameFiles.
-		AbstractGameFiles gf = new OldGameFiles(folder);
+		AbstractGameFiles gf = NewGameFiles.findBundleFolder(folder) != null
+				? new NewGameFiles(folder)
+				: new OldGameFiles(folder);
 		gf.loadAll();
 		setActive(gf);
 		return gf;

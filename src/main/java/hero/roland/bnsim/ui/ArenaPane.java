@@ -11,13 +11,10 @@ import java.awt.Graphics2D;
 import java.awt.Insets;
 import java.awt.RenderingHints;
 import java.awt.image.BufferedImage;
-import java.io.File;
-import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.function.Consumer;
 
-import javax.imageio.ImageIO;
 import javax.swing.Box;
 import javax.swing.BorderFactory;
 import javax.swing.BoxLayout;
@@ -132,6 +129,7 @@ public class ArenaPane extends JLayeredPane {
 	 */
 	public void refreshLanguage() {
 		stylePassButton();
+		styleStartButton(); // the fight image may carry a localized label
 		field.refreshAttacker();
 	}
 
@@ -149,7 +147,7 @@ public class ArenaPane extends JLayeredPane {
 		viewEnemyButton.setSelected(false);
 		viewEnemyButton.setVisible(battle);
 		if (battle)
-			music.loop(GameFiles.active().file("battle_01.mp3"));
+			music.loop(GameFiles.active().getSound("battle_01.mp3"));
 		else {
 			music.stop();
 			attackPanel.setVisible(false);
@@ -188,7 +186,7 @@ public class ArenaPane extends JLayeredPane {
 		info.addActionListener(e -> UnitInfoDialog.show(this, unit));
 		// Swap the "!" text for the unit-info icon image when that asset is present,
 		// keeping the plain text button as the fallback when it's missing.
-		BufferedImage infoImg = loadButtonImage(GameFiles.active().getUnitInfoButton());
+		BufferedImage infoImg = GameFiles.active().getUnitInfoButton();
 		if (infoImg != null) {
 			infoImg = scaleToMax(infoImg, 24);
 			info.setText(null);
@@ -338,7 +336,7 @@ public class ArenaPane extends JLayeredPane {
 	 */
 	private JLabel makeRankInsignia(PlacedUnit unit) {
 		String text = Integer.toString(unit.getRank());
-		BufferedImage img = loadButtonImage(GameFiles.active().getRankInsignia());
+		BufferedImage img = GameFiles.active().getRankInsignia();
 		if (img == null) {
 			JLabel label = new JLabel(text);
 			label.setFont(label.getFont().deriveFont(Font.BOLD));
@@ -414,7 +412,7 @@ public class ArenaPane extends JLayeredPane {
 	private void stylePassButton() {
 		String passText = GameFiles.active().getText("pass");
 		passButton.setText(passText);
-		BufferedImage img = loadButtonImage(GameFiles.active().getPassButton());
+		BufferedImage img = GameFiles.active().getPassButton();
 		if (img == null)
 			return;
 		passButton.setIcon(new ImageIcon(img));
@@ -477,31 +475,20 @@ public class ArenaPane extends JLayeredPane {
 	 * is missing.
 	 */
 	private void styleStartButton() {
-		BufferedImage inactive = loadButtonImage(GameFiles.active().getFightButtonInactive());
+		BufferedImage inactive = GameFiles.active().getFightButtonInactive();
 		if (inactive == null)
 			return;
 		startButton.setText(null);
 		startButton.setIcon(new ImageIcon(inactive));
 		// Use the active image while pressed; fall back to a darkened copy of the
 		// inactive image if that asset is missing.
-		BufferedImage active = loadButtonImage(GameFiles.active().getFightButtonActive());
+		BufferedImage active = GameFiles.active().getFightButtonActive();
 		startButton.setPressedIcon(new ImageIcon(active != null ? active : darken(inactive, 0.7f)));
 		startButton.setBorderPainted(false);
 		startButton.setContentAreaFilled(false);
 		startButton.setFocusPainted(false);
 		startButton.setBorder(BorderFactory.createEmptyBorder());
 		startButton.setMargin(new Insets(0, 0, 0, 0));
-	}
-
-	/** Loads a button image at its native size, or null if it's missing or unreadable. */
-	private BufferedImage loadButtonImage(File file) {
-		if (file == null || !file.isFile())
-			return null;
-		try {
-			return ImageIO.read(file);
-		} catch (IOException e) {
-			return null;
-		}
 	}
 
 	/**
@@ -511,7 +498,7 @@ public class ArenaPane extends JLayeredPane {
 	 * missing.
 	 */
 	private void styleViewEnemyButton() {
-		BufferedImage img = loadButtonImage(GameFiles.active().getMagGlass());
+		BufferedImage img = GameFiles.active().getMagGlass();
 		if (img == null)
 			return;
 		viewEnemyButton.setText(null);
@@ -545,19 +532,8 @@ public class ArenaPane extends JLayeredPane {
 	}
 
 	private BufferedImage loadImage(String name, int maxSize) {
-		if (name == null)
-			return null;
-		File file = GameFiles.active().file(name);
-		if (!file.isFile())
-			return null;
-		try {
-			BufferedImage img = ImageIO.read(file);
-			if (img == null)
-				return null;
-			return scaleToMax(img, maxSize);
-		} catch (IOException e) {
-			return null;
-		}
+		BufferedImage img = GameFiles.active().getImage(name);
+		return img == null ? null : scaleToMax(img, maxSize);
 	}
 
 	@Override
