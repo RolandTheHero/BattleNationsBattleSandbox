@@ -5,7 +5,7 @@
     <modelVersion>4.0.0</modelVersion>
 
     <groupId>hero.roland.bnsim</groupId>
-    <artifactId>bnbattlesimulator</artifactId>
+    <artifactId>bnbattlesandbox</artifactId>
     <version>1.0</version>
 
     <properties>

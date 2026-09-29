@@ -16,7 +16,7 @@ import hero.roland.bnsim.BattleSimulator;
 public class BattleFrame extends JFrame {
 
 	public BattleFrame() {
-		super("Battle Nations Battle Simulator");
+		super("Battle Nations Battle Sandbox");
 		setDefaultCloseOperation(EXIT_ON_CLOSE);
 		setLayout(new BorderLayout());
 
