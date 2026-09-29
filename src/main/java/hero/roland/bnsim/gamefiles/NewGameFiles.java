@@ -340,7 +340,7 @@ public class NewGameFiles extends AbstractGameFiles {
 
 	private StatusEffect parseStatusEffect(JSONObject stats) {
 		StatusEffect.Definition def = new StatusEffect.Definition();
-		def.duration = stats.optInt("duration", 1);
+		def.duration = stats.optInt("duration", 1) + 1; // Recent game update changed how duration works, this is a bandaid fix
 		def.diminishing = stats.optBoolean("dot_diminishing", true);
 		def.abilityDamageMultiplier = stats.optDouble("dot_ability_damage_mult", 0d);
 		if (stats.has("dot_damage_type"))
