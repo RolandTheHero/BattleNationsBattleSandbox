@@ -9,6 +9,7 @@ The modifications to the BaNG are as follows:
 - Added parsing of Madrona's Unity game files.
 
 Other work in this project is almost entirely (99.9%+) AI generated.
+This began as a test to see how far the Battle Nations battle system could be recreated using AI.
 
 A copy of the Battle Nations game files is required. This project does not include them! Both the pre-Madrona bundle folder and an install of the Madrona (Unity) version can be loaded.
 
