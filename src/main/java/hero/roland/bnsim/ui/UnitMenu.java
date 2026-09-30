@@ -1,6 +1,7 @@
 package hero.roland.bnsim.ui;
 
 import java.awt.BorderLayout;
+import java.awt.Component;
 import java.awt.Dimension;
 import java.awt.FlowLayout;
 import java.awt.GridLayout;
@@ -16,6 +17,7 @@ import java.util.function.Consumer;
 import javax.swing.BorderFactory;
 import javax.swing.Box;
 import javax.swing.BoxLayout;
+import javax.swing.DefaultListCellRenderer;
 import javax.swing.DefaultListModel;
 import javax.swing.JButton;
 import javax.swing.JCheckBox;
@@ -165,8 +167,16 @@ public class UnitMenu extends JPanel {
 		top.add(Box.createVerticalStrut(4));
 		top.add(searchPanel);
 
-		// Unit list.
+		// Unit list, labelled "NAME (Side)"; only the label changes, not the unit.
 		unitList.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+		unitList.setCellRenderer(new DefaultListCellRenderer() {
+			@Override
+			public Component getListCellRendererComponent(JList<?> list, Object value,
+					int index, boolean isSelected, boolean cellHasFocus) {
+				return super.getListCellRendererComponent(list, listLabel((Unit) value),
+						index, isSelected, cellHasFocus);
+			}
+		});
 		unitList.addMouseListener(new MouseAdapter() {
 			@Override
 			public void mouseClicked(MouseEvent e) {
@@ -592,8 +602,13 @@ public class UnitMenu extends JPanel {
 				listModel.addElement(u);
 	}
 
+	/** The unit's label in the list: its name followed by its side, e.g. "NAME (Hostile)". */
+	private static String listLabel(Unit u) {
+		return u.getSide() == null ? u.getName() : u.getName() + " (" + u.getSide() + ")";
+	}
+
 	private static boolean matches(Unit u, String q) {
-		return contains(u.getName(), q)
+		return contains(listLabel(u), q)
 			|| contains(u.getShortName(), q)
 			|| contains(u.getId(), q);
 	}
