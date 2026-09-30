@@ -5,6 +5,8 @@ import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
+import java.util.IdentityHashMap;
+import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.function.BooleanSupplier;
 
@@ -50,10 +52,31 @@ public final class SoundPlayer {
 		return volume;
 	}
 
-	/** Plays the given sound once, asynchronously. */
+	/**
+	 * Window within which a repeat of the same sound is dropped. Identical sounds
+	 * started together sum in phase into one much louder sound (e.g. an attack
+	 * landing on several units in the same frame), so only the first plays. Kept
+	 * below a battle frame (32 ms) so hits deliberately staggered by a frame or
+	 * more still each play. WARNING: Without this, you are going to lose your ears.
+	 */
+	private static final long DUPLICATE_WINDOW_NANOS = 20_000_000L;
+
+	/** When each sound last started ({@link System#nanoTime}), by identity — sounds
+	 * are cached per name, so a repeat is the same instance. */
+	private static final Map<Sound, Long> lastStarted = new IdentityHashMap<>();
+
+	/** Plays the given sound once, asynchronously. A repeat of a sound that has only
+	 * just started is skipped (see {@link #DUPLICATE_WINDOW_NANOS}). */
 	public static void play(Sound sound) {
 		if (sound == null)
 			return;
+		long now = System.nanoTime();
+		synchronized (lastStarted) {
+			Long last = lastStarted.get(sound);
+			if (last != null && now - last < DUPLICATE_WINDOW_NANOS)
+				return;
+			lastStarted.put(sound, now);
+		}
 		Thread thread = new Thread(() -> playBlocking(sound), "sound-fx");
 		thread.setDaemon(true);
 		thread.start();
