@@ -1,4 +1,4 @@
-package hero.roland.bnsim.gamefiles;
+package hero.roland.bnsim.gamefiles.newformat;
 
 import java.awt.BasicStroke;
 import java.awt.Color;
@@ -31,6 +31,7 @@ import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
+import hero.roland.bnsim.gamefiles.AbstractGameFiles;
 import hero.roland.bnsim.model.Ability;
 import hero.roland.bnsim.model.Bitmap;
 import hero.roland.bnsim.model.Frame;
@@ -184,7 +185,7 @@ public class NewGameFiles extends AbstractGameFiles {
 	 * The folder holding the game's asset bundles, looked for in and below
 	 * {@code folder}, or {@code null} if it isn't a new-format install.
 	 */
-	public static File findBundleFolder(File folder) {
+	private static File findBundleFolder(File folder) {
 		String[] candidates = {
 			"", "aa/StandaloneWindows64", "StreamingAssets/aa/StandaloneWindows64",
 			"BattleNations_Data/StreamingAssets/aa/StandaloneWindows64",
@@ -221,7 +222,7 @@ public class NewGameFiles extends AbstractGameFiles {
 	}
 
 	@Override
-	void loadAll() throws IOException {
+	protected void loadAll() throws IOException {
 		try {
 			super.loadAll();
 			animationPackages = new HashMap<>();

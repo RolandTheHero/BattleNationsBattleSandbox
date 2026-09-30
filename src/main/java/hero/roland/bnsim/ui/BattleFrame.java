@@ -2,6 +2,8 @@ package hero.roland.bnsim.ui;
 
 import java.awt.BorderLayout;
 import java.awt.Dimension;
+import java.awt.GraphicsEnvironment;
+import java.awt.Rectangle;
 
 import javax.swing.JComponent;
 import javax.swing.JFrame;
@@ -69,6 +71,9 @@ public class BattleFrame extends JFrame {
 		add(split, BorderLayout.CENTER);
 
 		pack();
+		// Open wider than packed: a 16:9 window at the packed height, within the screen.
+		Rectangle screen = GraphicsEnvironment.getLocalGraphicsEnvironment().getMaximumWindowBounds();
+		setSize(Math.min(Math.max(getWidth(), getHeight() * 16 / 9), screen.width), getHeight());
 		setLocationRelativeTo(null);
 	}
 }

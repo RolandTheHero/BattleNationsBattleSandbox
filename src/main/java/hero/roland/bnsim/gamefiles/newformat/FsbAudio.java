@@ -6,7 +6,7 @@
  * (JCraft, Inc., GNU LGPL 2.1). The full notices are in THIRD_PARTY_NOTICES.md.
  */
 
-package hero.roland.bnsim.gamefiles;
+package hero.roland.bnsim.gamefiles.newformat;
 
 import java.nio.BufferUnderflowException;
 import java.nio.ByteBuffer;

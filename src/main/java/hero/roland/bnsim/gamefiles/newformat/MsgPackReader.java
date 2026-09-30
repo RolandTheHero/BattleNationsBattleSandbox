@@ -1,4 +1,4 @@
-package hero.roland.bnsim.gamefiles;
+package hero.roland.bnsim.gamefiles.newformat;
 
 import java.nio.charset.StandardCharsets;
 

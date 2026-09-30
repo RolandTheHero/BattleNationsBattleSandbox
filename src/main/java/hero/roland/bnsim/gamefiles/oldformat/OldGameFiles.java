@@ -10,7 +10,7 @@
  * its date.
  */
 
-package hero.roland.bnsim.gamefiles;
+package hero.roland.bnsim.gamefiles.oldformat;
 
 import java.awt.Polygon;
 import java.awt.geom.AffineTransform;
@@ -41,6 +41,7 @@ import org.json.JSONException;
 import org.json.JSONObject;
 import org.json.JSONTokener;
 
+import hero.roland.bnsim.gamefiles.AbstractGameFiles;
 import hero.roland.bnsim.model.Ability;
 import hero.roland.bnsim.model.Bitmap;
 import hero.roland.bnsim.model.Frame;

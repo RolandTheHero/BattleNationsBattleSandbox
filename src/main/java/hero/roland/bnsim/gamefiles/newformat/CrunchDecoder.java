@@ -29,7 +29,7 @@
  * 3. This notice may not be removed or altered from any source distribution.
  */
 
-package hero.roland.bnsim.gamefiles;
+package hero.roland.bnsim.gamefiles.newformat;
 
 import java.util.Arrays;
 

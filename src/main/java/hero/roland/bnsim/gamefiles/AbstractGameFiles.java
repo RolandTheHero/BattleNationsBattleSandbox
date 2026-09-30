@@ -77,7 +77,7 @@ public abstract class AbstractGameFiles implements GameFiles {
 	 * Loads all eager game data (in dependency order). Sprite data is left to
 	 * load lazily.
 	 */
-	void loadAll() throws IOException {
+	protected void loadAll() throws IOException {
 		loadText();
 		loadStatusFamilies();
 		loadStatusEffects();

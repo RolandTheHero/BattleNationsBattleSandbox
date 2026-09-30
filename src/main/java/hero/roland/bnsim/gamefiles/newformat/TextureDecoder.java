@@ -8,7 +8,7 @@
  * THIRD_PARTY_NOTICES.md.
  */
 
-package hero.roland.bnsim.gamefiles;
+package hero.roland.bnsim.gamefiles.newformat;
 
 import java.awt.image.BufferedImage;
 import java.awt.image.DataBufferInt;

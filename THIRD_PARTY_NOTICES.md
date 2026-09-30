@@ -75,7 +75,7 @@ Released into the public domain ("Public Domain.", per its LICENSE file).
 
 https://github.com/Unity-Technologies/crunch (branch `unity`)
 
-`src/main/java/hero/roland/bnsim/gamefiles/CrunchDecoder.java` is an altered
+`src/main/java/hero/roland/bnsim/gamefiles/newformat/CrunchDecoder.java` is an altered
 version: a Java port of `crn_decomp.h`, `crn_defs.h` and `crnlib.h`, cut down to
 decoding DXT1/DXT5 textures. It is not the original software.
 

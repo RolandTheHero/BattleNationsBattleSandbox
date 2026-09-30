@@ -16,6 +16,8 @@ import java.awt.image.BufferedImage;
 import java.io.File;
 import java.io.IOException;
 
+import hero.roland.bnsim.gamefiles.newformat.NewGameFiles;
+import hero.roland.bnsim.gamefiles.oldformat.OldGameFiles;
 import hero.roland.bnsim.model.Ability;
 import hero.roland.bnsim.model.Animation;
 import hero.roland.bnsim.model.Bitmap;
@@ -136,16 +138,36 @@ public interface GameFiles {
 		Holder.instance = gf;
 	}
 
+	/** The game versions whose files can be loaded; {@code toString} is the UI label. */
+	enum Format {
+		/** The Madrona (Unity) remaster, read with {@link NewGameFiles}. */
+		NEW("Madrona (Unity)"),
+		/** The Z2 bundle folder, read with {@link OldGameFiles}. */
+		OLD("Z2 bundle");
+
+		private final String label;
+
+		Format(String label) {
+			this.label = label;
+		}
+
+		@Override
+		public String toString() {
+			return label;
+		}
+	}
+
 	/**
-	 * Loads the game files in {@code folder}, makes the result the active bundle,
-	 * and returns it. A Unity remaster install (or its bundle folder) is read with
-	 * {@link NewGameFiles}; anything else is taken to be an old-format bundle
-	 * folder and read with {@link OldGameFiles}.
+	 * Loads the game files in {@code folder} as the given format, makes the
+	 * result the active bundle, and returns it. For {@link Format#NEW} the folder
+	 * may be the install folder, its {@code BattleNations_Data} folder, or the
+	 * bundle folder itself.
 	 */
-	static GameFiles load(File folder) throws IOException {
-		AbstractGameFiles gf = NewGameFiles.findBundleFolder(folder) != null
-				? new NewGameFiles(folder)
-				: new OldGameFiles(folder);
+	static GameFiles load(File folder, Format format) throws IOException {
+		AbstractGameFiles gf = switch (format) {
+			case NEW -> new NewGameFiles(folder);
+			case OLD -> new OldGameFiles(folder);
+		};
 		gf.loadAll();
 		setActive(gf);
 		return gf;
