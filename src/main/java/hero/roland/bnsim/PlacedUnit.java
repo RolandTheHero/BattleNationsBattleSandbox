@@ -448,7 +448,16 @@ public class PlacedUnit {
 	 * battle.
 	 */
 	public void startBattle() {
-		combatRulesEnabled = rules.isCombatRulesEnabled();
+		startBattle(rules.isCombatRulesEnabled());
+	}
+
+	/**
+	 * As {@link #startBattle()}, but with the combat-rules toggle given explicitly
+	 * rather than read from {@link BattleRules} — used for units that join a battle
+	 * already under way (death-spawns), which follow the battle's original snapshot.
+	 */
+	public void startBattle(boolean combatRulesEnabled) {
+		this.combatRulesEnabled = combatRulesEnabled;
 		ammo.clear();
 		reloadRemaining.clear();
 		cooldownRemaining.clear();

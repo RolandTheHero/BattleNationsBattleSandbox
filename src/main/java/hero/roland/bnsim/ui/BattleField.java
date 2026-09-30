@@ -1725,8 +1725,12 @@ public class BattleField extends JComponent {
 		Unit spawn = Unit.get(spawnId);
 		if (spawn != null) {
 			PlacedUnit placed = sim.spawnAt(spawn, dying.getSide(), dying.getCell());
-			if (placed != null)
+			if (placed != null) {
+				// Joining mid-battle: set up ammo, prep time and cooldowns under the
+				// same combat-rules snapshot as the unit it replaces.
+				placed.startBattle(dying.isCombatRulesEnabled());
 				placed.beginIdle(tick); // its own idle timeline, like a freshly placed unit
+			}
 		}
 	}
 
