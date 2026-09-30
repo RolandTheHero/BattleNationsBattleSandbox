@@ -29,6 +29,7 @@ import javax.swing.JScrollPane;
 import javax.swing.JTextField;
 import javax.swing.ListSelectionModel;
 import javax.swing.SwingConstants;
+import javax.swing.SwingUtilities;
 import javax.swing.event.DocumentEvent;
 import javax.swing.event.DocumentListener;
 import javax.swing.text.AbstractDocument;
@@ -177,11 +178,27 @@ public class UnitMenu extends JPanel {
 						index, isSelected, cellHasFocus);
 			}
 		});
+		// Double left-click adds to the player side, double right-click to the enemy.
 		unitList.addMouseListener(new MouseAdapter() {
 			@Override
+			public void mousePressed(MouseEvent e) {
+				// JList only selects on left-click; select the row under a right-click
+				// too, so a double right-click places the unit that was clicked.
+				if (SwingUtilities.isRightMouseButton(e)) {
+					int index = unitList.locationToIndex(e.getPoint());
+					if (index >= 0 && unitList.getCellBounds(index, index).contains(e.getPoint()))
+						unitList.setSelectedIndex(index);
+				}
+			}
+
+			@Override
 			public void mouseClicked(MouseEvent e) {
-				if (e.getClickCount() == 2)
+				if (e.getClickCount() != 2)
+					return;
+				if (SwingUtilities.isLeftMouseButton(e))
 					placeSelected(Side.PLAYER);
+				else if (SwingUtilities.isRightMouseButton(e))
+					placeSelected(Side.ENEMY);
 			}
 		});
 
