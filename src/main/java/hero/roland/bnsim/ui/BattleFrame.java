@@ -32,6 +32,7 @@ public class BattleFrame extends JFrame {
 		UnitMenu menu = new UnitMenu();
 		menu.setPlacer(arena.getField()::placeUnit);
 		menu.setSideClearer(arena.getField()::clearSide);
+		menu.setSideMaxRanker(arena.getField()::maxRankSide);
 		menu.setBackgroundSelector(arena.getField()::setBackgroundImage);
 		menu.setEnvironmentStatusEffectListener(arena.getField()::setEnvironmentStatusEffect);
 		menu.setCombatRulesListener(arena.getField()::setCombatRulesEnabled);

@@ -140,6 +140,12 @@ public class PlacedUnit {
 		resetHealth();
 	}
 
+	/** Sets the rank to the unit's highest, restoring full health for it. */
+	public void setToMaxRank() {
+		rank = getMaxRank();
+		resetHealth();
+	}
+
 	/** Restores full health and armor for the current rank. */
 	public void resetHealth() {
 		if (unit.getMaxRank() >= 1) {

@@ -80,6 +80,7 @@ public class UnitMenu extends JPanel {
 
 	private BiConsumer<Unit, Side> placer;
 	private Consumer<Side> sideClearer;
+	private Consumer<Side> sideMaxRanker;
 	private Consumer<String> backgroundSelector;
 	private Consumer<String> envEffectListener;
 	private Consumer<Boolean> combatRulesListener;
@@ -211,6 +212,18 @@ public class UnitMenu extends JPanel {
 		addRow.add(addPlayer);
 		addRow.add(addEnemy);
 
+		// Max-rank-side buttons. Slim margins so the long labels fit the default width.
+		JButton maxRankPlayer = new JButton("Max Rank Player");
+		maxRankPlayer.addActionListener(e -> maxRankSide(Side.PLAYER));
+		JButton maxRankEnemy = new JButton("Max Rank Enemy");
+		maxRankEnemy.addActionListener(e -> maxRankSide(Side.ENEMY));
+		Insets slim = new Insets(2, 2, 2, 2);
+		maxRankPlayer.setMargin(slim);
+		maxRankEnemy.setMargin(slim);
+		JPanel maxRankRow = new JPanel(new GridLayout(1, 2, 4, 0));
+		maxRankRow.add(maxRankPlayer);
+		maxRankRow.add(maxRankEnemy);
+
 		// Clear-side buttons.
 		JButton clearPlayer = new JButton("Clear Player");
 		clearPlayer.addActionListener(e -> clearSide(Side.PLAYER));
@@ -220,9 +233,10 @@ public class UnitMenu extends JPanel {
 		clearRow.add(clearPlayer);
 		clearRow.add(clearEnemy);
 
-		JPanel bottom = new JPanel(new BorderLayout(0, 4));
-		bottom.add(addRow, BorderLayout.NORTH);
-		bottom.add(clearRow, BorderLayout.SOUTH);
+		JPanel bottom = new JPanel(new GridLayout(3, 1, 0, 4));
+		bottom.add(addRow);
+		bottom.add(maxRankRow);
+		bottom.add(clearRow);
 
 		content.add(top, BorderLayout.NORTH);
 		content.add(new JScrollPane(unitList), BorderLayout.CENTER);
@@ -237,6 +251,11 @@ public class UnitMenu extends JPanel {
 	/** Sets the callback invoked to clear all units from a side. */
 	public void setSideClearer(Consumer<Side> sideClearer) {
 		this.sideClearer = sideClearer;
+	}
+
+	/** Sets the callback invoked to set all units on a side to their maximum rank. */
+	public void setSideMaxRanker(Consumer<Side> sideMaxRanker) {
+		this.sideMaxRanker = sideMaxRanker;
 	}
 
 	/**
@@ -298,6 +317,11 @@ public class UnitMenu extends JPanel {
 	private void clearSide(Side side) {
 		if (sideClearer != null)
 			sideClearer.accept(side);
+	}
+
+	private void maxRankSide(Side side) {
+		if (sideMaxRanker != null)
+			sideMaxRanker.accept(side);
 	}
 
 	/**

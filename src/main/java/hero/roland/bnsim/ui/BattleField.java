@@ -703,6 +703,18 @@ public class BattleField extends JComponent {
 		repaint();
 	}
 
+	/** Sets every unit on the given side to its maximum rank (setup mode). */
+	public void maxRankSide(Side side) {
+		for (PlacedUnit unit : sim.placedUnits())
+			if (unit.getSide() == side)
+				unit.setToMaxRank();
+		// Refresh the info panel's rank and health if a unit on this side is selected.
+		if (selectedAttacker != null && selectedAttacker.getSide() == side
+				&& attackerSelectedListener != null)
+			attackerSelectedListener.accept(selectedAttacker);
+		repaint();
+	}
+
 	/** Right-click during setup: cycle the unit's rank up to its maximum. */
 	private void cycleRank(Point p) {
 		PlacedUnit unit = sim.pick(p);
