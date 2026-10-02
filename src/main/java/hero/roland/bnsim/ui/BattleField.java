@@ -45,7 +45,7 @@ import hero.roland.bnsim.model.Unit;
 
 /**
  * The central battlefield component. In setup mode it draws the two parallel
- * isometric grids and lets the user drag units between cells on their own side.
+ * isometric grids and lets the user drag units between cells on either side.
  * In battle mode the user selects a player unit, picks one of its attacks, sees
  * the targetable enemy tiles highlighted in blue, and clicks a tile to fire —
  * playing the attack animation and flashing the struck tiles red.
@@ -1390,11 +1390,11 @@ public class BattleField extends JComponent {
 		// selected); setup mode also shows the drag-drop highlight.
 		drawTargetable(g2);
 		if (!battleMode && dragging != null && dragPoint != null) {
-			Cell target = geometry.cellAt(dragging.getSide(), dragPoint);
+			BattleSimulator.SideCell target = sim.dropTarget(dragging, dragPoint);
 			if (target != null) {
 				g2.setColor(DROP_HIGHLIGHT);
-				g2.fillPolygon(geometry.cellDiamond(dragging.getSide(),
-						target.col(), target.row()));
+				g2.fillPolygon(geometry.cellDiamond(target.side(),
+						target.cell().col(), target.cell().row()));
 			}
 		}
 

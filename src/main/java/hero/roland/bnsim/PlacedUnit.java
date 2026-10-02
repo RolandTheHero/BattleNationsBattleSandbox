@@ -27,7 +27,7 @@ import hero.roland.bnsim.model.Unit;
 public class PlacedUnit {
 
 	private final Unit unit;
-	private final Side side;
+	private Side side;
 	private Cell cell;
 
 	/** Rank (1-based, up to the unit's max rank); set during placement. */
@@ -122,6 +122,18 @@ public class PlacedUnit {
 
 	void setCell(Cell cell) {
 		this.cell = cell;
+	}
+
+	/**
+	 * Moves this unit to the other side of the battlefield (setup mode). The idle
+	 * animation is dropped so it reloads facing the right way for the new side.
+	 */
+	void setSide(Side side) {
+		if (this.side == side)
+			return;
+		this.side = side;
+		animation = null;
+		animationLoaded = false;
 	}
 
 	// --- Rank and health ---------------------------------------------------

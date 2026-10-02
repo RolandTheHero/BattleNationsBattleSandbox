@@ -22,8 +22,8 @@ import hero.roland.bnsim.model.Unit;
  * moving existing ones, and snapping pixel coordinates to grid cells (via
  * {@link GridGeometry}). It holds no Swing/UI state.
  *
- * <p>A unit may only move within its own side. Dropping a unit onto an
- * occupied cell swaps the two units.
+ * <p>A unit may move anywhere on either side. Dropping a unit onto an
+ * occupied cell swaps the two units, exchanging sides if they differ.
  */
 public class BattleSimulator {
 
@@ -144,30 +144,52 @@ public class BattleSimulator {
 	}
 
 	/**
-	 * Snaps the unit to the cell nearest the given pixel, restricted to the
-	 * unit's own side. If the target cell holds another unit, the two swap. If
-	 * the drop is outside the unit's grid, the unit is removed from the board.
-	 * Returns {@code true} if the unit is still on the board afterwards.
+	 * The cell (and its side) a unit dragged to the given pixel would land on: a
+	 * cell on its own side if the pixel is over that grid, otherwise one on the
+	 * opposing side, or {@code null} when the pixel is off both grids.
+	 */
+	public SideCell dropTarget(PlacedUnit unit, Point2D pixel) {
+		Side own = unit.getSide();
+		Cell cell = geometry.cellAt(own, pixel);
+		if (cell != null)
+			return new SideCell(own, cell);
+		Side other = opponentOf(own);
+		cell = geometry.cellAt(other, pixel);
+		return cell != null ? new SideCell(other, cell) : null;
+	}
+
+	/**
+	 * Snaps the unit to the cell nearest the given pixel, on either side (see
+	 * {@link #dropTarget}); a unit dropped on the other side changes sides. If the
+	 * target cell holds another unit, the two swap — across sides too. If the drop
+	 * is outside both grids, the unit is removed from the board. Returns
+	 * {@code true} if the unit is still on the board afterwards.
 	 */
 	public boolean moveTo(PlacedUnit unit, Point2D pixel) {
-		Side side = unit.getSide();
-		Cell target = geometry.cellAt(side, pixel);
+		SideCell target = dropTarget(unit, pixel);
 		if (target == null) {
-			remove(unit); // dropped off its own grid
+			remove(unit); // dropped off both grids
 			return false;
 		}
 
-		PlacedUnit[][] grid = grids.get(side);
+		Side fromSide = unit.getSide();
 		Cell from = unit.getCell();
-		if (target.equals(from))
+		Side toSide = target.side();
+		Cell to = target.cell();
+		if (toSide == fromSide && to.equals(from))
 			return true;
 
-		PlacedUnit occupant = grid[target.col()][target.row()];
-		grid[target.col()][target.row()] = unit;
-		grid[from.col()][from.row()] = occupant;
-		unit.setCell(target);
-		if (occupant != null)
+		PlacedUnit[][] fromGrid = grids.get(fromSide);
+		PlacedUnit[][] toGrid = grids.get(toSide);
+		PlacedUnit occupant = toGrid[to.col()][to.row()];
+		toGrid[to.col()][to.row()] = unit;
+		fromGrid[from.col()][from.row()] = occupant;
+		unit.setSide(toSide);
+		unit.setCell(to);
+		if (occupant != null) {
+			occupant.setSide(fromSide);
 			occupant.setCell(from);
+		}
 		return true;
 	}
 
