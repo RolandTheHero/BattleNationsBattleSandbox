@@ -169,7 +169,7 @@ public class UnitMenu extends JPanel {
 		top.add(Box.createVerticalStrut(4));
 		top.add(searchPanel);
 
-		// Unit list, labelled "NAME (Side)"; only the label changes, not the unit.
+		// Unit list, labelled "NAME (Rankable)" for multi-rank units; only the label changes, not the unit.
 		unitList.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
 		unitList.setCellRenderer(new DefaultListCellRenderer() {
 			@Override
@@ -643,9 +643,9 @@ public class UnitMenu extends JPanel {
 				listModel.addElement(u);
 	}
 
-	/** The unit's label in the list: its name followed by its side, e.g. "NAME (Hostile)". */
+	/** The unit's label in the list: its name, followed by "(Rankable)" if it has more than one rank. */
 	private static String listLabel(Unit u) {
-		return u.getSide() == null ? u.getName() : u.getName() + " (" + u.getSide() + ")";
+		return u.getMaxRank() > 1 ? u.getName() + " (Rankable)" : u.getName();
 	}
 
 	private static boolean matches(Unit u, String q) {

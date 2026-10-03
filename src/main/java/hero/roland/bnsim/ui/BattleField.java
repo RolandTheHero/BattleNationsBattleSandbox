@@ -91,9 +91,11 @@ public class BattleField extends JComponent {
 	private static final float DAMAGE_FONT_SIZE = 32f;
 	private static final float CRIT_DAMAGE_FONT_SIZE = 36f;
 	private static final float DODGE_FONT_SIZE = 32f;
-	/** Critical-hit (and dodge) text is white, outlined in black this many pixels thick. */
+	/** Critical-hit (and dodge) text is white, outlined in black this many pixels thick
+	 * (normal red damage numbers share the same outline). */
 	private static final Color CRIT_DAMAGE_COLOR = Color.WHITE;
 	private static final int CRIT_OUTLINE = 2;
+	private static final int DAMAGE_OUTLINE = 1;
 	/** The crit banner is drawn at this fraction of its native size, centred on the number. */
 	private static final double CRIT_TAB_SCALE = 0.8;
 	/** Grazed-hit numbers are grey; a dodge (graze with no damage) shows white "DODGE". */
@@ -1814,25 +1816,32 @@ public class BattleField extends JComponent {
 				}
 				// A crit, dodge or miss reads as big text ringed by a solid black
 				// outline so it stays legible over any tile.
-				g2.setColor(Color.BLACK);
-				for (int ox = -CRIT_OUTLINE; ox <= CRIT_OUTLINE; ox++)
-					for (int oy = -CRIT_OUTLINE; oy <= CRIT_OUTLINE; oy++)
-						if (ox != 0 || oy != 0)
-							g2.drawString(text, x + ox, y + oy);
-				g2.setColor(number.miss || number.immune ? GRAZE_DAMAGE_COLOR
+				drawOutlinedString(g2, text, x, y, number.miss || number.immune ? GRAZE_DAMAGE_COLOR
 						: number.dodge ? DODGE_COLOR
-						: CRIT_DAMAGE_COLOR);
-				g2.drawString(text, x, y);
-			} else {
-				// Normal hits are red; a graze is grey.
-				Color color = number.grazed ? GRAZE_DAMAGE_COLOR : DAMAGE_COLOR;
+						: CRIT_DAMAGE_COLOR, CRIT_OUTLINE);
+			} else if (number.grazed) {
+				// A graze is grey with a drop shadow.
 				g2.setColor(Color.BLACK);
 				g2.drawString(text, x + 1, y + 1);
-				g2.setColor(color);
+				g2.setColor(GRAZE_DAMAGE_COLOR);
 				g2.drawString(text, x, y);
+			} else {
+				// Normal hits are red, outlined in black like a crit.
+				drawOutlinedString(g2, text, x, y, DAMAGE_COLOR, DAMAGE_OUTLINE);
 			}
 			g2.dispose();
 		}
+	}
+
+	/** Draws {@code text} in {@code color}, ringed by a solid black outline {@link #CRIT_OUTLINE} pixels thick. */
+	private static void drawOutlinedString(Graphics2D g, String text, int x, int y, Color color, int thickness) {
+		g.setColor(Color.BLACK);
+		for (int ox = -thickness; ox <= thickness; ox++)
+			for (int oy = -thickness; oy <= thickness; oy++)
+				if (ox != 0 || oy != 0)
+					g.drawString(text, x + ox, y + oy);
+		g.setColor(color);
+		g.drawString(text, x, y);
 	}
 
 	/**
