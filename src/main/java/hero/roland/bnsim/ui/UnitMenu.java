@@ -10,12 +10,9 @@ import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
-import java.util.function.Supplier;
 
 import javax.swing.BorderFactory;
 import javax.swing.Box;
@@ -43,9 +40,7 @@ import javax.swing.text.DocumentFilter;
 import hero.roland.bnsim.EnemyBehavior;
 import hero.roland.bnsim.GridGeometry;
 import hero.roland.bnsim.Side;
-import hero.roland.bnsim.enemybehaviour.DummyEnemyBehavior;
-import hero.roland.bnsim.enemybehaviour.HighestDamageEnemyBehavior;
-import hero.roland.bnsim.enemybehaviour.RandomEnemyBehavior;
+import hero.roland.bnsim.enemybehaviour.*;
 import hero.roland.bnsim.gamefiles.GameFiles;
 import hero.roland.bnsim.model.Text;
 import hero.roland.bnsim.model.Unit;
@@ -64,11 +59,12 @@ public class UnitMenu extends JPanel {
 	private static final String NO_ENV_EFFECT = "None";
 
 	/** The enemy behaviours offered by the dropdown, by display name, in order; the first is the default. */
-	private static final Map<String, Supplier<EnemyBehavior>> ENEMY_BEHAVIORS = new LinkedHashMap<>();
+	private static final List<EnemyBehavior> ENEMY_BEHAVIORS = new ArrayList<>();
 	static {
-		ENEMY_BEHAVIORS.put("Random (Default)", RandomEnemyBehavior::new);
-		ENEMY_BEHAVIORS.put("Dummy", DummyEnemyBehavior::new);
-		ENEMY_BEHAVIORS.put("Highest Damage", HighestDamageEnemyBehavior::new);
+		ENEMY_BEHAVIORS.add(new RandomEnemyBehavior());
+		ENEMY_BEHAVIORS.add(new DummyEnemyBehavior());
+		ENEMY_BEHAVIORS.add(new HighestDamageEnemyBehavior());
+		ENEMY_BEHAVIORS.add(new MostKillsEnemyBehavior());
 	}
 
 	private final JComboBox<Text.Language> languageSelector = new JComboBox<>();
@@ -469,17 +465,36 @@ public class UnitMenu extends JPanel {
 	 * Builds the enemy-behaviour dropdown, listing the {@linkplain #ENEMY_BEHAVIORS
 	 * known behaviours} with the first ({@link RandomEnemyBehavior}) as the default.
 	 * Selecting one notifies the {@linkplain #setEnemyBehaviorListener
-	 * enemy-behaviour listener} with a fresh instance of it.
+	 * enemy-behaviour listener} with it. Each option's tooltip, and the closed
+	 * dropdown's, is the behaviour's description.
 	 */
 	private JPanel buildEnemyBehaviorSelector() {
-		for (String name : ENEMY_BEHAVIORS.keySet())
+		List<String> names = ENEMY_BEHAVIORS.stream().map(EnemyBehavior::name).toList();
+		for (String name : names)
 			enemyBehaviorSelector.addItem(name);
+		// Options in the open list show their behaviour's description on hover.
+		enemyBehaviorSelector.setRenderer(new DefaultListCellRenderer() {
+			@Override
+			public Component getListCellRendererComponent(JList<?> list, Object value,
+					int index, boolean isSelected, boolean cellHasFocus) {
+				super.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus);
+				// index is -1 when painting the closed box, which uses the combo's own tooltip.
+				setToolTipText(index >= 0 ? ENEMY_BEHAVIORS.get(index).description() : null);
+				return this;
+			}
+		});
 		enemyBehaviorSelector.setSelectedIndex(0);
-		enemyBehaviorSelector.setToolTipText("How the enemy side chooses its attacks.");
-		enemyBehaviorSelector.addActionListener(e -> fireEnemyBehavior());
+		updateEnemyBehaviorTip();
+		enemyBehaviorSelector.addActionListener(e -> {
+			updateEnemyBehaviorTip();
+			fireEnemyBehavior();
+		});
+
+		JLabel label = new JLabel("Enemy behaviour:");
+		label.setToolTipText("Change the enemy attack behaviour.");
 
 		JPanel panel = new JPanel(new BorderLayout(4, 0));
-		panel.add(new JLabel("Enemy behaviour:"), BorderLayout.WEST);
+		panel.add(label, BorderLayout.WEST);
 		panel.add(enemyBehaviorSelector, BorderLayout.CENTER);
 		return panel;
 	}
@@ -493,10 +508,17 @@ public class UnitMenu extends JPanel {
 		fireEnemyBehavior();
 	}
 
+	/** Sets the closed dropdown's tooltip to the selected behaviour's description. */
+	private void updateEnemyBehaviorTip() {
+		int index = enemyBehaviorSelector.getSelectedIndex();
+		enemyBehaviorSelector.setToolTipText(index >= 0 ? ENEMY_BEHAVIORS.get(index).description() : null);
+	}
+
 	private void fireEnemyBehavior() {
-		Object sel = enemyBehaviorSelector.getSelectedItem();
-		if (sel != null && enemyBehaviorListener != null)
-			enemyBehaviorListener.accept(ENEMY_BEHAVIORS.get(sel).get());
+		// The dropdown lists ENEMY_BEHAVIORS' names in order, so its index maps straight back.
+		int index = enemyBehaviorSelector.getSelectedIndex();
+		if (index >= 0 && enemyBehaviorListener != null)
+			enemyBehaviorListener.accept(ENEMY_BEHAVIORS.get(index));
 	}
 
 	/**

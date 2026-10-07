@@ -8,7 +8,6 @@ import java.util.Random;
 
 import hero.roland.bnsim.BattleSimulator;
 import hero.roland.bnsim.Cell;
-import hero.roland.bnsim.EnemyBehavior;
 import hero.roland.bnsim.GridGeometry;
 import hero.roland.bnsim.PlacedUnit;
 import hero.roland.bnsim.Side;
@@ -17,45 +16,28 @@ import hero.roland.bnsim.model.Ability.TargetSquare;
 import hero.roland.bnsim.model.Unit;
 
 /**
- * A greedy enemy AI: for every ready attack of every enemy unit and every place
- * it could be aimed, it estimates the average damage the attack would deal to
- * the player's units, and plays the one that deals the most (picking at random
- * when several are tied).
- *
- * <p>The estimate uses each attack's average damage per hit (the mean of its min
- * and max for the unit's rank), spread over the ability's target and damage
- * areas exactly as the real attack is (see {@link BattleSimulator#resolveHits}),
- * and the struck units' resistances and armor (see
- * {@link PlacedUnit#estimateDamage}). How the attack is aimed depends on its
- * target type:
- * <ul>
- * <li>{@code null} (single target): each player unit in range.</li>
- * <li>{@link Ability.TargetType#TARGET TARGET}: each tile in range, including
- * empty ones, since the splash may still hit units around it.</li>
- * <li>{@link Ability.TargetType#WEAPON WEAPON}: its fixed area in front of the
- * unit, counting every tile in it.</li>
- * </ul>
- * Graze and critical chances are not taken into account.
+ * A greedy enemy AI that goes for kills: it makes the same checks and damage
+ * estimates as {@link HighestDamageEnemyBehavior}, but plays the move that would
+ * kill the most player units (picking at random when several are tied). A unit
+ * counts as killed when the average HP damage the move deals it, after its
+ * resistances and armor, would take its HP to 0.
+ * If no move would kill anything, it falls back to the highest-damage move.
  */
-public class HighestDamageEnemyBehavior implements EnemyBehavior {
-    @Override
-    public String name() {
-        return "Greedy";
-    }
+public class MostKillsEnemyBehavior extends HighestDamageEnemyBehavior {
+	@Override
+	public String name() {
+		return "Ruthless";
+	}
 
-    @Override
-    public String description() {
-        return "Plays the move that would deal the most damage. Can target empty tiles to maximise damage.";
-    }
-
-	/** Moves whose damage is within this of the best are treated as tied, so
-	 * floating-point noise does not split moves that deal the same damage. */
-	private static final double TIE_TOLERANCE = 1e-1;
+	@Override
+	public String description() {
+		return "Chooses the move that would kill the most units. Can target empty tiles to maximise kills. If no move would kill, uses " + super.name() + " behaviour.";
+	}
 
 	private final Random random = new Random();
 
-	/** A possible move with its estimated average damage. */
-	private record ScoredMove(Move move, double damage) {
+	/** A possible move with the number of units it would kill. */
+	private record ScoredMove(Move move, int kills) {
 	}
 
 	@Override
@@ -79,7 +61,7 @@ public class HighestDamageEnemyBehavior implements EnemyBehavior {
 					if (ability.getTargetType() == Ability.TargetType.WEAPON) {
 						// Fixed attack: the aim is ignored, so there is only one option.
 						candidates.add(new ScoredMove(new Move(unit, attack, unit.getCell()),
-								averageDamage(sim, unit, attack, unit.getCell(), enforceTargetTypes)));
+								potentialKills(sim, unit, attack, unit.getCell(), enforceTargetTypes)));
 						continue;
 					}
 					for (Cell cell : sim.targetableCells(unit, attack)) {
@@ -90,34 +72,33 @@ public class HighestDamageEnemyBehavior implements EnemyBehavior {
 								continue;
 						}
 						candidates.add(new ScoredMove(new Move(unit, attack, cell),
-								averageDamage(sim, unit, attack, cell, enforceTargetTypes)));
+								potentialKills(sim, unit, attack, cell, enforceTargetTypes)));
 					}
 				}
 			}
 		}
 
-		// Pick at random among the moves tied for the most damage; moves that deal
-		// no damage are never chosen.
-		double bestDamage = 0;
+		// Pick at random among the moves tied for the most kills; with no kills on
+		// offer, go for the most damage instead.
+		int mostKills = 0;
 		for (ScoredMove c : candidates)
-			bestDamage = Math.max(bestDamage, c.damage());
-		if (bestDamage <= 0)
-			return null;
+			mostKills = Math.max(mostKills, c.kills());
+		if (mostKills == 0)
+			return super.decideMove(sim);
 		List<Move> best = new ArrayList<>();
 		for (ScoredMove c : candidates)
-			if (c.damage() >= bestDamage - TIE_TOLERANCE)
+			if (c.kills() == mostKills)
 				best.add(c.move());
 		return best.get(random.nextInt(best.size()));
 	}
 
 	/**
-	 * The average total damage (HP plus armor) the attack would deal to the
-	 * player's units when aimed at {@code aim}, over all of its shots and attacks
-	 * per use. The raw damage landing on each unit is added up first and then put
-	 * through its resistances and armor in one go, so armor stripped by early hits
-	 * lets later hits through to HP.
+	 * How many player units the attack would kill when aimed at {@code aim}: those
+	 * whose average HP damage from it (worked out as in
+	 * {@link HighestDamageEnemyBehavior}, after resistances and armor) would take
+	 * their HP to 0, whatever armor they have left.
 	 */
-	private static double averageDamage(BattleSimulator sim, PlacedUnit attacker,
+	private static int potentialKills(BattleSimulator sim, PlacedUnit attacker,
 			Unit.Attack attack, Cell aim, boolean enforceTargetTypes) {
 		Ability ability = attack.getAbility();
 		TargetSquare[] targetArea = ability.getTargetArea();
@@ -166,9 +147,15 @@ public class HighestDamageEnemyBehavior implements EnemyBehavior {
 		}
 
 		double armorPiercing = ability.getArmorPiercingRate();
-		double total = 0;
-		for (Map.Entry<PlacedUnit, Double> e : rawByUnit.entrySet())
-			total += e.getKey().estimateDamage(e.getValue(), ability.getDamageType(), armorPiercing);
-		return total;
+		int kills = 0;
+		for (Map.Entry<PlacedUnit, Double> e : rawByUnit.entrySet()) {
+			PlacedUnit target = e.getKey();
+			if (target.isDead())
+				continue;
+			double hpDamage = target.estimateHpDamage(e.getValue(), ability.getDamageType(), armorPiercing);
+			if (hpDamage >= target.getCurrentHp())
+				kills++;
+		}
+		return kills;
 	}
 }

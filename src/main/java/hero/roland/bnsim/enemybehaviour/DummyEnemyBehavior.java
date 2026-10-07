@@ -9,4 +9,10 @@ import hero.roland.bnsim.EnemyBehavior;
 public class DummyEnemyBehavior implements EnemyBehavior {
     @Override
 	public Move decideMove(BattleSimulator sim) { return null; }
+    
+    @Override
+    public String name() { return "Dummy"; }
+
+    @Override
+    public String description() { return "Passes every turn."; }
 }

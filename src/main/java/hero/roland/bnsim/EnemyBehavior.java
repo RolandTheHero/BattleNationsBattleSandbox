@@ -16,7 +16,10 @@ public interface EnemyBehavior {
 	 */
 	Move decideMove(BattleSimulator sim);
 
+	String name();
+	String description();
+
 	/** An enemy action: the attacking unit, the chosen attack, and the target cell. */
-	record Move(PlacedUnit attacker, Unit.Attack attack, Cell target) {
-	}
+	record Move(PlacedUnit attacker, Unit.Attack attack, Cell target) {}
+
 }

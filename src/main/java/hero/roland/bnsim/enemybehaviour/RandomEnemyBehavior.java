@@ -18,6 +18,15 @@ import hero.roland.bnsim.model.Unit;
  * blocking — and picks one at random.
  */
 public class RandomEnemyBehavior implements EnemyBehavior {
+	@Override
+	public String name() {
+		return "Random Ability (Default)";
+	}
+
+	@Override
+	public String description() {
+		return "Chooses a random ability, then a random unit to target.";
+	}
 
 	private final Random random = new Random();
 

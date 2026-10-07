@@ -339,6 +339,17 @@ public class PlacedUnit {
 		return split.armorAbsorbed() + Math.min(split.hpDamage(), Math.max(0, currentHp));
 	}
 
+	/**
+	 * The HP alone (not armor) a hit of the given raw damage and type would
+	 * remove, worked out as {@link #estimateDamage} does but without the armor it
+	 * would strip. HP damage beyond the unit's remaining HP is not counted.
+	 */
+	public double estimateHpDamage(double rawDamage, Ability.DamageType type, double armorPiercing) {
+		if (rawDamage <= 0)
+			return 0;
+		return Math.min(splitDamage(rawDamage, type, armorPiercing).hpDamage(), Math.max(0, currentHp));
+	}
+
 	/** How a hit divides between armor absorbed and HP damage (see {@link #splitDamage}). */
 	private record DamageSplit(double armorAbsorbed, double hpDamage) {
 	}
