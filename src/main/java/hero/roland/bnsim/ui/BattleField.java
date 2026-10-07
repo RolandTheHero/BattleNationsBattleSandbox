@@ -1129,11 +1129,15 @@ public class BattleField extends JComponent {
 	 * row if its front line is now empty, then the next turn begins.
 	 */
 	private void endOfTurn(Side actingSide) {
-		// Advance the acting side's cooldowns/reloads as its turn ends, so their
-		// countdowns are up to date before the opposing side gets to look or act.
-		for (PlacedUnit unit : sim.placedUnits())
-			if (unit.getSide() == actingSide)
+		// Advance the acting side's cooldowns/reloads and age its status effects as
+		// its turn ends, so their countdowns are up to date before the opposing side
+		// gets to look or act.
+		for (PlacedUnit unit : sim.placedUnits()) {
+			if (unit.getSide() == actingSide) {
 				unit.tickCooldowns();
+				unit.ageStatusEffects();
+			}
+		}
 		pendingAdvanceSide = BattleSimulator.opponentOf(actingSide);
 		phase = Phase.AWAITING_ADVANCE;
 		// The acting side's cooldowns and reloads just advanced; refresh the open info
@@ -1325,10 +1329,10 @@ public class BattleField extends JComponent {
 	/**
 	 * Evaluates start-of-turn status effects for every unit on the given side:
 	 * each effect deals its damage (shown as a floating number with the effect's
-	 * icon), ages by a turn, and is removed when it expires. A unit killed by an
-	 * effect is taken out of the simulation and left on screen to play out its
-	 * death; the turn waits for that to finish before proceeding (see
-	 * {@link #advanceTurns}).
+	 * icon); effects age at the end of the turn instead (see {@link #endOfTurn}).
+	 * A unit killed by an effect is taken out of the simulation and left on screen
+	 * to play out its death; the turn waits for that to finish before proceeding
+	 * (see {@link #advanceTurns}).
 	 */
 	private void tickStatusEffects(Side side) {
 		for (PlacedUnit unit : sim.placedUnits()) {

@@ -465,9 +465,11 @@ public class PlacedUnit {
 
 	/**
 	 * Evaluates this unit's status effects for the start of its side's turn: each
-	 * effect deals its damage, ages by one turn, and is removed once expired.
-	 * Returns one {@link StatusTick} per effect that dealt damage, so the UI can
-	 * show a floating number and the effect's icon.
+	 * effect deals its damage. Effects are not aged here — they stay active for the
+	 * rest of the turn (so e.g. a freeze blocks this turn's action) and age in
+	 * {@link #ageStatusEffects} as the turn ends. Returns one {@link StatusTick}
+	 * per effect that dealt damage, so the UI can show a floating number and the
+	 * effect's icon.
 	 */
 	public List<StatusTick> tickStatusEffects() {
 		List<StatusTick> ticks = new ArrayList<>();
@@ -477,12 +479,21 @@ public class PlacedUnit {
 			int dealt = raw > 0
 				? applyDamage(raw, def.getDamageType(), def.getArmorPiercingRate())
 				: 0;
-			e.onTurnPassed();
+			e.onEvaluated();
 			if (dealt > 0)
 				ticks.add(new StatusTick(def, dealt));
 		}
-		statusEffects.removeIf(ActiveStatusEffect::isExpired);
 		return ticks;
+	}
+
+	/**
+	 * Ages this unit's status effects as its side's turn ends: each effect's
+	 * remaining duration drops by one turn, and expired effects are removed.
+	 */
+	public void ageStatusEffects() {
+		for (ActiveStatusEffect e : statusEffects)
+			e.onTurnEnded();
+		statusEffects.removeIf(ActiveStatusEffect::isExpired);
 	}
 
 	/** One effect's start-of-turn result: the effect and the damage it dealt. */

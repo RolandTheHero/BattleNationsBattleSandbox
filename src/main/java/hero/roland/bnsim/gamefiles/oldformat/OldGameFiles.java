@@ -126,6 +126,7 @@ public class OldGameFiles extends AbstractGameFiles {
 		def.damageBreak = stats.optBoolean("stun_DamageBreak", false);
 		readDamageMods(stats.optJSONObject("stun_DamageMods"), def.damageMods, 1);
 		readDamageMods(stats.optJSONObject("stun_ArmorDamageMods"), def.armorDamageMods, 1);
+		if (def.blockAction) def.duration--; // Bandaid fix for recent game update changing how durations works
 		return new StatusEffect(def);
 	}
 

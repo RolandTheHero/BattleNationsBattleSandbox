@@ -75,9 +75,19 @@ public class ActiveStatusEffect {
 		return baseDamage * mult + effect.getBonusDamage();
 	}
 
-	/** Records that the unit's turn has passed: ages the effect by one turn. */
-	public void onTurnPassed() {
+	/** Records that the effect was evaluated at the start of the unit's turn, so
+	 * the next evaluation uses the next diminishing multiplier. */
+	public void onEvaluated() {
 		ticks++;
-		remaining--;
+	}
+
+	/**
+	 * Records that the unit's turn has ended: ages the effect by one turn. An
+	 * effect that has not been evaluated yet (applied during the unit's own turn)
+	 * is not aged, so it still lasts its full duration from its first evaluation.
+	 */
+	public void onTurnEnded() {
+		if (ticks > 0)
+			remaining--;
 	}
 }
