@@ -10,9 +10,12 @@ import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
+import java.util.function.Supplier;
 
 import javax.swing.BorderFactory;
 import javax.swing.Box;
@@ -37,8 +40,12 @@ import javax.swing.text.AttributeSet;
 import javax.swing.text.BadLocationException;
 import javax.swing.text.DocumentFilter;
 
+import hero.roland.bnsim.EnemyBehavior;
 import hero.roland.bnsim.GridGeometry;
 import hero.roland.bnsim.Side;
+import hero.roland.bnsim.enemybehaviour.DummyEnemyBehavior;
+import hero.roland.bnsim.enemybehaviour.HighestDamageEnemyBehavior;
+import hero.roland.bnsim.enemybehaviour.RandomEnemyBehavior;
 import hero.roland.bnsim.gamefiles.GameFiles;
 import hero.roland.bnsim.model.Text;
 import hero.roland.bnsim.model.Unit;
@@ -56,9 +63,18 @@ public class UnitMenu extends JPanel {
 	/** Dropdown label for "no environment status effect" (the default). */
 	private static final String NO_ENV_EFFECT = "None";
 
+	/** The enemy behaviours offered by the dropdown, by display name, in order; the first is the default. */
+	private static final Map<String, Supplier<EnemyBehavior>> ENEMY_BEHAVIORS = new LinkedHashMap<>();
+	static {
+		ENEMY_BEHAVIORS.put("Random (Default)", RandomEnemyBehavior::new);
+		ENEMY_BEHAVIORS.put("Dummy", DummyEnemyBehavior::new);
+		ENEMY_BEHAVIORS.put("Highest Damage", HighestDamageEnemyBehavior::new);
+	}
+
 	private final JComboBox<Text.Language> languageSelector = new JComboBox<>();
 	private final JComboBox<String> mapSelector = new JComboBox<>();
 	private final JComboBox<String> envEffectSelector = new JComboBox<>();
+	private final JComboBox<String> enemyBehaviorSelector = new JComboBox<>();
 	private final JPanel content = new JPanel(new BorderLayout(0, 6));
 
 	private final DefaultListModel<Unit> listModel = new DefaultListModel<>();
@@ -83,6 +99,7 @@ public class UnitMenu extends JPanel {
 	private Consumer<Side> sideMaxRanker;
 	private Consumer<String> backgroundSelector;
 	private Consumer<String> envEffectListener;
+	private Consumer<EnemyBehavior> enemyBehaviorListener;
 	private Consumer<Boolean> combatRulesListener;
 	private Consumer<Boolean> targetTypesListener;
 	private Consumer<Boolean> statusImmunitiesListener;
@@ -166,6 +183,10 @@ public class UnitMenu extends JPanel {
 		top.add(targetTypesToggle);
 		top.add(statusImmunitiesToggle);
 		top.add(advanceToggle);
+		top.add(Box.createVerticalStrut(4));
+		JPanel enemyBehaviorPanel = buildEnemyBehaviorSelector();
+		enemyBehaviorPanel.setAlignmentX(LEFT_ALIGNMENT);
+		top.add(enemyBehaviorPanel);
 		top.add(Box.createVerticalStrut(4));
 		top.add(searchPanel);
 
@@ -442,6 +463,40 @@ public class UnitMenu extends JPanel {
 		this.envEffectListener = listener;
 		Object sel = envEffectSelector.getSelectedItem();
 		listener.accept(NO_ENV_EFFECT.equals(sel) ? null : (String) sel);
+	}
+
+	/**
+	 * Builds the enemy-behaviour dropdown, listing the {@linkplain #ENEMY_BEHAVIORS
+	 * known behaviours} with the first ({@link RandomEnemyBehavior}) as the default.
+	 * Selecting one notifies the {@linkplain #setEnemyBehaviorListener
+	 * enemy-behaviour listener} with a fresh instance of it.
+	 */
+	private JPanel buildEnemyBehaviorSelector() {
+		for (String name : ENEMY_BEHAVIORS.keySet())
+			enemyBehaviorSelector.addItem(name);
+		enemyBehaviorSelector.setSelectedIndex(0);
+		enemyBehaviorSelector.setToolTipText("How the enemy side chooses its attacks.");
+		enemyBehaviorSelector.addActionListener(e -> fireEnemyBehavior());
+
+		JPanel panel = new JPanel(new BorderLayout(4, 0));
+		panel.add(new JLabel("Enemy behaviour:"), BorderLayout.WEST);
+		panel.add(enemyBehaviorSelector, BorderLayout.CENTER);
+		return panel;
+	}
+
+	/**
+	 * Sets the callback invoked when an enemy behaviour is chosen, and immediately
+	 * pushes the current choice so the field starts in sync.
+	 */
+	public void setEnemyBehaviorListener(Consumer<EnemyBehavior> listener) {
+		this.enemyBehaviorListener = listener;
+		fireEnemyBehavior();
+	}
+
+	private void fireEnemyBehavior() {
+		Object sel = enemyBehaviorSelector.getSelectedItem();
+		if (sel != null && enemyBehaviorListener != null)
+			enemyBehaviorListener.accept(ENEMY_BEHAVIORS.get(sel).get());
 	}
 
 	/**

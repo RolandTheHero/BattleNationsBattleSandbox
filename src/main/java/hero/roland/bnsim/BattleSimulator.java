@@ -604,7 +604,7 @@ public class BattleSimulator {
 	 * (those are never affected), runs off the grids, or is blocked from the
 	 * attacker's line of fire by a unit in front of it.
 	 */
-	private SideCell weaponCell(PlacedUnit attacker, Ability ability, int dx, int dy) {
+	public SideCell weaponCell(PlacedUnit attacker, Ability ability, int dx, int dy) {
 		int forward = -dy;                 // tiles toward the opponent
 		int row = attacker.getCell().row();
 		if (forward <= row)

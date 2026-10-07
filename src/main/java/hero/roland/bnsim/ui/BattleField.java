@@ -35,8 +35,8 @@ import hero.roland.bnsim.Cell;
 import hero.roland.bnsim.EnemyBehavior;
 import hero.roland.bnsim.GridGeometry;
 import hero.roland.bnsim.PlacedUnit;
-import hero.roland.bnsim.RandomEnemyBehavior;
 import hero.roland.bnsim.Side;
+import hero.roland.bnsim.enemybehaviour.RandomEnemyBehavior;
 import hero.roland.bnsim.gamefiles.GameFiles;
 import hero.roland.bnsim.model.Ability;
 import hero.roland.bnsim.model.Animation;
@@ -195,7 +195,7 @@ public class BattleField extends JComponent {
 	private Unit.Attack firingAttack;
 	private Cell firingAim;
 	private int attacksRemaining;
-	private final EnemyBehavior enemyBehavior = new RandomEnemyBehavior();
+	private EnemyBehavior enemyBehavior = new RandomEnemyBehavior();
 
 	/** The opposing side whose turn comes next, parked while the ended turn's
 	 * animations settle; it advances one row first if its front line is then empty
@@ -492,6 +492,15 @@ public class BattleField extends JComponent {
 	 */
 	public void setEnvironmentStatusEffect(String id) {
 		environmentStatusEffect = id != null ? StatusEffect.get(id) : null;
+	}
+
+	/**
+	 * Sets the AI that decides the enemy's move on each of its turns. Driven by the
+	 * UnitMenu dropdown and read live when the enemy acts, so a change takes effect
+	 * from the enemy's next turn.
+	 */
+	public void setEnemyBehavior(EnemyBehavior behavior) {
+		enemyBehavior = behavior;
 	}
 
 	/**

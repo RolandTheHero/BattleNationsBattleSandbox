@@ -313,6 +313,38 @@ public class PlacedUnit {
 	public int applyDamage(double rawDamage, Ability.DamageType type, double armorPiercing) {
 		if (rawDamage <= 0)
 			return 0;
+		DamageSplit split = splitDamage(rawDamage, type, armorPiercing);
+
+		// The floating number must equal the HP and armor actually removed, so derive it
+		// from the integer deltas rather than rounding (hpDamage + armorAbsorbed) on its
+		// own: a hit that each component rounds away to nothing (e.g. 0.5 armor that leaves
+		// the rounded armor unchanged) would otherwise still display as 1.
+		int hpBefore = currentHp;
+		int armorBefore = currentArmor;
+		currentArmor = (int) Math.round(currentArmor - split.armorAbsorbed());
+		currentHp -= (int) Math.round(split.hpDamage());
+		return (hpBefore - currentHp) + (armorBefore - currentArmor);
+	}
+
+	/**
+	 * The HP and armor a hit of the given raw damage and type would remove, worked
+	 * out exactly as {@link #applyDamage} does (resistances, armor and active
+	 * status-effect overrides included) but without applying it. HP damage beyond
+	 * the unit's remaining HP is not counted, as it would be wasted.
+	 */
+	public double estimateDamage(double rawDamage, Ability.DamageType type, double armorPiercing) {
+		if (rawDamage <= 0)
+			return 0;
+		DamageSplit split = splitDamage(rawDamage, type, armorPiercing);
+		return split.armorAbsorbed() + Math.min(split.hpDamage(), Math.max(0, currentHp));
+	}
+
+	/** How a hit divides between armor absorbed and HP damage (see {@link #splitDamage}). */
+	private record DamageSplit(double armorAbsorbed, double hpDamage) {
+	}
+
+	/** Works out how a hit would divide between armor and HP, without applying it. */
+	private DamageSplit splitDamage(double rawDamage, Ability.DamageType type, double armorPiercing) {
 		double ap = Math.max(0, Math.min(1, armorPiercing));
 		double hpMod = effectiveDamageMod(type);
 		double armorMod = effectiveArmorDamageMod(type);
@@ -331,16 +363,7 @@ public class PlacedUnit {
 		// All HP damage — direct piercing plus armor overflow — is scaled by the
 		// HP modifier, so a unit immune to the type (mod 0) takes no HP damage.
 		double hpDamage = (rawToHp + rawOverflow) * hpMod;
-
-		// The floating number must equal the HP and armor actually removed, so derive it
-		// from the integer deltas rather than rounding (hpDamage + armorAbsorbed) on its
-		// own: a hit that each component rounds away to nothing (e.g. 0.5 armor that leaves
-		// the rounded armor unchanged) would otherwise still display as 1.
-		int hpBefore = currentHp;
-		int armorBefore = currentArmor;
-		currentArmor = (int) Math.round(currentArmor - armorAbsorbed);
-		currentHp -= (int) Math.round(hpDamage);
-		return (hpBefore - currentHp) + (armorBefore - currentArmor);
+		return new DamageSplit(armorAbsorbed, hpDamage);
 	}
 
 	/**

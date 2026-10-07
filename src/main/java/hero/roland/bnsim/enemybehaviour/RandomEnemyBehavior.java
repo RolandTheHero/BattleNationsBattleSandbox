@@ -1,9 +1,14 @@
-package hero.roland.bnsim;
+package hero.roland.bnsim.enemybehaviour;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
 
+import hero.roland.bnsim.BattleSimulator;
+import hero.roland.bnsim.Cell;
+import hero.roland.bnsim.EnemyBehavior;
+import hero.roland.bnsim.PlacedUnit;
+import hero.roland.bnsim.Side;
 import hero.roland.bnsim.model.Ability;
 import hero.roland.bnsim.model.Unit;
 
