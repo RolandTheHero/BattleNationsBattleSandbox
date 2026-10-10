@@ -85,7 +85,7 @@ public class StatusEffect {
 
     public static class Suppression extends StatusEffect {
         public Suppression() {
-            duration = 2;
+            duration = 1;
             family = new SuppressionFamily();
             offenseDown = 20;
         }
