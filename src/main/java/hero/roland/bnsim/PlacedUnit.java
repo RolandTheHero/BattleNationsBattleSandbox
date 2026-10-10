@@ -152,6 +152,12 @@ public class PlacedUnit {
 		resetHealth();
 	}
 
+	/** Sets the rank (clamped to 1..max rank), restoring full health for it. */
+	public void setRank(int rank) {
+		this.rank = Math.max(1, Math.min(rank, getMaxRank()));
+		resetHealth();
+	}
+
 	/** Sets the rank to the unit's highest, restoring full health for it. */
 	public void setToMaxRank() {
 		rank = getMaxRank();

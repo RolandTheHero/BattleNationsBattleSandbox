@@ -138,6 +138,10 @@ public class BattleField extends JComponent {
 	private static final int ADVANCE_FRAMES = 1000 / FRAME_DELAY;
 	/** Frames an on-field message stays up (~2.5 seconds). */
 	private static final int MESSAGE_FRAMES = 2500 / FRAME_DELAY;
+	/** Frames a new enemy wave takes to slide onto the field (~0.4 seconds). */
+	private static final int WAVE_ENTER_FRAMES = 400 / FRAME_DELAY;
+	/** Unit tag marking enemies that need not be killed for the wave to be cleared. */
+	private static final String IGNORABLE_TAG = "Ignorable";
 
 	private final BattleSimulator sim;
 	private final GridGeometry geometry;
@@ -170,11 +174,12 @@ public class BattleField extends JComponent {
 	 * animations and death-spawns — before the next side acts, so the next turn
 	 * never begins over a still-animating board. If the opposing side's front row
 	 * has been emptied (and it still has units), {@code ADVANCING} then plays the
-	 * one-row slide before that next turn.
+	 * one-row slide before that next turn. If the enemy wave has been cleared and
+	 * another follows, {@code WAVE_ENTERING} first slides the next wave in.
 	 */
 	private enum Phase {
 		PLAYER, PLAYER_FIRING, ENEMY_TURN_STATUS, ENEMY_FIRING, PLAYER_TURN_STATUS,
-		AWAITING_ADVANCE, ADVANCING
+		AWAITING_ADVANCE, ADVANCING, WAVE_ENTERING
 	}
 
 	private Phase phase = Phase.PLAYER;
@@ -213,6 +218,22 @@ public class BattleField extends JComponent {
 	 * instead of springing back to the full depth.
 	 */
 	private final Map<Side, Integer> rowsAdvanced = new EnumMap<>(Side.class);
+
+	/**
+	 * The enemy waves' layouts. In setup the enemy side on the board is the
+	 * {@link #selectedWave}'s live layout (its entry here is refreshed whenever the
+	 * board switches away from it, see {@link #saveSelectedWave}). Wave 1 always exists.
+	 */
+	private final List<List<UnitSnapshot>> waves = new ArrayList<>();
+	/** The wave shown on the enemy side during setup. */
+	private int selectedWave;
+	/** The wave currently fighting during battle (0-based). */
+	private int battleWave;
+	/** The player side as it was when the battle started, restored when it ends. */
+	private List<UnitSnapshot> playerSnapshot = List.of();
+	/** Units of a newly arrived wave sliding onto the field, and when they began. */
+	private Set<PlacedUnit> enteringUnits = new HashSet<>();
+	private int waveEnterStartTick;
 
 	// Setup-mode drag state.
 	private PlacedUnit dragging;
@@ -288,6 +309,7 @@ public class BattleField extends JComponent {
 				GridGeometry.combinedWidth() + 120,
 				GridGeometry.combinedHeight() + 120));
 		setBackgroundImage(defaultBackground());
+		waves.add(List.of());
 
 		animationTimer = new Timer(FRAME_DELAY, e -> {
 			tick++;
@@ -416,16 +438,32 @@ public class BattleField extends JComponent {
 		repaint();
 	}
 
-	/** Switches between setup mode (drag to place) and battle mode (attack). */
+	/**
+	 * Switches between setup mode (drag to place) and battle mode (attack). Starting
+	 * a battle remembers the player side and every enemy wave, then fights from wave
+	 * 1; ending it puts both sides back exactly as they were before the battle,
+	 * showing the wave that was selected in setup.
+	 */
 	public void setBattleMode(boolean battle) {
+		boolean wasBattle = this.battleMode;
 		this.battleMode = battle;
 		phase = Phase.PLAYER;
 		pendingAdvanceSide = null;
 		advancingSide = null;
 		advancingUnits.clear();
+		enteringUnits.clear();
 		for (Side s : Side.values())
 			rowsAdvanced.put(s, 0);
 		sim.resetAdvancement();
+		if (battle && !wasBattle) {
+			saveSelectedWave();
+			playerSnapshot = snapshotSide(Side.PLAYER);
+			battleWave = 0;
+			loadWave(0);
+		} else if (!battle && wasBattle) {
+			restoreSide(Side.PLAYER, playerSnapshot);
+			loadWave(selectedWave);
+		}
 		dragging = null;
 		dragPoint = null;
 		enemyViewEnabled = false;
@@ -449,6 +487,153 @@ public class BattleField extends JComponent {
 				unit.startBattle();
 			}
 		repaint();
+	}
+
+	// --- Enemy waves --------------------------------------------------------
+
+	/** How many enemy waves there are (always at least 1). */
+	public int getWaveCount() {
+		return waves.size();
+	}
+
+	/** The wave (0-based) shown on the enemy side during setup. */
+	public int getSelectedWave() {
+		return selectedWave;
+	}
+
+	/**
+	 * Setup mode: shows the given wave on the enemy side, first storing the layout
+	 * of the wave being replaced so it can be switched back to later.
+	 */
+	public void selectWave(int index) {
+		if (battleMode || index < 0 || index >= waves.size() || index == selectedWave)
+			return;
+		saveSelectedWave();
+		selectedWave = index;
+		loadWave(index);
+	}
+
+	/** Setup mode: adds an empty wave after the last one and shows it. */
+	public void addWave() {
+		if (battleMode)
+			return;
+		waves.add(List.of());
+		selectWave(waves.size() - 1);
+	}
+
+	/**
+	 * Setup mode: deletes the given wave (wave 1 can never be deleted). Deleting
+	 * the shown wave shows the one before it instead.
+	 */
+	public void removeWave(int index) {
+		if (battleMode || index <= 0 || index >= waves.size())
+			return;
+		saveSelectedWave();
+		waves.remove(index);
+		if (index < selectedWave)
+			selectedWave--;
+		else if (index == selectedWave) {
+			selectedWave = index - 1;
+			loadWave(selectedWave);
+		}
+	}
+
+	/** Stores the enemy side's current layout as the selected wave's. */
+	private void saveSelectedWave() {
+		waves.set(selectedWave, snapshotSide(Side.ENEMY));
+	}
+
+	/** Replaces the enemy side with the given wave's units. */
+	private void loadWave(int index) {
+		restoreSide(Side.ENEMY, waves.get(index));
+	}
+
+	/** Every unit on the side, with the cell and rank it holds. */
+	private List<UnitSnapshot> snapshotSide(Side side) {
+		List<UnitSnapshot> units = new ArrayList<>();
+		for (PlacedUnit unit : sim.placedUnits())
+			if (unit.getSide() == side)
+				units.add(new UnitSnapshot(unit.getUnit(), unit.getCell(), unit.getRank()));
+		return List.copyOf(units);
+	}
+
+	/**
+	 * Clears the side and places fresh copies of the snapshotted units back on
+	 * their cells at their ranks (units whose cell no longer exists, e.g. after a
+	 * grid resize, are skipped). Drops any drag or selection on that side, as
+	 * those units are gone.
+	 */
+	private void restoreSide(Side side, List<UnitSnapshot> units) {
+		if (dragging != null && dragging.getSide() == side) {
+			dragging = null;
+			dragPoint = null;
+		}
+		if (selectedAttacker != null && selectedAttacker.getSide() == side)
+			clearSelection();
+		sim.clearSide(side);
+		for (UnitSnapshot snap : units) {
+			PlacedUnit placed = sim.spawnAt(snap.unit(), side, snap.cell());
+			if (placed != null) {
+				placed.setRank(snap.rank());
+				placed.beginIdle(tick);
+			}
+		}
+		repaint();
+	}
+
+	/**
+	 * Whether the enemy's current wave is beaten: every enemy left on the field is
+	 * tagged {@value #IGNORABLE_TAG} (those need not be killed).
+	 */
+	private boolean isWaveCleared() {
+		Unit.UnitTag ignorable = GameFiles.active().getUnitTag(IGNORABLE_TAG);
+		for (PlacedUnit unit : sim.placedUnits())
+			if (unit.getSide() == Side.ENEMY && !unit.getUnit().hasTag(ignorable))
+				return false;
+		return true;
+	}
+
+	/**
+	 * Battle mode, once the ended turn has settled: if the enemy's wave is cleared
+	 * and another follows, swaps it in — any ignorable leftovers are removed, the
+	 * enemy's tiles return to their full starting shape, and the new wave's units
+	 * quickly slide onto their cells. Returns whether a wave began entering.
+	 */
+	private boolean beginNextWave() {
+		if (battleWave + 1 >= waves.size() || !isWaveCleared())
+			return false;
+		battleWave++;
+		rowsAdvanced.put(Side.ENEMY, 0);
+		sim.resetAdvancement(Side.ENEMY);
+		loadWave(battleWave);
+		enteringUnits = new HashSet<>();
+		for (PlacedUnit unit : sim.placedUnits())
+			if (unit.getSide() == Side.ENEMY) {
+				unit.startBattle();
+				enteringUnits.add(unit);
+			}
+		waveEnterStartTick = tick;
+		phase = Phase.WAVE_ENTERING;
+		attackEndTick = tick + WAVE_ENTER_FRAMES; // wait for the slide to finish
+		repaint();
+		return true;
+	}
+
+	/**
+	 * Ends a wave's slide-in, then carries on as the ended turn would have: an
+	 * empty wave is skipped straight to the next, otherwise any pending advance
+	 * plays and the next turn begins.
+	 */
+	private void finishWaveEntry() {
+		enteringUnits.clear();
+		// Enemy viewing always keeps an enemy selected; the old one has left the field.
+		if (enemyViewEnabled && selectedAttacker == null) {
+			PlacedUnit enemy = firstEnemy();
+			if (enemy != null)
+				selectAttacker(enemy);
+		}
+		if (!beginNextWave())
+			beginAdvanceSlide();
 	}
 
 	/**
@@ -1080,7 +1265,8 @@ public class BattleField extends JComponent {
 		switch (phase) {
 		case AWAITING_ADVANCE:
 			// The ended turn waits before the next side acts (and any advance slides).
-			if (turnVisualsSettled())
+			// A cleared enemy wave is replaced by the next one first.
+			if (turnVisualsSettled() && !beginNextWave())
 				beginAdvanceSlide();
 			return;
 		case ENEMY_TURN_STATUS:
@@ -1118,6 +1304,9 @@ public class BattleField extends JComponent {
 			break;
 		case ADVANCING:
 			finishAdvance(); // slide finished; hand off to the next turn
+			break;
+		case WAVE_ENTERING:
+			finishWaveEntry(); // new wave in place; carry on with the turn
 			break;
 		default:
 			break;
@@ -1269,11 +1458,20 @@ public class BattleField extends JComponent {
 	/**
 	 * Pixel centre at which to draw a unit. While its side is sliding forward, an
 	 * advancing unit eases from its old row (one behind its current cell) toward its
-	 * new cell; every other unit sits at its cell centre.
+	 * new cell; a newly arrived wave's unit swoops in from beyond the back of its
+	 * side; every other unit sits at its cell centre.
 	 */
 	private Point2D.Double unitDrawCentre(PlacedUnit unit) {
 		Cell cell = unit.getCell();
 		Point2D.Double to = geometry.cellCentre(unit.getSide(), cell);
+		if (enteringUnits.contains(unit)) {
+			double t = Math.max(0.0, Math.min(1.0,
+					(tick - waveEnterStartTick) / (double) WAVE_ENTER_FRAMES));
+			double p = 1 - (1 - t) * (1 - t); // ease out: fast in, settling onto the cell
+			Point2D.Double from = geometry.cellCentre(unit.getSide(), cell.col(),
+					cell.row() + GridGeometry.ROWS + 1);
+			return new Point2D.Double(from.x + p * (to.x - from.x), from.y + p * (to.y - from.y));
+		}
 		if (unit.getSide() != advancingSide || !advancingUnits.contains(unit))
 			return to;
 		double p = advanceProgress();
@@ -1435,6 +1633,37 @@ public class BattleField extends JComponent {
 		if (!battleMode && dragging != null && dragPoint != null)
 			drawUnit(g2, dragging, dragPoint.x, dragPoint.y, 0.7f);
 
+		g2.dispose();
+
+		// The wave counter sits over the field like the other controls, so it is
+		// drawn outside the field zoom.
+		if (waves.size() > 1)
+			drawWaveBanner(g);
+	}
+
+	/**
+	 * Draws the "Wave N of M" banner centred at the top of the field: the wave
+	 * fighting in battle, or the wave shown on the enemy side in setup.
+	 */
+	private void drawWaveBanner(Graphics g) {
+		Graphics2D g2 = (Graphics2D) g.create();
+		g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+		g2.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING,
+				RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
+		int wave = battleMode ? battleWave : selectedWave;
+		String text = "Wave " + (wave + 1) + " of " + waves.size();
+		g2.setFont(g2.getFont().deriveFont(Font.BOLD, 20f));
+		int tw = g2.getFontMetrics().stringWidth(text);
+		int padX = 18, padY = 8;
+		int boxW = tw + padX * 2;
+		int boxH = g2.getFontMetrics().getHeight() + padY;
+		int x = (getWidth() - boxW) / 2;
+		int y = 12;
+		g2.setColor(new Color(20, 20, 20, 200));
+		g2.fillRoundRect(x, y, boxW, boxH, 12, 12);
+		int ty = y + (boxH - g2.getFontMetrics().getHeight()) / 2 + g2.getFontMetrics().getAscent();
+		g2.setColor(Color.WHITE);
+		g2.drawString(text, x + padX, ty);
 		g2.dispose();
 	}
 
@@ -2538,6 +2767,11 @@ public class BattleField extends JComponent {
 		boolean covers(Cell cell) {
 			return direct.contains(cell) || splash.contains(cell);
 		}
+	}
+
+	/** A unit's type, cell and rank on one side, for restoring it later (a wave, or
+	 * the board as it was before a battle). */
+	private record UnitSnapshot(Unit unit, Cell cell, int rank) {
 	}
 
 	/** A struck tile that flashes red, deals its damage on landing, and fades. */

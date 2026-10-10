@@ -8,6 +8,8 @@ import java.awt.Font;
 import java.awt.FontMetrics;
 import java.awt.Graphics;
 import java.awt.Graphics2D;
+import java.awt.GridBagConstraints;
+import java.awt.GridBagLayout;
 import java.awt.Insets;
 import java.awt.RenderingHints;
 import java.awt.image.BufferedImage;
@@ -40,9 +42,9 @@ import hero.roland.bnsim.model.Unit;
 
 /**
  * Hosts the {@link BattleField} together with the overlaid battle controls:
- * a "Start Battle" button (bottom-right) in setup mode, "End Battle" and
- * "Pass Turn" buttons (top-left) in battle mode, and a panel listing the
- * selected unit's attacks grouped by weapon.
+ * a "Start Battle" button (bottom-right) and the enemy wave buttons (top-left)
+ * in setup mode, "End Battle" and "Pass Turn" buttons (top-left) in battle mode,
+ * and a panel listing the selected unit's attacks grouped by weapon.
  */
 public class ArenaPane extends JLayeredPane {
 
@@ -52,6 +54,9 @@ public class ArenaPane extends JLayeredPane {
 	private final JButton passButton = new JButton("Pass Turn");
 	private final JToggleButton viewEnemyButton = new JToggleButton("View Enemy");
 	private final JPanel attackPanel = new JPanel();
+	/** Setup-mode enemy wave buttons (top-left): one per wave, each but the first
+	 * with a delete button beside it, and a "+" below them to add another. */
+	private final JPanel wavePanel = new JPanel(new GridBagLayout());
 	private final JPanel volumePanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 4, 0));
 	private final JSlider volumeSlider = new JSlider(0, 100, 100);
 	private final MusicPlayer music = new MusicPlayer();
@@ -105,6 +110,12 @@ public class ArenaPane extends JLayeredPane {
 		// overlaps while enemy viewing is active.
 		moveToFront(viewEnemyButton);
 
+		wavePanel.setOpaque(false);
+		// As with the weapons box, keep clicks between the buttons off the field.
+		wavePanel.addMouseListener(new java.awt.event.MouseAdapter() {});
+		add(wavePanel, JLayeredPane.PALETTE_LAYER);
+		rebuildWaveButtons();
+
 		// Master-volume slider (top-right), always visible.
 		volumeSlider.setPreferredSize(new Dimension(120, 20));
 		volumeSlider.setOpaque(false);
@@ -141,6 +152,7 @@ public class ArenaPane extends JLayeredPane {
 	private void setBattleMode(boolean battle) {
 		field.setBattleMode(battle);
 		startButton.setVisible(!battle);
+		wavePanel.setVisible(!battle);
 		endButton.setVisible(battle);
 		passButton.setVisible(battle);
 		// Enemy viewing starts off each battle (and is hidden outside battle mode).
@@ -155,6 +167,83 @@ public class ArenaPane extends JLayeredPane {
 		}
 		if (onBattleModeChanged != null)
 			onBattleModeChanged.accept(battle);
+		revalidate();
+		repaint();
+	}
+
+	/** Extra width (px) given to each wave button beyond its preferred size. */
+	private static final int WAVE_BUTTON_SLACK = 2;
+	/** The label every wave button is sized to fit, so they all share one width. */
+	private static final String WAVE_BUTTON_WIDEST_LABEL = "Wave 99";
+
+	/**
+	 * Rebuilds the wave buttons from the battlefield's waves: a "Wave N" toggle per
+	 * wave (the one shown on the enemy side pressed) with an "X" to delete it beside
+	 * every wave but the first, then a "+" to add a wave.
+	 */
+	private void rebuildWaveButtons() {
+		wavePanel.removeAll();
+		// One left-aligned row per wave. Every wave button shares one fixed width,
+		// sized for a two-digit label, so adding waves never resizes the buttons or
+		// shifts their X buttons.
+		GridBagConstraints c = new GridBagConstraints();
+		c.anchor = GridBagConstraints.WEST;
+		c.insets = new Insets(0, 0, 4, 0);
+		c.gridx = 0;
+		int count = field.getWaveCount();
+		// Metal toggle buttons clip their label to "..." at exactly their preferred
+		// width, so give the text a little room.
+		int buttonWidth = new JToggleButton(WAVE_BUTTON_WIDEST_LABEL).getPreferredSize().width
+				+ WAVE_BUTTON_SLACK;
+		for (int i = 0; i < count; i++) {
+			int wave = i;
+			JToggleButton select = new JToggleButton("Wave " + (i + 1));
+			select.setFocusable(false);
+			Dimension size = select.getPreferredSize();
+			// A label longer than the reference (100+ waves) still gets room for its text.
+			size.width = Math.max(buttonWidth, size.width + WAVE_BUTTON_SLACK);
+			select.setPreferredSize(size);
+			select.setMaximumSize(size); // the row's BoxLayout caps buttons at this
+			select.setSelected(i == field.getSelectedWave());
+			select.setToolTipText("Show wave " + (i + 1) + " on the enemy side");
+			select.addActionListener(e -> {
+				field.selectWave(wave);
+				rebuildWaveButtons();
+			});
+			JPanel row = new JPanel();
+			row.setLayout(new BoxLayout(row, BoxLayout.X_AXIS));
+			row.setOpaque(false);
+			row.add(select);
+			if (i > 0) {
+				JButton remove = new JButton("X");
+				remove.setFocusable(false);
+				// Trim Metal's wide default side margins; a plain button never clips.
+				remove.setMargin(new Insets(2, 6, 2, 6));
+				remove.setToolTipText("Delete wave " + (i + 1));
+				remove.addActionListener(e -> {
+					field.removeWave(wave);
+					rebuildWaveButtons();
+				});
+				row.add(Box.createHorizontalStrut(4));
+				row.add(remove);
+			}
+			c.gridy = i;
+			wavePanel.add(row, c);
+		}
+		JButton add = new JButton("+");
+		add.setFocusable(false);
+		add.setToolTipText("Add another enemy wave");
+		add.addActionListener(e -> {
+			field.addWave();
+			rebuildWaveButtons();
+		});
+		// Match the wave buttons so the "+" reads as the next slot in the list.
+		Dimension addSize = add.getPreferredSize();
+		addSize.width = Math.max(addSize.width, buttonWidth);
+		add.setPreferredSize(addSize);
+		c.gridy = count;
+		wavePanel.add(add, c);
+		wavePanel.revalidate();
 		revalidate();
 		repaint();
 	}
@@ -551,6 +640,10 @@ public class ArenaPane extends JLayeredPane {
 
 		Dimension pass = passButton.getPreferredSize();
 		passButton.setBounds(16, 16 + end.height + 8, pass.width, pass.height);
+
+		// Setup only, in the same corner the End/Pass buttons take in battle.
+		Dimension waves = wavePanel.getPreferredSize();
+		wavePanel.setBounds(16, 16, waves.width, waves.height);
 
 		Dimension vol = volumePanel.getPreferredSize();
 		volumePanel.setBounds(w - vol.width - 16, 12, vol.width, vol.height);

@@ -261,6 +261,11 @@ public class BattleSimulator {
 			rowsAdvanced.put(side, 0);
 	}
 
+	/** Resets one side's advance count, e.g. when a fresh enemy wave takes the field. */
+	public void resetAdvancement(Side side) {
+		rowsAdvanced.put(side, 0);
+	}
+
 	/**
 	 * Plays a sound effect by name (e.g. an ability's hit sound); the name may
 	 * leave off its extension. Missing sounds are ignored.
