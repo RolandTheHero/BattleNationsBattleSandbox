@@ -318,7 +318,7 @@ public class NewGameFiles extends AbstractGameFiles {
 
 	@Override
 	protected void loadStatusFamilies() throws IOException {
-		JSONObject json = config("status_effect_families");
+		JSONObject json = config("status_effect_families_config");
 		for (String key : json.keySet()) {
 			JSONObject family = json.getJSONObject(key);
 			statusFamilies.put(key, new StatusEffect.StatusFamily(
@@ -334,7 +334,7 @@ public class NewGameFiles extends AbstractGameFiles {
 	@Override
 	protected void loadStatusEffects() throws IOException {
 		statusEffects.put("suppression", new StatusEffect.Suppression());
-		JSONObject json = config("status_effects");
+		JSONObject json = config("status_effects_config");
 		for (String key : json.keySet())
 			statusEffects.put(statusEffectId(key), parseStatusEffect(json.getJSONObject(key)));
 	}
