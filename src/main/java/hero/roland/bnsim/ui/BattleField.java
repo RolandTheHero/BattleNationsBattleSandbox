@@ -335,6 +335,7 @@ public class BattleField extends JComponent {
 					return;
 				}
 				if (dragging != null) {
+					Side oldSide = dragging.getSide();
 					boolean onBoard = sim.moveTo(dragging, p);
 					PlacedUnit dropped = dragging;
 					dragging = null;
@@ -342,8 +343,12 @@ public class BattleField extends JComponent {
 					if (dropped == selectedAttacker) {
 						if (!onBoard)
 							clearSelection(); // dropped off the board: nothing to show
-						else
+						else {
 							setSelectedAttack(selectedAttack); // recompute area from new cell
+							// Changing sides moves the info panel to the other edge.
+							if (dropped.getSide() != oldSide && attackerSelectedListener != null)
+								attackerSelectedListener.accept(dropped);
+						}
 					}
 					repaint();
 				}
