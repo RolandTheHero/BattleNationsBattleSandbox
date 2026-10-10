@@ -429,6 +429,7 @@ public class NewGameFiles extends AbstractGameFiles {
 		def.attacksPerUse = stats.optInt("attacks_per_use", 1);
 		def.lineOfFire = stats.optInt("line_of_fire", 0);
 		def.capture = stats.optBoolean("capture", false);
+		def.minHpPercent = stats.optDouble("min_hp_percent", Double.NEGATIVE_INFINITY);
 		def.attackDirection = stats.optInt("attack_direction", 1) == ATTACK_DIRECTION_BACK
 				? Ability.AttackDirection.BACK : Ability.AttackDirection.FRONT;
 		def.damageType = damageType(stats.optInt("damage_type", 0));

@@ -146,13 +146,12 @@ public class MostKillsEnemyBehavior extends HighestDamageEnemyBehavior {
 			}
 		}
 
-		double armorPiercing = ability.getArmorPiercingRate();
 		int kills = 0;
 		for (Map.Entry<PlacedUnit, Double> e : rawByUnit.entrySet()) {
 			PlacedUnit target = e.getKey();
 			if (target.isDead())
 				continue;
-			double hpDamage = target.estimateHpDamage(e.getValue(), ability.getDamageType(), armorPiercing);
+			double hpDamage = target.estimateHpDamage(e.getValue(), ability);
 			if (hpDamage >= target.getCurrentHp())
 				kills++;
 		}

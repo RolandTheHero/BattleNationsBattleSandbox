@@ -326,6 +326,13 @@ final class UnitInfoDialog extends JDialog {
 		} else {
 			number = "—";
 		}
+		// Abilities that cannot take a unit below a share of its max HP (e.g. nonlethal
+		// batons) show that floor; a floor of 0 is the norm and goes unmentioned.
+		double minHp = ability.getMinHpPercent();
+		if (minHp > 0) {
+			String minHpStr = minHp == Math.rint(minHp) ? Long.toString((long) minHp) : Double.toString(minHp);
+			number += muted(" (^" + minHpStr + "%)");
+		}
 		rows.append(row(gf.getText("damage"), damageTypeIcon(ability.getDamageType()), number));
 		// Total offense: the unit's rank accuracy plus the ability's own offense.
 		if (hasRanks)
@@ -367,7 +374,8 @@ final class UnitInfoDialog extends JDialog {
 		// icon.
 		String header = "<table cellspacing='0' cellpadding='0'><tr>"
 				+ "<td valign='middle'>" + abilityIcon(ability) + "</td>"
-				+ "<td valign='middle'>&nbsp;<b>" + esc(ability.getName()) + "</b></td>"
+				+ "<td valign='middle'>&nbsp;<b>" + esc(ability.getName()) + "</b>"
+				+ (ability.getCapture() ? muted(" (Capture)") : "") + "</td>"
 				+ "</tr></table>";
 		return "<div style='margin-left:10px; margin-top:4px;'>"
 				+ header

@@ -162,6 +162,7 @@ public class OldGameFiles extends AbstractGameFiles {
 		def.attacksPerUse = stats.optInt("attacksPerUse", 1);
 		def.lineOfFire = stats.optInt("lineOfFire", 0);
 		def.capture = stats.getBoolean("capture");
+		def.minHpPercent = stats.optDouble("minHPPercent", Double.NEGATIVE_INFINITY);
 		def.attackDirection = stats.optString("attackDirection", "front").equalsIgnoreCase("front")
 				? Ability.AttackDirection.FRONT : Ability.AttackDirection.BACK;
 		def.damageType = Ability.DamageType.fromString(stats.getJSONArray("damageType").getString(0));

@@ -165,10 +165,9 @@ public class HighestDamageEnemyBehavior implements EnemyBehavior {
 			}
 		}
 
-		double armorPiercing = ability.getArmorPiercingRate();
 		double total = 0;
 		for (Map.Entry<PlacedUnit, Double> e : rawByUnit.entrySet())
-			total += e.getKey().estimateDamage(e.getValue(), ability.getDamageType(), armorPiercing);
+			total += e.getKey().estimateDamage(e.getValue(), ability);
 		return total;
 	}
 }

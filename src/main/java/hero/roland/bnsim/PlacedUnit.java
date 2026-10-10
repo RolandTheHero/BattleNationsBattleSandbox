@@ -317,6 +317,18 @@ public class PlacedUnit {
 	 * (for the floating damage number).
 	 */
 	public int applyDamage(double rawDamage, Ability.DamageType type, double armorPiercing) {
+		return applyDamage(rawDamage, type, armorPiercing, Double.NEGATIVE_INFINITY);
+	}
+
+	/**
+	 * As {@link #applyDamage(double, Ability.DamageType, double)}, but the hit
+	 * cannot take HP below {@code minHpPercent} (0-100) of max HP — see
+	 * {@link Ability#getMinHpPercent}. Armor is stripped as usual. A unit already
+	 * below the floor loses no HP (it is not healed up to it either). A
+	 * {@code minHpPercent} of 0 or less sets no floor.
+	 */
+	public int applyDamage(double rawDamage, Ability.DamageType type, double armorPiercing,
+			double minHpPercent) {
 		if (rawDamage <= 0)
 			return 0;
 		DamageSplit split = splitDamage(rawDamage, type, armorPiercing);
@@ -327,33 +339,55 @@ public class PlacedUnit {
 		// the rounded armor unchanged) would otherwise still display as 1.
 		int hpBefore = currentHp;
 		int armorBefore = currentArmor;
+		double floor = hpFloor(minHpPercent);
 		currentArmor = (int) Math.round(currentArmor - split.armorAbsorbed());
-		currentHp -= (int) Math.round(split.hpDamage());
+		currentHp = (int) Math.max(currentHp - Math.round(split.hpDamage()), floor);
 		return (hpBefore - currentHp) + (armorBefore - currentArmor);
 	}
 
 	/**
-	 * The HP and armor a hit of the given raw damage and type would remove, worked
-	 * out exactly as {@link #applyDamage} does (resistances, armor and active
-	 * status-effect overrides included) but without applying it. HP damage beyond
-	 * the unit's remaining HP is not counted, as it would be wasted.
+	 * The lowest HP a hit with the given floor may leave this unit at:
+	 * {@code minHpPercent} of max HP, rounded up, but never above the current HP
+	 * (a hit cannot heal). Negative infinity when there is no floor — any
+	 * {@code minHpPercent} of 0 or less — so a killing blow still removes (and
+	 * displays) its full overkill damage.
 	 */
-	public double estimateDamage(double rawDamage, Ability.DamageType type, double armorPiercing) {
-		if (rawDamage <= 0)
-			return 0;
-		DamageSplit split = splitDamage(rawDamage, type, armorPiercing);
-		return split.armorAbsorbed() + Math.min(split.hpDamage(), Math.max(0, currentHp));
+	private double hpFloor(double minHpPercent) {
+		if (!(minHpPercent > 0))
+			return Double.NEGATIVE_INFINITY;
+		return Math.min(currentHp, Math.ceil(getMaxHp() * minHpPercent / 100));
+	}
+
+	/** The most HP a hit with the given floor could remove: down to the floor, or to 0. */
+	private double removableHp(double minHpPercent) {
+		return Math.max(0, currentHp - Math.max(0, hpFloor(minHpPercent)));
 	}
 
 	/**
-	 * The HP alone (not armor) a hit of the given raw damage and type would
-	 * remove, worked out as {@link #estimateDamage} does but without the armor it
-	 * would strip. HP damage beyond the unit's remaining HP is not counted.
+	 * The HP and armor a hit of the given raw damage from {@code ability} would
+	 * remove, worked out exactly as {@link #applyDamage} does (the ability's damage
+	 * type and armor piercing, resistances, armor and active status-effect overrides
+	 * included) but without applying it. HP damage beyond the unit's remaining HP,
+	 * or past the ability's {@link Ability#getMinHpPercent min HP} floor, is not
+	 * counted, as it would be wasted.
 	 */
-	public double estimateHpDamage(double rawDamage, Ability.DamageType type, double armorPiercing) {
+	public double estimateDamage(double rawDamage, Ability ability) {
 		if (rawDamage <= 0)
 			return 0;
-		return Math.min(splitDamage(rawDamage, type, armorPiercing).hpDamage(), Math.max(0, currentHp));
+		DamageSplit split = splitDamage(rawDamage, ability.getDamageType(), ability.getArmorPiercingRate());
+		return split.armorAbsorbed() + Math.min(split.hpDamage(), removableHp(ability.getMinHpPercent()));
+	}
+
+	/**
+	 * The HP alone (not armor) a hit of the given raw damage from {@code ability}
+	 * would remove, worked out as {@link #estimateDamage} does but without the
+	 * armor it would strip.
+	 */
+	public double estimateHpDamage(double rawDamage, Ability ability) {
+		if (rawDamage <= 0)
+			return 0;
+		return Math.min(splitDamage(rawDamage, ability.getDamageType(), ability.getArmorPiercingRate()).hpDamage(),
+				removableHp(ability.getMinHpPercent()));
 	}
 
 	/** How a hit divides between armor absorbed and HP damage (see {@link #splitDamage}). */

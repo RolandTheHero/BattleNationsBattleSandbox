@@ -46,6 +46,8 @@ public class Ability {
 	private int minRange, maxRange;
 	private int lineOfFire;
 	private boolean capture;
+	/** Percent of max HP a hit from this ability cannot take a unit below. */
+	private double minHpPercent;
 	private int aoeDelay;
 	private TargetType targetType;
     private String infantryHitSound, vehicleHitSound;
@@ -85,6 +87,9 @@ public class Ability {
 		/** One of the {@code LOF_*} constants. */
 		public int lineOfFire;
 		public boolean capture;
+		/** Percent (0-100) of max HP a hit cannot take a unit below; negative
+		 * infinity when the ability sets no floor. */
+		public double minHpPercent = Double.NEGATIVE_INFINITY;
 		/** Frames (at 20 per second) between successive squares of the target area. */
 		public int aoeDelay;
 		/** {@code null} when the ability has no target area. */
@@ -111,6 +116,7 @@ public class Ability {
 		tag = "none";
 		minRange = 1;
 		maxRange = 5;
+		minHpPercent = Double.NEGATIVE_INFINITY;
 		statusEffects = new StatusEffectChance[0];
 	}
 
@@ -134,6 +140,7 @@ public class Ability {
 		maxRange = def.maxRange;
 		lineOfFire = def.lineOfFire;
 		capture = def.capture;
+		minHpPercent = def.minHpPercent;
 		aoeDelay = def.aoeDelay;
 		targetType = def.targetType;
 		damageType = def.damageType;
@@ -358,6 +365,15 @@ public class Ability {
 
 	public boolean getCapture() {
 		return capture;
+	}
+
+	/**
+	 * Percent (0-100) of a unit's max HP that a hit from this ability cannot take
+	 * it below (e.g. 10 for a nonlethal baton), or negative infinity when the
+	 * ability sets no floor. See {@link hero.roland.bnsim.PlacedUnit#applyDamage}.
+	 */
+	public double getMinHpPercent() {
+		return minHpPercent;
 	}
 
 	/** Turns this ability is unusable after it is used. */

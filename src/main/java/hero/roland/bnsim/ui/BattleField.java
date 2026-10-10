@@ -2139,8 +2139,11 @@ public class BattleField extends JComponent {
 				critical = true;
 				rawDamage *= BattleSimulator.CRIT_MULTIPLIER;
 			}
+			// Some abilities (e.g. nonlethal batons) cannot take HP below a floor.
+			double minHpPercent = marker.ability != null
+					? marker.ability.getMinHpPercent() : Double.NEGATIVE_INFINITY;
 			int dealt = target.applyDamage(rawDamage,
-					marker.damageType, marker.armorPiercing);
+					marker.damageType, marker.armorPiercing, minHpPercent);
 			// Flash the struck unit red and shake it in proportion to the health lost.
 			if (dealt > 0)
 				target.registerHit(dealt, tick);
