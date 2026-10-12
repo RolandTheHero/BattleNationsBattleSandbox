@@ -222,7 +222,8 @@ public class BattleField extends JComponent {
 	/**
 	 * The enemy waves' layouts. In setup the enemy side on the board is the
 	 * {@link #selectedWave}'s live layout (its entry here is refreshed whenever the
-	 * board switches away from it, see {@link #saveSelectedWave}). Wave 1 always exists.
+	 * board switches away from it, see {@link #saveSelectedWave}). There is always at
+	 * least one wave.
 	 */
 	private final List<List<UnitSnapshot>> waves = new ArrayList<>();
 	/** The wave shown on the enemy side during setup. */
@@ -522,20 +523,41 @@ public class BattleField extends JComponent {
 	}
 
 	/**
-	 * Setup mode: deletes the given wave (wave 1 can never be deleted). Deleting
-	 * the shown wave shows the one before it instead.
+	 * Setup mode: deletes the given wave (the last one left can never be deleted).
+	 * Deleting the shown wave shows the one before it instead (or the new first
+	 * wave, when the first was deleted).
 	 */
 	public void removeWave(int index) {
-		if (battleMode || index <= 0 || index >= waves.size())
+		if (battleMode || waves.size() <= 1 || index < 0 || index >= waves.size())
 			return;
 		saveSelectedWave();
 		waves.remove(index);
 		if (index < selectedWave)
 			selectedWave--;
 		else if (index == selectedWave) {
-			selectedWave = index - 1;
+			selectedWave = Math.max(0, index - 1);
 			loadWave(selectedWave);
 		}
+	}
+
+	/**
+	 * Setup mode: moves the wave at {@code from} so it sits at {@code to} in the
+	 * fighting order, shifting the waves between them over by one. The shown wave
+	 * stays shown, wherever it ends up.
+	 */
+	public void moveWave(int from, int to) {
+		if (battleMode || from < 0 || from >= waves.size() || to < 0 || to >= waves.size()
+				|| from == to)
+			return;
+		// The board holds the shown wave's live layout, so its (possibly stale) entry
+		// can move with the rest and still be refreshed on the next switch.
+		waves.add(to, waves.remove(from));
+		if (selectedWave == from)
+			selectedWave = to;
+		else if (from < selectedWave && selectedWave <= to)
+			selectedWave--;
+		else if (to <= selectedWave && selectedWave < from)
+			selectedWave++;
 	}
 
 	/** Stores the enemy side's current layout as the selected wave's. */
