@@ -16,6 +16,12 @@ public interface EnemyBehavior {
 	 */
 	Move decideMove(BattleSimulator sim);
 
+	/**
+	 * Whether the player commands the enemy on its turn instead: the battle UI
+	 * then hands control over and never calls {@link #decideMove}.
+	 */
+	default boolean isPlayerControlled() { return false; }
+
 	String name();
 	String description();
 

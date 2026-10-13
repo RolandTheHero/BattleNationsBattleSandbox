@@ -158,31 +158,40 @@ public class BattleField extends JComponent {
 	 */
 	private double fieldScale = 1.0;
 
-	/** Status effect applied to a side at the start of each of its turns (whenever
-	 * the turn changes to it); null = none. Set via the UnitMenu "Environment" dropdown. */
+	/** Status effect applied to a side at the end of each opposing turn (just before
+	 * that side's effects tick); null = none. Set via the UnitMenu "Environment" dropdown. */
 	private StatusEffect environmentStatusEffect;
 
 	/** Background image scaled to fill the component; null falls back to a colour. */
 	private BufferedImage background;
 
 	/**
-	 * Turn state. Each side's turn begins with a status-effect step (its effects
-	 * deal damage and the turn waits for that animation), then the action: the
-	 * enemy fires, or the player regains control. Every turn then ends through
-	 * {@code AWAITING_ADVANCE}, which waits for all of the turn's animations to
-	 * settle — attack/impact flashes, damage numbers, draining bars, death
-	 * animations and death-spawns — before the next side acts, so the next turn
-	 * never begins over a still-animating board. If the opposing side's front row
-	 * has been emptied (and it still has units), {@code ADVANCING} then plays the
-	 * one-row slide before that next turn. If the enemy wave has been cleared and
-	 * another follows, {@code WAVE_ENTERING} first slides the next wave in.
+	 * Turn state. On its turn the enemy fires, or the player has control
+	 * ({@code PLAYER}); under a {@linkplain EnemyBehavior#isPlayerControlled
+	 * player-controlled} behaviour the player commands the enemy too ({@code ENEMY},
+	 * see {@link #controlledSide}). Every
+	 * turn then ends through {@code TURN_END_STATUS}, which waits for the turn's
+	 * attack to settle (including any status effects it applied) and then has the
+	 * opposing side's status effects deal their damage — so an effect applied this
+	 * turn hits its target before the target's side acts. Next,
+	 * {@code AWAITING_ADVANCE} waits for all of those animations to settle —
+	 * attack/impact flashes, damage numbers, draining bars, death animations and
+	 * death-spawns — before the next side acts, so the next turn never begins over
+	 * a still-animating board. If the opposing side's front row has been emptied
+	 * (and it still has units), {@code ADVANCING} then plays the one-row slide
+	 * before that next turn. If the enemy wave has been cleared and another
+	 * follows, {@code WAVE_ENTERING} first slides the next wave in.
 	 */
 	private enum Phase {
-		PLAYER, PLAYER_FIRING, ENEMY_TURN_STATUS, ENEMY_FIRING, PLAYER_TURN_STATUS,
+		PLAYER, ENEMY, PLAYER_FIRING, ENEMY_FIRING, TURN_END_STATUS,
 		AWAITING_ADVANCE, ADVANCING, WAVE_ENTERING
 	}
 
 	private Phase phase = Phase.PLAYER;
+	/** The side the player commands: the player's own, or the enemy's while it is
+	 * {@linkplain EnemyBehavior#isPlayerControlled player-controlled} and taking its
+	 * turn. Keeps the last commanded side between turns. */
+	private Side controlledSide = Side.PLAYER;
 	/** Tick at which the current phase's animation finishes and the turn advances. */
 	private int attackEndTick;
 	/** Tick at which the attack animation and its hits finish; status-apply icons
@@ -245,12 +254,13 @@ public class BattleField extends JComponent {
 	// unit's info panel and target area but cannot act.
 	private PlacedUnit selectedAttacker;
 	private Unit.Attack selectedAttack;
-	/** The attack the player fired with, dropped from the aim while the turn plays
-	 * out and re-highlighted on the selected unit once control returns (null = none). */
-	private Unit.Attack pendingPlayerAim;
+	/** Per side, the unit and attack the player last fired with: the aim is dropped
+	 * while the turn plays out and re-highlighted on that unit once control of its
+	 * side returns (see {@link #restoreAim}). */
+	private final Map<Side, PendingAim> pendingAims = new EnumMap<>(Side.class);
 	/** Hides the selected unit's sprite outline while its attack plays out and the
 	 * enemy acts; cleared so the outline returns once control comes back (see
-	 * {@link #playerFire} and {@link #restorePlayerAim}). */
+	 * {@link #playerFire} and {@link #restoreAim}). */
 	private boolean selectHighlightSuppressed;
 	private Set<Cell> targetable = new HashSet<>();
 	/** Fixed tiles a selected WEAPON attack will strike (cyan highlight). */
@@ -449,6 +459,7 @@ public class BattleField extends JComponent {
 		boolean wasBattle = this.battleMode;
 		this.battleMode = battle;
 		phase = Phase.PLAYER;
+		controlledSide = Side.PLAYER;
 		pendingAdvanceSide = null;
 		advancingSide = null;
 		advancingUnits.clear();
@@ -479,7 +490,7 @@ public class BattleField extends JComponent {
 		firingAttack = null;
 		firingAim = null;
 		attacksRemaining = 0;
-		pendingPlayerAim = null;
+		pendingAims.clear();
 		selectHighlightSuppressed = false;
 		message = null;
 		if (battle)
@@ -650,7 +661,7 @@ public class BattleField extends JComponent {
 		enteringUnits.clear();
 		// Enemy viewing always keeps an enemy selected; the old one has left the field.
 		if (enemyViewEnabled && selectedAttacker == null) {
-			PlacedUnit enemy = firstEnemy();
+			PlacedUnit enemy = firstUnit(viewedSide());
 			if (enemy != null)
 				selectAttacker(enemy);
 		}
@@ -697,8 +708,8 @@ public class BattleField extends JComponent {
 	}
 
 	/**
-	 * Sets the status effect applied to a side at the start of each of its turns —
-	 * i.e. whenever the turn changes to it. {@code id} is a loaded status-effect id
+	 * Sets the status effect applied to a side at the end of each opposing turn —
+	 * i.e. just before the turn changes to it. {@code id} is a loaded status-effect id
 	 * (one of the "env" effects offered by the UnitMenu dropdown), or {@code null}
 	 * for none. Immune units are unaffected, as immunity is enforced on apply.
 	 */
@@ -750,6 +761,8 @@ public class BattleField extends JComponent {
 	 * health, abilities and target area can be inspected (view-only — enemy units
 	 * cannot be made to act, and clicking elsewhere does not deselect it). Enabling
 	 * auto-selects an enemy; disabling clears any enemy unit that was selected.
+	 * "Enemy" is relative to the {@linkplain #controlledSide side in control}, so
+	 * while the player commands a player-controlled enemy it views player units.
 	 *
 	 * <p>Returns whether enemy viewing is now active: enabling it does nothing and
 	 * returns {@code false} when there is no enemy to view, so the caller can leave
@@ -757,7 +770,7 @@ public class BattleField extends JComponent {
 	 */
 	public boolean setEnemyViewEnabled(boolean enabled) {
 		if (enabled) {
-			PlacedUnit enemy = firstEnemy();
+			PlacedUnit enemy = firstUnit(viewedSide());
 			// No enemy to view: leave everything as it was and report that enemy
 			// viewing did not engage.
 			if (enemy == null) {
@@ -765,24 +778,29 @@ public class BattleField extends JComponent {
 				return false;
 			}
 			enemyViewEnabled = true;
-			// Always keep an enemy selected for inspection; if a player unit (or
+			// Always keep an enemy selected for inspection; if a controlled unit (or
 			// nothing) was selected, show this enemy instead.
-			if (selectedAttacker == null || selectedAttacker.getSide() != Side.ENEMY)
+			if (selectedAttacker == null || selectedAttacker.getSide() != viewedSide())
 				selectAttacker(enemy);
 		} else {
 			enemyViewEnabled = false;
-			// Back to controlling the player: drop the enemy unit that was being viewed.
-			if (selectedAttacker != null && selectedAttacker.getSide() != Side.PLAYER)
+			// Back to commanding: drop the enemy unit that was being viewed.
+			if (selectedAttacker != null && selectedAttacker.getSide() != controlledSide)
 				clearSelection();
 		}
 		repaint();
 		return enemyViewEnabled;
 	}
 
-	/** The first enemy unit placed, or {@code null} if the enemy side has no units. */
-	private PlacedUnit firstEnemy() {
+	/** The side enemy viewing inspects: the opponent of the side in control. */
+	private Side viewedSide() {
+		return BattleSimulator.opponentOf(controlledSide);
+	}
+
+	/** The first unit placed on the side, or {@code null} if it has no units. */
+	private PlacedUnit firstUnit(Side side) {
 		for (PlacedUnit unit : sim.placedUnits())
-			if (unit.getSide() == Side.ENEMY)
+			if (unit.getSide() == side)
 				return unit;
 		return null;
 	}
@@ -957,7 +975,7 @@ public class BattleField extends JComponent {
 	 * {@link #onBattleRelease}). Any other press falls through to normal handling.
 	 */
 	private void onBattlePress(Point p) {
-		if (phase == Phase.PLAYER && isAoeReticleInteractive() && pressedOnReticle(p)) {
+		if (isControlPhase() && isAoeReticleInteractive() && pressedOnReticle(p)) {
 			draggingTarget = true;
 			targetDragMoved = false;
 			return;
@@ -989,18 +1007,25 @@ public class BattleField extends JComponent {
 		boolean moved = targetDragMoved;
 		draggingTarget = false;
 		targetDragMoved = false;
-		if (!moved && phase == Phase.PLAYER && isAoeReticleInteractive())
+		if (!moved && isControlPhase() && isAoeReticleInteractive())
 			tryFire(aoeTarget);
 	}
 
 	/**
 	 * Whether the AOE reticle belongs to an attack the player can fire — a selected
-	 * player unit aiming a TARGET-area ability — so it can be dragged and fired
-	 * (an enemy unit's reticle, shown for inspection, is view-only).
+	 * unit of the {@linkplain #controlledSide side in control} aiming a TARGET-area
+	 * ability — so it can be dragged and fired (an enemy unit's reticle, shown for
+	 * inspection, is view-only).
 	 */
 	private boolean isAoeReticleInteractive() {
 		return aoeTarget != null && selectedAttack != null && selectedAttacker != null
-				&& selectedAttacker.getSide() == Side.PLAYER;
+				&& selectedAttacker.getSide() == controlledSide;
+	}
+
+	/** Whether the player has control right now: their own turn, or the turn of a
+	 * player-controlled enemy. Input is ignored otherwise. */
+	private boolean isControlPhase() {
+		return phase == Phase.PLAYER || phase == Phase.ENEMY;
 	}
 
 	/** Whether the pixel falls on the current AOE reticle's tile. */
@@ -1010,13 +1035,13 @@ public class BattleField extends JComponent {
 	}
 
 	private void onBattleClick(Point p) {
-		// Input is only accepted during the player's turn (not while an attack
-		// animation is playing or during the enemy's turn).
-		if (phase != Phase.PLAYER)
+		// Input is only accepted while the player has control (not while an attack
+		// animation is playing or during an AI enemy's turn).
+		if (!isControlPhase())
 			return;
-		// Firing at a highlighted tile takes priority, but only for the player's
-		// own units — enemy units are view-only.
-		if (selectedAttacker != null && selectedAttacker.getSide() == Side.PLAYER
+		// Firing at a highlighted tile takes priority, but only for units of the
+		// side in control — the other side's units are view-only.
+		if (selectedAttacker != null && selectedAttacker.getSide() == controlledSide
 				&& selectedAttack != null) {
 			if (selectedAttack.getAbility().getTargetType() == Ability.TargetType.WEAPON) {
 				// Fixed attack: clicking any highlighted tile fires it (its aim is
@@ -1026,7 +1051,7 @@ public class BattleField extends JComponent {
 					return;
 				}
 			} else {
-				Cell target = geometry.cellAt(Side.ENEMY, p);
+				Cell target = geometry.cellAt(BattleSimulator.opponentOf(controlledSide), p);
 				if (target != null && targetable.contains(target)) {
 					// An AOE attack moves its reticle to the clicked in-range tile
 					// (firing happens by pressing the reticle's own tile); any other
@@ -1042,10 +1067,10 @@ public class BattleField extends JComponent {
 			}
 		}
 		// Otherwise (re)select a unit. Only one side is selectable: enemy units
-		// (view-only) while enemy viewing is enabled, the player's own units
+		// (view-only) while enemy viewing is enabled, the controlled side's units
 		// otherwise. Clicking away clears the selection — except while enemy
 		// viewing, which always keeps an enemy selected.
-		Side selectableSide = enemyViewEnabled ? Side.ENEMY : Side.PLAYER;
+		Side selectableSide = enemyViewEnabled ? viewedSide() : controlledSide;
 		PlacedUnit clicked = sim.pick(p);
 		if (clicked != null && clicked.getSide() == selectableSide)
 			selectAttacker(clicked);
@@ -1137,17 +1162,18 @@ public class BattleField extends JComponent {
 		PlacedUnit attacker = selectedAttacker;
 		Unit.Attack attack = selectedAttack;
 		executeAttack(attacker, attack, aim);
-		phase = Phase.PLAYER_FIRING;   // wait for the animation to finish
-		// Remember the aim so the selected unit's target tiles can be re-highlighted
-		// once control returns to the player (see restorePlayerAim).
-		pendingPlayerAim = attack;
+		// Wait for the animation to finish; the firing phase ends the attacker's turn.
+		phase = attacker.getSide() == Side.PLAYER ? Phase.PLAYER_FIRING : Phase.ENEMY_FIRING;
+		// Remember the aim so the unit's target tiles can be re-highlighted once
+		// control of its side returns (see restoreAim).
+		pendingAims.put(attacker.getSide(), new PendingAim(attacker, attack));
 		// Keep the attacker selected so its weapon box stays open, but drop the aim so
 		// no target highlight lingers while the attack plays out and the enemy acts.
 		// The unit's sprite outline is hidden the same way, returning with the target
-		// tiles once control comes back (see restorePlayerAim).
+		// tiles once control comes back (see restoreAim).
 		// Refresh the box to show the ability's new cooldown and the weapon's spent
-		// ammo (no further firing is possible until the player's turn comes back, as
-		// input is ignored outside Phase.PLAYER).
+		// ammo (no further firing is possible until the player has control again, as
+		// input is ignored outside the control phases).
 		selectedAttack = null;
 		selectHighlightSuppressed = true;
 		targetable = new HashSet<>();
@@ -1160,16 +1186,16 @@ public class BattleField extends JComponent {
 	}
 
 	/**
-	 * Skips the player's turn without attacking, handing control to the enemy.
-	 * Passing still ends the turn, so the enemy advances first if the player has
-	 * left its front line empty. Does nothing outside the player's turn (e.g. while
-	 * an attack is animating or during the enemy's turn).
+	 * Skips the controlled side's turn without attacking, handing control to the
+	 * other side. Passing still ends the turn, so the other side advances first if
+	 * its front line has been left empty. Does nothing while the player lacks
+	 * control (e.g. while an attack is animating or during an AI enemy's turn).
 	 */
 	public void passTurn() {
-		if (!battleMode || phase != Phase.PLAYER)
+		if (!battleMode || !isControlPhase())
 			return;
 		clearSelection();
-		endOfTurn(Side.PLAYER);
+		endOfTurn(controlledSide);
 	}
 
 	/**
@@ -1285,24 +1311,21 @@ public class BattleField extends JComponent {
 		// including any death playing out — rather than a fixed end tick. Polled
 		// each frame so the next step never begins over a still-animating board.
 		switch (phase) {
+		case TURN_END_STATUS:
+			// Once the ended turn's attack (and any effects it applied) has played
+			// out, the opposing side's status effects deal their damage.
+			if (turnVisualsSettled()) {
+				applyEnvironmentStatusEffect(pendingAdvanceSide);
+				tickStatusEffects(pendingAdvanceSide);
+				phase = Phase.AWAITING_ADVANCE;
+			}
+			return;
 		case AWAITING_ADVANCE:
-			// The ended turn waits before the next side acts (and any advance slides).
-			// A cleared enemy wave is replaced by the next one first.
+			// The ended turn waits — for its attack and the end-of-turn status damage,
+			// including any deaths it causes — before the next side acts (and any
+			// advance slides). A cleared enemy wave is replaced by the next one first.
 			if (turnVisualsSettled() && !beginNextWave())
 				beginAdvanceSlide();
-			return;
-		case ENEMY_TURN_STATUS:
-			// Wait for start-of-turn status damage and any deaths it causes to finish
-			// before the enemy attacks, so a status kill isn't stranded behind it.
-			if (turnVisualsSettled())
-				enemyAct();
-			return;
-		case PLAYER_TURN_STATUS:
-			// As above, before handing control back to the player.
-			if (turnVisualsSettled()) {
-				phase = Phase.PLAYER;
-				restorePlayerAim();
-			}
 			return;
 		default:
 			break;
@@ -1337,12 +1360,14 @@ public class BattleField extends JComponent {
 
 	/**
 	 * Wraps up {@code actingSide}'s turn. Rather than handing straight to the next
-	 * side, the turn always parks in {@code AWAITING_ADVANCE} until every one of its
-	 * animations has finished (see {@link #turnVisualsSettled}) — attack and impact
-	 * flashes, floating damage numbers, draining bars, death animations and their
-	 * death-spawns — so the next side never starts acting over a still-animating
-	 * board. Once settled, {@link #beginAdvanceSlide} advances the opposing side one
-	 * row if its front line is now empty, then the next turn begins.
+	 * side, the turn first parks in {@code TURN_END_STATUS}, where the opposing
+	 * side's status effects deal their damage once the attack has settled, then in
+	 * {@code AWAITING_ADVANCE} until every one of its animations has finished (see
+	 * {@link #turnVisualsSettled}) — attack and impact flashes, floating damage
+	 * numbers, draining bars, death animations and their death-spawns — so the next
+	 * side never starts acting over a still-animating board. Once settled,
+	 * {@link #beginAdvanceSlide} advances the opposing side one row if its front
+	 * line is now empty, then the next turn begins.
 	 */
 	private void endOfTurn(Side actingSide) {
 		// Advance the acting side's cooldowns/reloads and age its status effects as
@@ -1355,7 +1380,7 @@ public class BattleField extends JComponent {
 			}
 		}
 		pendingAdvanceSide = BattleSimulator.opponentOf(actingSide);
-		phase = Phase.AWAITING_ADVANCE;
+		phase = Phase.TURN_END_STATUS;
 		// The acting side's cooldowns and reloads just advanced; refresh the open info
 		// panel so a shown unit's countdowns stay current without reselecting it.
 		refreshSelectionInfo();
@@ -1363,22 +1388,19 @@ public class BattleField extends JComponent {
 
 	/** Begins the turn that follows {@code actingSide}'s. */
 	private void nextTurnAfter(Side actingSide) {
-		// The turn is changing sides: apply the environment effect to the side it is
-		// changing to, just before that side's effects tick. This never fires for the
-		// player's opening turn, which starts the battle rather than following a turn.
-		applyEnvironmentStatusEffect(BattleSimulator.opponentOf(actingSide));
 		if (actingSide == Side.PLAYER)
-			beginEnemyTurn();
+			enemyAct();
 		else
 			beginPlayerTurn();
 	}
 
 	/**
 	 * Applies the configured environment status effect (if any) to every unit on
-	 * {@code side} as its turn begins, just before its effects tick — so each unit
-	 * takes the environment's damage at the start of its turn. Re-applying every
-	 * turn refreshes the effect; immune units are unaffected (immunity is enforced
-	 * by {@link PlacedUnit#applyStatusEffect}).
+	 * {@code side} as the opposing turn ends, just before its effects tick — so each
+	 * unit takes the environment's damage right before its own turn. Re-applying
+	 * every turn refreshes the effect; immune units are unaffected (immunity is
+	 * enforced by {@link PlacedUnit#applyStatusEffect}). This never fires before the
+	 * player's opening turn, which starts the battle rather than following a turn.
 	 */
 	private void applyEnvironmentStatusEffect(Side side) {
 		if (environmentStatusEffect == null)
@@ -1502,17 +1524,14 @@ public class BattleField extends JComponent {
 	}
 
 	/**
-	 * Begins the enemy's turn by evaluating its status effects. The enemy only acts
-	 * once every start-of-turn status animation has finished — the damage numbers
-	 * and any death (and death-spawn) a status effect causes (see {@link #advanceTurns}).
+	 * The enemy chooses and plays its attack, beginning its turn — or, under a
+	 * player-controlled behaviour, hands the player control of the enemy instead.
 	 */
-	private void beginEnemyTurn() {
-		tickStatusEffects(Side.ENEMY);
-		phase = Phase.ENEMY_TURN_STATUS;
-	}
-
-	/** The enemy chooses and plays its attack, after its status effects ticked. */
 	private void enemyAct() {
+		if (enemyBehavior.isPlayerControlled()) {
+			beginControlledTurn(Side.ENEMY);
+			return;
+		}
 		EnemyBehavior.Move move = enemyBehavior.decideMove(sim);
 		if (move == null) {
 			// No legal move: the enemy effectively passes, but ending its turn still
@@ -1524,40 +1543,69 @@ public class BattleField extends JComponent {
 		phase = Phase.ENEMY_FIRING;
 	}
 
-	/**
-	 * Begins the player's turn by evaluating their status effects. The player only
-	 * regains control once every start-of-turn status animation has finished — the
-	 * damage numbers and any death a status effect causes (see {@link #advanceTurns}).
-	 */
+	/** Begins the player's turn, handing control back to the player. */
 	private void beginPlayerTurn() {
-		tickStatusEffects(Side.PLAYER);
-		phase = Phase.PLAYER_TURN_STATUS;
+		beginControlledTurn(Side.PLAYER);
 	}
 
 	/**
-	 * Re-highlights the selected player unit's target tiles once control returns to
-	 * the player, restoring the attack it fired with — so the targetable tiles
-	 * reappear without the player having to reselect the unit. A no-op when nothing
-	 * is selected, the selection is an enemy (view-only) unit, the unit died during
-	 * the turn (its selection was already cleared by {@link #beginDying}), or the
-	 * player passed rather than fired (no pending aim to restore).
+	 * Hands the player control of {@code side} for its turn. While the enemy is
+	 * player-controlled both sides are commanded alike, so a message announces
+	 * whose turn it is.
 	 */
-	private void restorePlayerAim() {
-		if (selectedAttacker != null && selectedAttacker.getSide() == Side.PLAYER
-				&& selectedAttack == null && pendingPlayerAim != null)
-			setSelectedAttack(pendingPlayerAim);
-		pendingPlayerAim = null;
-		// Bring the selected unit's sprite outline back now control is the player's.
-		selectHighlightSuppressed = false;
+	private void beginControlledTurn(Side side) {
+		controlledSide = side;
+		phase = side == Side.PLAYER ? Phase.PLAYER : Phase.ENEMY;
+		restoreAim(side);
+		if (enemyBehavior.isPlayerControlled())
+			showMessage(side == Side.PLAYER ? "Player's turn" : "Enemy's turn");
 	}
 
 	/**
-	 * Evaluates start-of-turn status effects for every unit on the given side:
-	 * each effect deals its damage (shown as a floating number with the effect's
-	 * icon); effects age at the end of the turn instead (see {@link #endOfTurn}).
-	 * A unit killed by an effect is taken out of the simulation and left on screen
-	 * to play out its death; the turn waits for that to finish before proceeding
-	 * (see {@link #advanceTurns}).
+	 * Re-highlights the target tiles of the unit {@code side} last fired with once
+	 * control of that side returns, restoring the attack it used — so the
+	 * targetable tiles reappear without the player having to reselect the unit. If
+	 * the selection belongs to the side that just gave up control (or is empty),
+	 * that unit is reselected first. Nothing is restored when the unit died during
+	 * the turn or the side passed rather than fired (no pending aim). While enemy
+	 * viewing, the selection instead moves to the newly viewed side.
+	 */
+	private void restoreAim(Side side) {
+		PendingAim pending = pendingAims.remove(side);
+		// Bring the selected unit's sprite outline back now the player has control.
+		selectHighlightSuppressed = false;
+		if (enemyViewEnabled) {
+			// The viewed side flips with control; keep one of its units selected.
+			if (selectedAttacker == null || selectedAttacker.getSide() != viewedSide()) {
+				PlacedUnit unit = firstUnit(viewedSide());
+				if (unit != null)
+					selectAttacker(unit);
+				else
+					clearSelection();
+			}
+			return;
+		}
+		if (selectedAttacker == null || selectedAttacker.getSide() != side) {
+			if (pending != null && sim.placedUnits().contains(pending.attacker())) {
+				selectAttacker(pending.attacker());
+				setSelectedAttack(pending.attack());
+				refreshSelectionInfo(); // highlight the restored attack in the box
+			} else if (selectedAttacker != null) {
+				clearSelection(); // the other side's unit can no longer be commanded
+			}
+		} else if (pending != null && selectedAttacker == pending.attacker()
+				&& selectedAttack == null) {
+			setSelectedAttack(pending.attack());
+		}
+	}
+
+	/**
+	 * Evaluates the status effects of every unit on the given side as the opposing
+	 * side's turn ends: each effect deals its damage (shown as a floating number with
+	 * the effect's icon); effects age at the end of the side's own turn instead (see
+	 * {@link #endOfTurn}). A unit killed by an effect is taken out of the simulation
+	 * and left on screen to play out its death; the turn waits for that to finish
+	 * before proceeding (see {@link #advanceTurns}).
 	 */
 	private void tickStatusEffects(Side side) {
 		for (PlacedUnit unit : sim.placedUnits()) {
@@ -2793,6 +2841,10 @@ public class BattleField extends JComponent {
 			return direct.contains(cell) || splash.contains(cell);
 		}
 	}
+
+	/** A unit the player fired with and the attack it used, to re-aim once its side
+	 * is back under control. */
+	private record PendingAim(PlacedUnit attacker, Unit.Attack attack) {}
 
 	/** A unit's type, cell and rank on one side, for restoring it later (a wave, or
 	 * the board as it was before a battle). */

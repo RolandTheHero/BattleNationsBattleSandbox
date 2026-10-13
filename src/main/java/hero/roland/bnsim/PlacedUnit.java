@@ -504,10 +504,10 @@ public class PlacedUnit {
 	}
 
 	/**
-	 * Evaluates this unit's status effects for the start of its side's turn: each
-	 * effect deals its damage. Effects are not aged here — they stay active for the
-	 * rest of the turn (so e.g. a freeze blocks this turn's action) and age in
-	 * {@link #ageStatusEffects} as the turn ends. Returns one {@link StatusTick}
+	 * Evaluates this unit's status effects as the opposing side's turn ends: each
+	 * effect deals its damage. Effects are not aged here — they stay active through
+	 * the unit's own following turn (so e.g. a freeze blocks that turn's action) and
+	 * age in {@link #ageStatusEffects} as that turn ends. Returns one {@link StatusTick}
 	 * per effect that dealt damage, so the UI can show a floating number and the
 	 * effect's icon.
 	 */
@@ -536,7 +536,7 @@ public class PlacedUnit {
 		statusEffects.removeIf(ActiveStatusEffect::isExpired);
 	}
 
-	/** One effect's start-of-turn result: the effect and the damage it dealt. */
+	/** One effect's evaluation result: the effect and the damage it dealt. */
 	public record StatusTick(StatusEffect effect, int damageDealt) {
 	}
 

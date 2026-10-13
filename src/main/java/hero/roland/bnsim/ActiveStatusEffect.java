@@ -75,7 +75,7 @@ public class ActiveStatusEffect {
 		return baseDamage * mult + effect.getBonusDamage();
 	}
 
-	/** Records that the effect was evaluated at the start of the unit's turn, so
+	/** Records that the effect was evaluated (as the opposing side's turn ended), so
 	 * the next evaluation uses the next diminishing multiplier. */
 	public void onEvaluated() {
 		ticks++;

@@ -65,6 +65,7 @@ public class UnitMenu extends JPanel {
 		ENEMY_BEHAVIORS.add(new DummyEnemyBehavior());
 		ENEMY_BEHAVIORS.add(new HighestDamageEnemyBehavior());
 		ENEMY_BEHAVIORS.add(new MostKillsEnemyBehavior());
+		ENEMY_BEHAVIORS.add(new PlayerControlledEnemyBehavior());
 	}
 
 	private final JComboBox<Text.Language> languageSelector = new JComboBox<>();
@@ -424,7 +425,7 @@ public class UnitMenu extends JPanel {
 	/**
 	 * Builds the environment-status-effect dropdown, listing every loaded status
 	 * effect whose id contains {@code "env"} with {@code None} as the default. The
-	 * chosen effect is applied to a side at the start of each of its turns (see
+	 * chosen effect is applied to a side at the end of each opposing turn (see
 	 * {@link BattleField#setEnvironmentStatusEffect}); selecting one notifies the
 	 * {@linkplain #setEnvironmentStatusEffectListener environment-effect listener}
 	 * with its id, or {@code null} for {@code None}.
