@@ -493,11 +493,14 @@ public class BattleField extends JComponent {
 		pendingAims.clear();
 		selectHighlightSuppressed = false;
 		message = null;
-		if (battle)
+		if (battle) {
 			for (PlacedUnit unit : sim.placedUnits()) {
 				unit.resetHealth();
 				unit.startBattle();
 			}
+			// The player's opening turn begins now.
+			applyEnvironmentStatusEffect(Side.ENEMY);
+		}
 		repaint();
 	}
 
@@ -708,8 +711,8 @@ public class BattleField extends JComponent {
 	}
 
 	/**
-	 * Sets the status effect applied to a side at the end of each opposing turn —
-	 * i.e. just before the turn changes to it. {@code id} is a loaded status-effect id
+	 * Sets the status effect applied to a side at the start of each opposing turn
+	 * (see {@link #applyEnvironmentStatusEffect}). {@code id} is a loaded status-effect id
 	 * (one of the "env" effects offered by the UnitMenu dropdown), or {@code null}
 	 * for none. Immune units are unaffected, as immunity is enforced on apply.
 	 */
@@ -1315,7 +1318,6 @@ public class BattleField extends JComponent {
 			// Once the ended turn's attack (and any effects it applied) has played
 			// out, the opposing side's status effects deal their damage.
 			if (turnVisualsSettled()) {
-				applyEnvironmentStatusEffect(pendingAdvanceSide);
 				tickStatusEffects(pendingAdvanceSide);
 				phase = Phase.AWAITING_ADVANCE;
 			}
@@ -1386,8 +1388,12 @@ public class BattleField extends JComponent {
 		refreshSelectionInfo();
 	}
 
-	/** Begins the turn that follows {@code actingSide}'s. */
+	/**
+	 * Begins the turn that follows {@code actingSide}'s, first applying the
+	 * environment effect to {@code actingSide} — the side opposing the new turn.
+	 */
 	private void nextTurnAfter(Side actingSide) {
+		applyEnvironmentStatusEffect(actingSide);
 		if (actingSide == Side.PLAYER)
 			enemyAct();
 		else
@@ -1396,11 +1402,11 @@ public class BattleField extends JComponent {
 
 	/**
 	 * Applies the configured environment status effect (if any) to every unit on
-	 * {@code side} as the opposing turn ends, just before its effects tick — so each
-	 * unit takes the environment's damage right before its own turn. Re-applying
-	 * every turn refreshes the effect; immune units are unaffected (immunity is
-	 * enforced by {@link PlacedUnit#applyStatusEffect}). This never fires before the
-	 * player's opening turn, which starts the battle rather than following a turn.
+	 * {@code side} as the opposing side's turn begins (including the player's opening
+	 * turn), so it is in force throughout that turn and deals its damage when the
+	 * turn ends (see {@link #tickStatusEffects}). Re-applying every turn refreshes
+	 * the effect; immune units are unaffected (immunity is enforced by
+	 * {@link PlacedUnit#applyStatusEffect}).
 	 */
 	private void applyEnvironmentStatusEffect(Side side) {
 		if (environmentStatusEffect == null)
