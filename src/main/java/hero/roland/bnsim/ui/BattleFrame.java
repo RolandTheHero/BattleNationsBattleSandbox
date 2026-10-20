@@ -42,6 +42,7 @@ public class BattleFrame extends JFrame {
 		menu.setEnemyBehaviorListener(arena.getField()::setEnemyBehavior);
 		menu.setScaleListener(arena.getField()::setFieldScale);
 		menu.setGridDimensionsListener(arena.getField()::setGridDimensions);
+		arena.getField().setOnGridDimensionsChanged(menu::refreshGridLabels);
 		menu.setLanguageChangedListener(arena::refreshLanguage);
 
 		// The menu sits in a split pane so its edge can be dragged to resize it. The

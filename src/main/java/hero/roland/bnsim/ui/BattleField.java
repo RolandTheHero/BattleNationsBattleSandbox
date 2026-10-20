@@ -22,6 +22,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Random;
 import java.util.Set;
+import java.util.TreeSet;
 import java.util.function.Consumer;
 
 import javax.swing.JComponent;
@@ -227,16 +228,23 @@ public class BattleField extends JComponent {
 	private final Map<Side, Integer> rowsAdvanced = new EnumMap<>(Side.class);
 
 	/**
-	 * The enemy waves' layouts. In setup the enemy side on the board is the
-	 * {@link #selectedWave}'s live layout (its entry here is refreshed whenever the
-	 * board switches away from it, see {@link #saveSelectedWave}). There is always at
-	 * least one wave.
+	 * The enemy waves, each holding one or more alternative layouts (subwaves), of
+	 * which one is picked at random to fight when the battle starts. In setup the
+	 * enemy side on the board is the selected subwave's live layout (its entry here
+	 * is refreshed whenever the board switches away from it, see
+	 * {@link #saveSelectedWave}). There is always at least one wave, and every wave
+	 * has at least one subwave.
 	 */
-	private final List<List<UnitSnapshot>> waves = new ArrayList<>();
-	/** The wave shown on the enemy side during setup. */
+	private final List<List<Subwave>> waves = new ArrayList<>();
+	/** The wave, and its subwave, shown on the enemy side during setup. */
 	private int selectedWave;
+	private int selectedSubwave;
 	/** The wave currently fighting during battle (0-based). */
 	private int battleWave;
+	/** The subwave picked to fight for each wave, chosen when the battle starts. */
+	private int[] battleSubwaves = new int[0];
+	/** Runs after an imported setup changes the grid's shape. */
+	private Runnable gridDimensionsChanged;
 	/** The player side as it was when the battle started, restored when it ends. */
 	private List<UnitSnapshot> playerSnapshot = List.of();
 	/** Units of a newly arrived wave sliding onto the field, and when they began. */
@@ -318,7 +326,7 @@ public class BattleField extends JComponent {
 				GridGeometry.combinedWidth() + 120,
 				GridGeometry.combinedHeight() + 120));
 		setBackgroundImage(defaultBackground());
-		waves.add(List.of());
+		waves.add(newWave());
 
 		animationTimer = new Timer(FRAME_DELAY, e -> {
 			tick++;
@@ -449,9 +457,10 @@ public class BattleField extends JComponent {
 
 	/**
 	 * Switches between setup mode (drag to place) and battle mode (attack). Starting
-	 * a battle remembers the player side and every enemy wave, then fights from wave
-	 * 1; ending it puts both sides back exactly as they were before the battle,
-	 * showing the wave that was selected in setup.
+	 * a battle remembers the player side and every enemy wave, picks one subwave of
+	 * each wave at random, then fights from wave 1; ending it puts both sides back
+	 * exactly as they were before the battle, showing the subwave that was selected
+	 * in setup.
 	 */
 	public void setBattleMode(boolean battle) {
 		boolean wasBattle = this.battleMode;
@@ -468,11 +477,14 @@ public class BattleField extends JComponent {
 		if (battle && !wasBattle) {
 			saveSelectedWave();
 			playerSnapshot = snapshotSide(Side.PLAYER);
+			battleSubwaves = new int[waves.size()];
+			for (int i = 0; i < waves.size(); i++)
+				battleSubwaves[i] = random.nextInt(waves.get(i).size());
 			battleWave = 0;
-			loadWave(0);
+			loadSubwave(0, battleSubwaves[0]);
 		} else if (!battle && wasBattle) {
 			restoreSide(Side.PLAYER, playerSnapshot);
-			loadWave(selectedWave);
+			loadSubwave(selectedWave, selectedSubwave);
 		}
 		dragging = null;
 		dragPoint = null;
@@ -509,77 +521,229 @@ public class BattleField extends JComponent {
 		return waves.size();
 	}
 
+	/** How many subwaves the given wave has (always at least 1). */
+	public int getSubwaveCount(int wave) {
+		return waves.get(wave).size();
+	}
+
+	/** How many subwaves there are across every wave (always at least 1). */
+	public int getTotalSubwaveCount() {
+		int total = 0;
+		for (List<Subwave> wave : waves)
+			total += wave.size();
+		return total;
+	}
+
 	/** The wave (0-based) shown on the enemy side during setup. */
 	public int getSelectedWave() {
 		return selectedWave;
 	}
 
-	/**
-	 * Setup mode: shows the given wave on the enemy side, first storing the layout
-	 * of the wave being replaced so it can be switched back to later.
-	 */
-	public void selectWave(int index) {
-		if (battleMode || index < 0 || index >= waves.size() || index == selectedWave)
-			return;
-		saveSelectedWave();
-		selectedWave = index;
-		loadWave(index);
+	/** The subwave (0-based, within {@link #getSelectedWave}) shown during setup. */
+	public int getSelectedSubwave() {
+		return selectedSubwave;
 	}
 
-	/** Setup mode: adds an empty wave after the last one and shows it. */
+	/**
+	 * Setup mode: shows the given subwave on the enemy side, first storing the
+	 * layout of the subwave being replaced so it can be switched back to later.
+	 */
+	public void selectSubwave(int wave, int subwave) {
+		if (battleMode || !isSubwave(wave, subwave)
+				|| (wave == selectedWave && subwave == selectedSubwave))
+			return;
+		saveSelectedWave();
+		selectedWave = wave;
+		selectedSubwave = subwave;
+		loadSubwave(wave, subwave);
+	}
+
+	/** Setup mode: adds a wave of one empty subwave after the last wave and shows it. */
 	public void addWave() {
 		if (battleMode)
 			return;
-		waves.add(List.of());
-		selectWave(waves.size() - 1);
+		waves.add(newWave());
+		selectSubwave(waves.size() - 1, 0);
+	}
+
+	/** Setup mode: adds an empty subwave after the given wave's last and shows it. */
+	public void addSubwave(int wave) {
+		if (battleMode || wave < 0 || wave >= waves.size())
+			return;
+		waves.get(wave).add(new Subwave());
+		selectSubwave(wave, waves.get(wave).size() - 1);
 	}
 
 	/**
-	 * Setup mode: deletes the given wave (the last one left can never be deleted).
-	 * Deleting the shown wave shows the one before it instead (or the new first
-	 * wave, when the first was deleted).
+	 * Setup mode: deletes the given subwave (the last one left can never be
+	 * deleted); a wave left without subwaves is deleted too. Deleting the shown
+	 * subwave shows the one before it in its wave instead, else the wave's new
+	 * first subwave, else (its wave gone) the last subwave of the wave before, or
+	 * of the new first wave when the first was deleted.
 	 */
-	public void removeWave(int index) {
-		if (battleMode || waves.size() <= 1 || index < 0 || index >= waves.size())
+	public void removeSubwave(int wave, int subwave) {
+		if (battleMode || getTotalSubwaveCount() <= 1 || !isSubwave(wave, subwave))
 			return;
 		saveSelectedWave();
-		waves.remove(index);
-		if (index < selectedWave)
-			selectedWave--;
-		else if (index == selectedWave) {
-			selectedWave = Math.max(0, index - 1);
-			loadWave(selectedWave);
+		boolean removingShown = wave == selectedWave && subwave == selectedSubwave;
+		Subwave shown = waves.get(selectedWave).get(selectedSubwave);
+		List<Subwave> subwaves = waves.get(wave);
+		subwaves.remove(subwave);
+		if (subwaves.isEmpty())
+			waves.remove(wave);
+		if (!removingShown) {
+			locateSelected(shown);
+			return;
+		}
+		if (!subwaves.isEmpty()) {
+			selectedSubwave = Math.max(0, subwave - 1);
+		} else {
+			selectedWave = Math.max(0, wave - 1);
+			selectedSubwave = wave > 0 ? waves.get(selectedWave).size() - 1 : 0;
+		}
+		loadSubwave(selectedWave, selectedSubwave);
+	}
+
+	/**
+	 * Setup mode: moves a subwave elsewhere in the fighting order. With
+	 * {@code newWave} it becomes a wave of its own, inserted before wave
+	 * {@code toWave} (0 to the wave count); otherwise it joins wave {@code toWave}
+	 * at {@code toSubwave}, counted once it has left its old place. Either way
+	 * {@code toWave} counts the waves as they are before the move, and a wave left
+	 * without subwaves is deleted. The shown subwave stays shown, wherever it ends up.
+	 */
+	public void moveSubwave(int fromWave, int fromSubwave, int toWave, int toSubwave,
+			boolean newWave) {
+		if (battleMode || !isSubwave(fromWave, fromSubwave) || toWave < 0
+				|| toWave > (newWave ? waves.size() : waves.size() - 1))
+			return;
+		// The board holds the shown subwave's live layout, so its (possibly stale)
+		// entry can move with the rest and still be refreshed on the next switch.
+		Subwave shown = waves.get(selectedWave).get(selectedSubwave);
+		List<Subwave> source = waves.get(fromWave);
+		Subwave moved = source.remove(fromSubwave);
+		if (newWave) {
+			List<Subwave> wave = new ArrayList<>();
+			wave.add(moved);
+			waves.add(toWave, wave);
+		} else {
+			List<Subwave> target = waves.get(toWave);
+			target.add(Math.max(0, Math.min(toSubwave, target.size())), moved);
+		}
+		if (source.isEmpty())
+			waves.removeIf(w -> w == source);
+		locateSelected(shown);
+	}
+
+	/** Whether the given wave and subwave exist. */
+	private boolean isSubwave(int wave, int subwave) {
+		return wave >= 0 && wave < waves.size() && subwave >= 0 && subwave < waves.get(wave).size();
+	}
+
+	/** Points the selection at the given subwave, after the waves were rearranged. */
+	private void locateSelected(Subwave shown) {
+		for (int w = 0; w < waves.size(); w++) {
+			int s = waves.get(w).indexOf(shown);
+			if (s >= 0) {
+				selectedWave = w;
+				selectedSubwave = s;
+				return;
+			}
 		}
 	}
 
-	/**
-	 * Setup mode: moves the wave at {@code from} so it sits at {@code to} in the
-	 * fighting order, shifting the waves between them over by one. The shown wave
-	 * stays shown, wherever it ends up.
-	 */
-	public void moveWave(int from, int to) {
-		if (battleMode || from < 0 || from >= waves.size() || to < 0 || to >= waves.size()
-				|| from == to)
-			return;
-		// The board holds the shown wave's live layout, so its (possibly stale) entry
-		// can move with the rest and still be refreshed on the next switch.
-		waves.add(to, waves.remove(from));
-		if (selectedWave == from)
-			selectedWave = to;
-		else if (from < selectedWave && selectedWave <= to)
-			selectedWave--;
-		else if (to <= selectedWave && selectedWave < from)
-			selectedWave++;
-	}
-
-	/** Stores the enemy side's current layout as the selected wave's. */
+	/** Stores the enemy side's current layout as the selected subwave's. */
 	private void saveSelectedWave() {
-		waves.set(selectedWave, snapshotSide(Side.ENEMY));
+		waves.get(selectedWave).get(selectedSubwave).units = snapshotSide(Side.ENEMY);
 	}
 
-	/** Replaces the enemy side with the given wave's units. */
-	private void loadWave(int index) {
-		restoreSide(Side.ENEMY, waves.get(index));
+	/** Replaces the enemy side with the given subwave's units. */
+	private void loadSubwave(int wave, int subwave) {
+		restoreSide(Side.ENEMY, waves.get(wave).get(subwave).units);
+	}
+
+	/** A new wave holding a single empty subwave. */
+	private static List<Subwave> newWave() {
+		List<Subwave> wave = new ArrayList<>();
+		wave.add(new Subwave());
+		return wave;
+	}
+
+	// --- Saved setups -------------------------------------------------------
+
+	/** Sets what runs after an imported setup changes the grid's shape. */
+	public void setOnGridDimensionsChanged(Runnable listener) {
+		gridDimensionsChanged = listener;
+	}
+
+	/** Setup mode: the grid shape, the player side and every enemy wave and subwave. */
+	SetupFile.Setup exportSetup() {
+		saveSelectedWave();
+		List<List<List<SetupFile.Placement>>> exported = new ArrayList<>();
+		for (List<Subwave> wave : waves) {
+			List<List<SetupFile.Placement>> subwaves = new ArrayList<>();
+			for (Subwave subwave : wave)
+				subwaves.add(toPlacements(subwave.units));
+			exported.add(subwaves);
+		}
+		return new SetupFile.Setup(GridGeometry.ROWS, GridGeometry.COLS, GridGeometry.BACK_ROW_COLS,
+				toPlacements(snapshotSide(Side.PLAYER)), exported);
+	}
+
+	/**
+	 * Setup mode: replaces the grid shape, the player side and every enemy wave and
+	 * subwave with the given setup, showing its first wave's first subwave. Units
+	 * whose id isn't in the loaded game files, or whose cell is off the grid or
+	 * already taken, are left out; a wave with no subwaves gets one empty subwave,
+	 * and a setup with no waves one empty wave.
+	 *
+	 * @return the unrecognised unit ids, sorted
+	 */
+	Set<String> importSetup(SetupFile.Setup setup) {
+		Set<String> unknown = new TreeSet<>();
+		if (battleMode)
+			return unknown;
+		setGridDimensions(setup.rows(), setup.cols(), setup.backRowCols());
+		restoreSide(Side.PLAYER, toSnapshots(setup.player(), unknown));
+		waves.clear();
+		for (List<List<SetupFile.Placement>> imported : setup.waves()) {
+			List<Subwave> wave = new ArrayList<>();
+			for (List<SetupFile.Placement> units : imported) {
+				Subwave subwave = new Subwave();
+				subwave.units = toSnapshots(units, unknown);
+				wave.add(subwave);
+			}
+			waves.add(wave.isEmpty() ? newWave() : wave);
+		}
+		if (waves.isEmpty())
+			waves.add(newWave());
+		selectedWave = 0;
+		selectedSubwave = 0;
+		loadSubwave(0, 0);
+		if (gridDimensionsChanged != null)
+			gridDimensionsChanged.run();
+		return unknown;
+	}
+
+	private static List<SetupFile.Placement> toPlacements(List<UnitSnapshot> units) {
+		List<SetupFile.Placement> placements = new ArrayList<>();
+		for (UnitSnapshot snap : units)
+			placements.add(new SetupFile.Placement(snap.unit().getId(), snap.cell(), snap.rank()));
+		return placements;
+	}
+
+	/** The placements as snapshots, adding the ids of units not in the game files to {@code unknown}. */
+	private static List<UnitSnapshot> toSnapshots(List<SetupFile.Placement> placements,
+			Set<String> unknown) {
+		List<UnitSnapshot> units = new ArrayList<>();
+		for (SetupFile.Placement p : placements) {
+			Unit unit = Unit.get(p.unitId());
+			if (unit == null)
+				unknown.add(p.unitId());
+			else
+				units.add(new UnitSnapshot(unit, p.cell(), p.rank()));
+		}
+		return List.copyOf(units);
 	}
 
 	/** Every unit on the side, with the cell and rank it holds. */
@@ -638,7 +802,7 @@ public class BattleField extends JComponent {
 		battleWave++;
 		rowsAdvanced.put(Side.ENEMY, 0);
 		sim.resetAdvancement(Side.ENEMY);
-		loadWave(battleWave);
+		loadSubwave(battleWave, battleSubwaves[battleWave]);
 		enteringUnits = new HashSet<>();
 		for (PlacedUnit unit : sim.placedUnits())
 			if (unit.getSide() == Side.ENEMY) {
@@ -1710,13 +1874,14 @@ public class BattleField extends JComponent {
 
 		// The wave counter sits over the field like the other controls, so it is
 		// drawn outside the field zoom.
-		if (waves.size() > 1)
+		if (getTotalSubwaveCount() > 1)
 			drawWaveBanner(g);
 	}
 
 	/**
-	 * Draws the "Wave N of M" banner centred at the top of the field: the wave
-	 * fighting in battle, or the wave shown on the enemy side in setup.
+	 * Draws the "Wave N(S) of M" banner centred at the top of the field: the wave
+	 * and its picked subwave fighting in battle, or the subwave shown on the enemy
+	 * side in setup.
 	 */
 	private void drawWaveBanner(Graphics g) {
 		Graphics2D g2 = (Graphics2D) g.create();
@@ -1724,7 +1889,8 @@ public class BattleField extends JComponent {
 		g2.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING,
 				RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
 		int wave = battleMode ? battleWave : selectedWave;
-		String text = "Wave " + (wave + 1) + " of " + waves.size();
+		int subwave = battleMode ? battleSubwaves[battleWave] : selectedSubwave;
+		String text = "Wave " + (wave + 1) + "(" + (subwave + 1) + ") of " + waves.size();
 		g2.setFont(g2.getFont().deriveFont(Font.BOLD, 20f));
 		int tw = g2.getFontMetrics().stringWidth(text);
 		int padX = 18, padY = 8;
@@ -2852,6 +3018,12 @@ public class BattleField extends JComponent {
 	/** A unit's type, cell and rank on one side, for restoring it later (a wave, or
 	 * the board as it was before a battle). */
 	private record UnitSnapshot(Unit unit, Cell cell, int rank) {
+	}
+
+	/** One alternative layout of an enemy wave. Compared by identity, so the
+	 * selection can follow it as waves are rearranged. */
+	private static final class Subwave {
+		List<UnitSnapshot> units = List.of();
 	}
 
 	/** A struck tile that flashes red, deals its damage on landing, and fades. */

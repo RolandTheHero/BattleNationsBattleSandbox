@@ -696,7 +696,7 @@ public class UnitMenu extends JPanel {
 	}
 
 	/** Updates the three value labels to the geometry's current dimensions. */
-	private void refreshGridLabels() {
+	void refreshGridLabels() {
 		rowsValue.setText(Integer.toString(GridGeometry.ROWS));
 		colsValue.setText(Integer.toString(GridGeometry.COLS));
 		backRowColsValue.setText(Integer.toString(GridGeometry.BACK_ROW_COLS));
