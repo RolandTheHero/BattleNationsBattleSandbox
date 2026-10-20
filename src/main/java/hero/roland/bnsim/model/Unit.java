@@ -26,6 +26,8 @@ import hero.roland.bnsim.model.Ability.TargetSquare;
 
 public class Unit implements Comparable<Unit> {
     public static final int NONE = 0, PARTIAL = 1, BLOCKING = 2;
+	/** Unit tag marking units that need not be killed to clear a wave. */
+	private static final String IGNORABLE_TAG = "Ignorable";
 
 	/** The bundle this unit was loaded from. */
 	private final GameFiles gf;
@@ -38,6 +40,7 @@ public class Unit implements Comparable<Unit> {
     private final UnitTag[] tags;
 	private final Set<StatusEffect.StatusFamily> statusEffectImmunities;
 	private final String deathSpawnedUnit;
+	private final boolean unimportant;
 
 	/**
 	 * A unit's data as parsed from the game files. A {@link GameFiles} loader
@@ -54,6 +57,9 @@ public class Unit implements Comparable<Unit> {
 		public Set<StatusEffect.StatusFamily> statusEffectImmunities = new HashSet<>();
 		/** The id of the unit that takes this unit's tile when it dies, or {@code null}. */
 		public String deathSpawnedUnit;
+		/** Whether the game lets a wave be cleared with this unit still alive
+		 * (many such units lack the {@code Ignorable} tag). */
+		public boolean unimportant;
 		/** Stats per rank, lowest rank first. */
 		public List<Rank> ranks = new ArrayList<>();
 		/** The unit's weapons, in display order. */
@@ -111,6 +117,7 @@ public class Unit implements Comparable<Unit> {
 		tags = def.tags.toArray(new UnitTag[0]);
 		statusEffectImmunities = new HashSet<>(def.statusEffectImmunities);
 		deathSpawnedUnit = def.deathSpawnedUnit;
+		unimportant = def.unimportant;
 		ranks = def.ranks.toArray(new Rank[0]);
 		weapons = new Weapon[def.weapons.size()];
 		for (int i = 0; i < weapons.length; i++)
@@ -173,6 +180,15 @@ public class Unit implements Comparable<Unit> {
 			if (t != null && t.isA(tag))
 				return true;
 		return false;
+	}
+
+	/**
+	 * Whether this unit need not be killed for its wave to be cleared: it is
+	 * flagged unimportant in the game files or tagged {@value #IGNORABLE_TAG}.
+	 * Neither alone covers every such unit.
+	 */
+	public boolean isIgnorable() {
+		return unimportant || hasTag(gf.getUnitTag(IGNORABLE_TAG));
 	}
 
 	/**

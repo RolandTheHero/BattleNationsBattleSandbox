@@ -267,6 +267,7 @@ public class OldGameFiles extends AbstractGameFiles {
 		def.deathAnimName = json.optString("deathAnimationName", "troopdeath");
 		def.blocking = json.optInt("blocking", Unit.NONE);
 		def.deathSpawnedUnit = json.optString("deathSpawnedUnit", null);
+		def.unimportant = json.optBoolean("unimportant", false);
 		JSONArray tags = json.optJSONArray("tags");
 		if (tags != null) {
 			for (int i = 0; i < tags.length(); i++)

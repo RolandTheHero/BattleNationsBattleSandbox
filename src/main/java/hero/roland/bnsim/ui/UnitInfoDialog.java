@@ -186,9 +186,13 @@ final class UnitInfoDialog extends JDialog {
 					gf.getText("blocking"), blockingString(unit.getBlocking())));
 			sb.append("</table>");
 
-			// The unit's own tags (Ground, Tank, ...), shown only when it has any.
+			// Whether the unit need not be killed to clear its wave, then its own
+			// tags (Ground, Tank, ...).
+			if (unit.isIgnorable())
+				sb.append("<div style='margin-top:8px;'>").append(muted("(Ignorable)")).append("</div>");
 			String tags = buildTags(unit);
-			sb.append("<div style='margin-top:8px;'>").append(tags).append("</div>");
+			sb.append("<div style='margin-top:").append(unit.isIgnorable() ? 0 : 8).append("px;'>")
+					.append(tags).append("</div>");
 
 			// Resistances: the damage types whose Base (HP) / Armor modifier differs
 			// from 1, plus the status-effect families the unit is immune to, shown as

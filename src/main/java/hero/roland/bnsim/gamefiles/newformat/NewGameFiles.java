@@ -541,6 +541,7 @@ public class NewGameFiles extends AbstractGameFiles {
 		def.blocking = stats.optInt("blocking", Unit.NONE);
 		if (stats.has("death_spawned_unit"))
 			def.deathSpawnedUnit = Integer.toString(stats.getInt("death_spawned_unit"));
+		def.unimportant = stats.optBoolean("unimportant", false);
 		JSONArray immunities = stats.optJSONArray("status_effect_immunities");
 		if (immunities != null) {
 			for (int i = 0; i < immunities.length(); i++) {

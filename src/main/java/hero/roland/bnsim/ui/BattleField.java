@@ -140,8 +140,6 @@ public class BattleField extends JComponent {
 	private static final int MESSAGE_FRAMES = 2500 / FRAME_DELAY;
 	/** Frames a new enemy wave takes to slide onto the field (~0.4 seconds). */
 	private static final int WAVE_ENTER_FRAMES = 400 / FRAME_DELAY;
-	/** Unit tag marking enemies that need not be killed for the wave to be cleared. */
-	private static final String IGNORABLE_TAG = "Ignorable";
 
 	private final BattleSimulator sim;
 	private final GridGeometry geometry;
@@ -619,12 +617,11 @@ public class BattleField extends JComponent {
 
 	/**
 	 * Whether the enemy's current wave is beaten: every enemy left on the field is
-	 * tagged {@value #IGNORABLE_TAG} (those need not be killed).
+	 * ignorable (see {@link Unit#isIgnorable}).
 	 */
 	private boolean isWaveCleared() {
-		Unit.UnitTag ignorable = GameFiles.active().getUnitTag(IGNORABLE_TAG);
 		for (PlacedUnit unit : sim.placedUnits())
-			if (unit.getSide() == Side.ENEMY && !unit.getUnit().hasTag(ignorable))
+			if (unit.getSide() == Side.ENEMY && !unit.getUnit().isIgnorable())
 				return false;
 		return true;
 	}
