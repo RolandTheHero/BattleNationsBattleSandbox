@@ -22,7 +22,8 @@ import hero.roland.bnsim.util.FileFormatException;
  * A minimal reader for Unity asset bundles ({@code UnityFS}), as shipped by the
  * Unity remaster of the game. It supports just what {@link NewGameFiles} needs:
  * uncompressed or LZ4/LZ4HC-compressed bundles, and objects whose serialized
- * layout is described by the type trees embedded in the bundle.
+ * layout is described by the type trees embedded in the bundle. Serialized
+ * file versions 22 and 23 (Unity 6000.6+) are read.
  *
  * <p>The bundle is read lazily: only the compressed blocks a request touches are
  * decompressed (a few are cached), so even the largest bundles are never held in
@@ -446,7 +447,16 @@ final class UnityBundle {
 			in.get(hash);
 			Node tree = null;
 			if (hasTypeTrees) {
-				tree = readTypeTree(in);
+				if (version >= 23) { // Unity 6000.6+: the tree is a sized blob behind its own hash
+					in.position(in.position() + 16); // type tree hash
+					int treeSize = in.getInt();
+					int treeEnd = in.position() + treeSize;
+					in.position(in.position() + 8); // "mhtt" magic, type tree version
+					tree = readTypeTree(in);
+					in.position(treeEnd);
+				} else {
+					tree = readTypeTree(in);
+				}
 				int dependencies = in.getInt();
 				in.position(in.position() + 4 * dependencies);
 			} else if (typeSource != null) {

@@ -11,13 +11,13 @@ import javax.swing.JComboBox;
 import javax.swing.JFileChooser;
 import javax.swing.JFrame;
 import javax.swing.JLabel;
-import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 import javax.swing.SwingConstants;
 import javax.swing.SwingUtilities;
 
 import hero.roland.bnsim.gamefiles.GameFiles;
 import hero.roland.bnsim.ui.BattleFrame;
+import hero.roland.bnsim.ui.ErrorDialog;
 
 public class Main {
     private static final String WELCOME_TEXT =
@@ -30,6 +30,8 @@ public class Main {
         + "</div></html>";
 
     public static void main(String[] args) {
+        // The packaged exe has no console, so uncaught errors must be shown, not printed.
+        ErrorDialog.installUncaughtHandler();
         // Swing components must be created and shown on the Event Dispatch Thread.
         SwingUtilities.invokeLater(Main::start);
     }
@@ -65,11 +67,10 @@ public class Main {
         if (folder == null) { return; }
         try {
             GameFiles.load(folder, format);
-        } catch (IOException e) {
-            JOptionPane.showMessageDialog(welcome,
-                    "Could not load game files from:\n" + folder
-                            + "\n\n" + e.getMessage(),
-                    "Load failed", JOptionPane.ERROR_MESSAGE);
+        } catch (IOException | RuntimeException | Error e) {
+            // Unexpected errors (even running out of memory) are reported the same
+            // way, leaving the welcome window open to try another folder.
+            ErrorDialog.show(welcome, "Load failed", "Could not load game files from:\n" + folder, e);
             return;
         }
         welcome.dispose();

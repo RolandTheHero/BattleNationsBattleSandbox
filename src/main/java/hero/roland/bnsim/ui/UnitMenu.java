@@ -365,7 +365,8 @@ public class UnitMenu extends JPanel {
 			} catch (IOException ex) {
 				// Could not read the chosen language's text files; keep whatever text
 				// was loaded before so the app stays usable.
-				ex.printStackTrace();
+				ErrorDialog.show(languageSelector, "Language not loaded",
+						"Could not load the text for " + sel + ".", ex);
 				return;
 			}
 			// Names are looked up from the text live, so a repaint re-renders the
