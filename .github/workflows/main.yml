@@ -33,7 +33,7 @@ jobs:
       - name: Build jar
         run: |
           mvn -B clean package
-          VERSION=$(mvn -q help:evaluate -Dexpression=project.version -DforceStdout)
+          VERSION=$(mvn -q help:evaluate -Dexpression=project.version -DforceStdout | tr -d '\r')
           echo "VERSION=$VERSION" >> "$GITHUB_ENV"
           mkdir -p target/jpkg-input
           cp "target/bnbattlesandbox-$VERSION.jar" target/jpkg-input/

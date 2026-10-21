@@ -7,7 +7,11 @@ This is a sandbox for setting up battles between any unit formations in
 Battle Nations, for fun or to try out units.
 
 HOW TO USE
-1. Run BattleNationsBattleSandbox.exe.
+1. Run the program:
+   - Windows: run BattleNationsBattleSandbox.exe.
+   - Mac: open BattleNationsBattleSandbox.app. The first time, macOS may
+     say it cannot verify the app. Click Done, then go to System Settings >
+     Privacy & Security, scroll down and click "Open Anyway".
 2. When prompted, select your Battle Nations game files folder.
 
 A copy of the Battle Nations game files is required. They are NOT
