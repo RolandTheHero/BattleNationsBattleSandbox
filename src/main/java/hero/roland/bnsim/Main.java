@@ -79,9 +79,11 @@ public class Main {
 
     private static File chooseFolder(GameFiles.Format format) {
         JFileChooser chooser = new JFileChooser();
-        chooser.setDialogTitle(format == GameFiles.Format.NEW
+        chooser.setDialogTitle(format != GameFiles.Format.OLD
                 ? "Select the game's install folder" : "Select the bundle folder");
         chooser.setFileSelectionMode(JFileChooser.DIRECTORIES_ONLY);
+        // On macOS, let the user open and pick BattleNations.app like a folder.
+        chooser.putClientProperty("JFileChooser.packageIsTraversable", "always");
         // Hide the "All files" filter so only folders are relevant.
         chooser.setAcceptAllFileFilterUsed(false);
         chooser.setCurrentDirectory(new File(System.getProperty("user.dir")));

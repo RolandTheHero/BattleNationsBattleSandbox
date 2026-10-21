@@ -148,8 +148,13 @@ public class NewGameFiles extends AbstractGameFiles {
 	private static final String BUILTIN_ASSETS = "sharedassets0.assets";
 	/** A bundle whose Texture2D type tree can decode the built-in textures. */
 	private static final String TEXTURE_TYPE_SOURCE = "damageicons_assets_all";
-	/** The game's engine library, which contains FMOD and its Vorbis setup packets. */
+	/** The Windows build's engine library, which contains FMOD and its Vorbis setup packets. */
 	private static final String FMOD_LIBRARY = "UnityPlayer.dll";
+	/** Where the Windows build's asset bundles are, relative to the folders a user might pick. */
+	private static final String[] WINDOWS_BUNDLE_FOLDERS = {
+		"", "aa/StandaloneWindows64", "StreamingAssets/aa/StandaloneWindows64",
+		"BattleNations_Data/StreamingAssets/aa/StandaloneWindows64",
+	};
 
 	/** File extensions {@link #assetKey} drops; the requested one picks the asset kind. */
 	private static final Set<String> IMAGE_EXTENSIONS = Set.of("png", "jpg");
@@ -174,22 +179,29 @@ public class NewGameFiles extends AbstractGameFiles {
 	private VorbisSetups vorbisSetups;
 
 	/**
+	 * Reads the Windows build ({@link MacGameFiles} reads the Mac one).
+	 *
 	 * @param folder the game's install folder, its {@code BattleNations_Data}
 	 * folder, or the bundle folder itself
 	 */
 	public NewGameFiles(File folder) {
-		super(Objects.requireNonNullElse(findBundleFolder(folder), folder));
+		this(folder, WINDOWS_BUNDLE_FOLDERS);
 	}
 
 	/**
-	 * The folder holding the game's asset bundles, looked for in and below
-	 * {@code folder}, or {@code null} if it isn't a new-format install.
+	 * @param folder a folder the user picked
+	 * @param bundleFolders where the asset bundles may be, relative to
+	 * {@code folder} ({@code ""} for the folder itself), in the order tried
 	 */
-	private static File findBundleFolder(File folder) {
-		String[] candidates = {
-			"", "aa/StandaloneWindows64", "StreamingAssets/aa/StandaloneWindows64",
-			"BattleNations_Data/StreamingAssets/aa/StandaloneWindows64",
-		};
+	protected NewGameFiles(File folder, String[] bundleFolders) {
+		super(Objects.requireNonNullElse(findBundleFolder(folder, bundleFolders), folder));
+	}
+
+	/**
+	 * The folder holding the game's asset bundles, the first of {@code candidates}
+	 * under {@code folder} that has them, or {@code null} if none does.
+	 */
+	private static File findBundleFolder(File folder, String[] candidates) {
 		for (String path : candidates) {
 			File dir = path.isEmpty() ? folder : new File(folder, path);
 			if (findBundle(dir, "configs_assets_all") != null)
@@ -200,7 +212,9 @@ public class NewGameFiles extends AbstractGameFiles {
 
 	/** The bundle in {@code dir} whose name starts with {@code prefix}, or {@code null}. */
 	private static File findBundle(File dir, String prefix) {
-		File[] files = dir.listFiles((d, name) -> name.startsWith(prefix) && name.endsWith(".bundle"));
+		// "._" files are macOS metadata left beside each file when a Mac build is copied.
+		File[] files = dir.listFiles((d, name) -> name.startsWith(prefix) && name.endsWith(".bundle")
+				&& !name.startsWith("._"));
 		return files == null || files.length == 0 ? null : files[0];
 	}
 
@@ -964,16 +978,24 @@ public class NewGameFiles extends AbstractGameFiles {
 	/** The Vorbis setup packets in the game's FMOD library, scanned on first use. */
 	private synchronized VorbisSetups vorbisSetups() throws IOException {
 		if (vorbisSetups == null) {
-			File library = findAbove(FMOD_LIBRARY);
+			File library = findFmodLibrary();
 			if (library == null)
-				throw new FileFormatException("Can't find " + FMOD_LIBRARY + " above " + bundleFolder);
+				throw new FileFormatException("Can't find the game's FMOD library (UnityPlayer) for " + bundleFolder);
 			vorbisSetups = new VorbisSetups(library);
 		}
 		return vorbisSetups;
 	}
 
-	/** The file with the given name in the bundle folder or the nearest folder above it, or {@code null}. */
-	private File findAbove(String name) {
+	/** The game's engine library, which contains FMOD, or {@code null} if it can't be found. */
+	protected File findFmodLibrary() {
+		return findAbove(FMOD_LIBRARY);
+	}
+
+	/**
+	 * The file with the given name (or relative path) in the bundle folder or the
+	 * nearest folder above it, or {@code null}.
+	 */
+	protected File findAbove(String name) {
 		for (File dir = bundleFolder; dir != null; dir = dir.getParentFile())
 			if (new File(dir, name).isFile())
 				return new File(dir, name);
