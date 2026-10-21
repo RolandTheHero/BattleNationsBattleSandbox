@@ -632,8 +632,8 @@ public class PlacedUnit {
 	/**
 	 * Records that this unit has used the given attack, spending the weapon's ammo
 	 * and starting the relevant timers. The ability's ammo cost is subtracted from
-	 * the weapon's pool; emptying the weapon puts it on reload (its ammo refilling
-	 * once the reload finishes). Either way the used ability goes on its own cooldown
+	 * the weapon's pool; emptying the weapon, or leaving too little ammo for any of
+	 * its abilities, puts it on reload (its ammo refilling once the reload finishes). Either way the used ability goes on its own cooldown
 	 * and the weapon's other abilities go on its global cooldown; where several waits
 	 * apply to one attack (reload, cooldown, global cooldown) the longest one stands.
 	 * A no-op when combat rules are disabled.
@@ -645,11 +645,11 @@ public class PlacedUnit {
 		if (ability == Ability.NO_ABILITY)
 			return;
 		Unit.Weapon weapon = attack.getWeapon();
-		if (weapon.getAmmo() >= 0) { // finite ammo: spend it, reload when empty
-			int left = ammo.getOrDefault(weapon, weapon.getAmmo())
-					- Math.max(0, ability.getAmmoRequired());
-			if (left <= 0) {
-				ammo.put(weapon, 0);
+		if (weapon.getAmmo() >= 0) { // finite ammo: spend it, reload when no ability is affordable
+			int left = Math.max(0, ammo.getOrDefault(weapon, weapon.getAmmo())
+					- Math.max(0, ability.getAmmoRequired()));
+			ammo.put(weapon, left);
+			if (!canAffordAnyAbility(weapon, left)) {
 				if (weapon.getReloadTime() > 0) {
 					// Reload the whole weapon, but only if this reload is longer than
 					// one already running — a shorter one leaves the timer untouched.
@@ -660,8 +660,6 @@ public class PlacedUnit {
 				} else {
 					ammo.put(weapon, weapon.getAmmo()); // no reload time: refill at once
 				}
-			} else {
-				ammo.put(weapon, left);
 			}
 		}
 		// The used ability goes on its own cooldown and the weapon's other abilities
@@ -674,6 +672,18 @@ public class PlacedUnit {
 				if (otherAbility != Ability.NO_ABILITY && otherAbility != ability)
 					setCooldown(otherAbility, global);
 			}
+	}
+
+	/** Whether any of the weapon's abilities costs no more than {@code ammoLeft}. */
+	private static boolean canAffordAnyAbility(Unit.Weapon weapon, int ammoLeft) {
+		if (ammoLeft <= 0)
+			return false;
+		for (Unit.Attack attack : weapon.getAttacks()) {
+			Ability ability = attack.getAbility();
+			if (ability != Ability.NO_ABILITY && ability.getAmmoRequired() <= ammoLeft)
+				return true;
+		}
+		return false;
 	}
 
 	/** Puts an ability on cooldown for {@code turns} of the unit's turns, flagged to
