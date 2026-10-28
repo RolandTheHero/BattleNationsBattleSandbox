@@ -32,10 +32,6 @@ import javax.swing.SwingConstants;
 import javax.swing.SwingUtilities;
 import javax.swing.event.DocumentEvent;
 import javax.swing.event.DocumentListener;
-import javax.swing.text.AbstractDocument;
-import javax.swing.text.AttributeSet;
-import javax.swing.text.BadLocationException;
-import javax.swing.text.DocumentFilter;
 
 import hero.roland.bnsim.EnemyBehavior;
 import hero.roland.bnsim.GridGeometry;
@@ -77,7 +73,6 @@ public class UnitMenu extends JPanel {
 	private final DefaultListModel<Unit> listModel = new DefaultListModel<>();
 	private final JList<Unit> unitList = new JList<>(listModel);
 	private final JTextField search = new JTextField();
-	private final JTextField scaleField = new JTextField("1", 4);
 	// Start with text so the labels report a real (non-zero) preferred height when
 	// their fixed size is captured in gridStepperRow; refreshGridLabels keeps them
 	// current after that.
@@ -101,7 +96,6 @@ public class UnitMenu extends JPanel {
 	private Consumer<Boolean> targetTypesListener;
 	private Consumer<Boolean> statusImmunitiesListener;
 	private Consumer<Boolean> advanceListener;
-	private Consumer<Double> scaleListener;
 	private GridDimensionsListener gridDimensionsListener;
 	private Runnable languageChangedListener;
 
@@ -122,8 +116,6 @@ public class UnitMenu extends JPanel {
 		north.add(buildMapSelector());
 		north.add(Box.createVerticalStrut(4));
 		north.add(buildEnvEffectSelector());
-		north.add(Box.createVerticalStrut(4));
-		north.add(buildScaleSelector());
 		north.add(Box.createVerticalStrut(4));
 		north.add(buildGridSizeSelector());
 		add(north, BorderLayout.NORTH);
@@ -521,93 +513,6 @@ public class UnitMenu extends JPanel {
 		int index = enemyBehaviorSelector.getSelectedIndex();
 		if (index >= 0 && enemyBehaviorListener != null)
 			enemyBehaviorListener.accept(ENEMY_BEHAVIORS.get(index));
-	}
-
-	/**
-	 * Builds the field-scale input: a small numeric box (default {@code 1})
-	 * controlling the zoom of everything drawn on the battlefield — the tiles,
-	 * units, health bars and other field visuals — scaled about the centre of the
-	 * field (see {@link BattleField#setFieldScale}). The overlaid UI controls (the
-	 * weapons box and the battle buttons) are not affected. The box accepts only a
-	 * number (digits with an optional decimal point, e.g. {@code 1.5}); each valid
-	 * value is pushed to the {@linkplain #setScaleListener scale listener}, with a
-	 * blank or non-positive value treated as 1 (no scaling).
-	 */
-	private JPanel buildScaleSelector() {
-		((AbstractDocument) scaleField.getDocument()).setDocumentFilter(new NumericFilter());
-		scaleField.setToolTipText(
-			"Zoom for the battlefield drawing (tiles, units, bars); e.g. 1.5 = 1.5x bigger.");
-		scaleField.getDocument().addDocumentListener(new DocumentListener() {
-			@Override public void insertUpdate(DocumentEvent e) { fireScale(); }
-			@Override public void removeUpdate(DocumentEvent e) { fireScale(); }
-			@Override public void changedUpdate(DocumentEvent e) { fireScale(); }
-		});
-
-		JPanel panel = new JPanel(new BorderLayout(4, 0));
-		panel.add(new JLabel("Field scale:"), BorderLayout.WEST);
-		panel.add(scaleField, BorderLayout.CENTER);
-		return panel;
-	}
-
-	/**
-	 * Sets the callback invoked when the field-scale value changes, and immediately
-	 * pushes the current value so the field starts in sync.
-	 */
-	public void setScaleListener(Consumer<Double> listener) {
-		this.scaleListener = listener;
-		fireScale();
-	}
-
-	private void fireScale() {
-		if (scaleListener != null)
-			scaleListener.accept(parseScale(scaleField.getText()));
-	}
-
-	/**
-	 * Parses the scale box's text into a positive zoom factor, defaulting to 1 for
-	 * a blank, incomplete (e.g. just {@code "."}) or non-positive value.
-	 */
-	private static double parseScale(String text) {
-		if (text == null)
-			return 1.0;
-		try {
-			double value = Double.parseDouble(text.trim());
-			return value > 0 ? value : 1.0;
-		} catch (NumberFormatException e) {
-			return 1.0;
-		}
-	}
-
-	/**
-	 * A document filter that keeps a text field's contents a valid non-negative
-	 * decimal number: digits with at most one decimal point (e.g. {@code 1},
-	 * {@code 1.5}, {@code .5}). Any edit that would produce something else is
-	 * rejected, so the box only ever holds a number.
-	 */
-	private static final class NumericFilter extends DocumentFilter {
-		@Override
-		public void insertString(FilterBypass fb, int offset, String text, AttributeSet attr)
-				throws BadLocationException {
-			if (resultIsNumeric(fb, offset, 0, text))
-				super.insertString(fb, offset, text, attr);
-		}
-
-		@Override
-		public void replace(FilterBypass fb, int offset, int length, String text, AttributeSet attr)
-				throws BadLocationException {
-			if (resultIsNumeric(fb, offset, length, text))
-				super.replace(fb, offset, length, text, attr);
-		}
-
-		/** Whether applying the edit leaves the field matching {@code \d*\.?\d*}. */
-		private boolean resultIsNumeric(FilterBypass fb, int offset, int length, String text)
-				throws BadLocationException {
-			String current = fb.getDocument().getText(0, fb.getDocument().getLength());
-			String result = current.substring(0, offset)
-				+ (text == null ? "" : text)
-				+ current.substring(offset + length);
-			return result.matches("\\d*\\.?\\d*");
-		}
 	}
 
 	/**

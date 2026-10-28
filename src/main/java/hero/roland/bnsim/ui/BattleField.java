@@ -7,6 +7,7 @@ import java.awt.Font;
 import java.awt.Graphics;
 import java.awt.Graphics2D;
 import java.awt.Point;
+import java.awt.BasicStroke;
 import java.awt.RenderingHints;
 import java.awt.geom.Point2D;
 import java.awt.geom.Rectangle2D;
@@ -54,7 +55,9 @@ import hero.roland.bnsim.model.Unit;
 public class BattleField extends JComponent {
 
 	private static final Color BACKGROUND = Color.WHITE;
-	private static final Color GRID_LINE = new Color(54, 66, 96);
+	private static final Color GRID_LINE = Color.BLACK;
+	/** Hairline stroke for the grid outlines (antialiased, so it renders under 1px). */
+	private static final BasicStroke GRID_STROKE = new BasicStroke(0.5f);
 	private static final Color PLAYER_TINT = new Color(70, 130, 220);
 	private static final Color ENEMY_TINT = new Color(210, 80, 80);
 	private static final Color DROP_HIGHLIGHT = new Color(120, 200, 120);
@@ -156,6 +159,15 @@ public class BattleField extends JComponent {
 	 * native size. 1 = no scaling; see {@link #setFieldScale}.
 	 */
 	private double fieldScale = 1.0;
+
+	/**
+	 * Screen-space offset the battlefield is panned by (middle-mouse drag), applied
+	 * on top of the {@link #fieldScale} zoom. The background image and overlaid
+	 * controls stay put. (0, 0) = untranslated; see {@link #resetPan}.
+	 */
+	private int panX, panY;
+	/** Last mouse position during a middle-mouse pan; null when not panning. */
+	private Point panAnchor;
 
 	/** Status effect applied to a side at the end of each opposing turn (just before
 	 * that side's effects tick); null = none. Set via the UnitMenu "Environment" dropdown. */
@@ -346,17 +358,37 @@ public class BattleField extends JComponent {
 		MouseInputAdapter mouse = new MouseInputAdapter() {
 			@Override
 			public void mousePressed(java.awt.event.MouseEvent e) {
+				// Middle button pans the whole battlefield, in either mode.
+				if (SwingUtilities.isMiddleMouseButton(e)) {
+					panAnchor = e.getPoint();
+					return;
+				}
 				Point p = toFieldPoint(e.getPoint());
+				// Right button only cycles ranks (setup); it never selects, drags or fires.
+				if (SwingUtilities.isRightMouseButton(e)) {
+					if (!battleMode)
+						cycleRank(p);
+					return;
+				}
+				if (!SwingUtilities.isLeftMouseButton(e))
+					return;
 				if (battleMode)
 					onBattlePress(p);
-				else if (SwingUtilities.isRightMouseButton(e))
-					cycleRank(p);
 				else
 					beginDrag(p);
 			}
 
 			@Override
 			public void mouseDragged(java.awt.event.MouseEvent e) {
+				if (panAnchor != null) {
+					panX += e.getX() - panAnchor.x;
+					panY += e.getY() - panAnchor.y;
+					panAnchor = e.getPoint();
+					repaint();
+				}
+				// Only a held left button drags units and aims abilities.
+				if (!SwingUtilities.isLeftMouseButton(e))
+					return;
 				Point p = toFieldPoint(e.getPoint());
 				if (battleMode)
 					onBattleDrag(p);
@@ -368,6 +400,13 @@ public class BattleField extends JComponent {
 
 			@Override
 			public void mouseReleased(java.awt.event.MouseEvent e) {
+				if (SwingUtilities.isMiddleMouseButton(e)) {
+					panAnchor = null;
+					return;
+				}
+				// Releasing any other non-left button must not drop a unit or fire.
+				if (!SwingUtilities.isLeftMouseButton(e))
+					return;
 				Point p = toFieldPoint(e.getPoint());
 				if (battleMode) {
 					onBattleRelease(p);
@@ -911,6 +950,13 @@ public class BattleField extends JComponent {
 		repaint();
 	}
 
+	/** Returns the battlefield to its default, untranslated position (undoes panning). */
+	public void resetPan() {
+		panX = 0;
+		panY = 0;
+		repaint();
+	}
+
 	/** Listener notified when the selected attacker changes (null = cleared). */
 	public void setAttackerSelectedListener(Consumer<PlacedUnit> listener) {
 		this.attackerSelectedListener = listener;
@@ -1085,16 +1131,16 @@ public class BattleField extends JComponent {
 	/**
 	 * Maps a pixel in the component's coordinate space into the unscaled field
 	 * space the {@linkplain #geometry geometry} and simulation work in, undoing
-	 * the {@link #fieldScale} zoom (applied about the field centre when painting).
-	 * All mouse input is routed through this so clicks line up with the scaled
-	 * drawing.
+	 * the {@linkplain #panX pan} and the {@link #fieldScale} zoom (applied about the
+	 * field centre when painting). All mouse input is routed through this so clicks
+	 * line up with the panned, scaled drawing.
 	 */
 	private Point toFieldPoint(Point screen) {
-		if (fieldScale == 1.0)
+		if (fieldScale == 1.0 && panX == 0 && panY == 0)
 			return screen;
 		double cx = getWidth() / 2.0, cy = getHeight() / 2.0;
-		int x = (int) Math.round(cx + (screen.x - cx) / fieldScale);
-		int y = (int) Math.round(cy + (screen.y - cy) / fieldScale);
+		int x = (int) Math.round(cx + (screen.x - panX - cx) / fieldScale);
+		int y = (int) Math.round(cy + (screen.y - panY - cy) / fieldScale);
 		return new Point(x, y);
 	}
 
@@ -1891,7 +1937,9 @@ public class BattleField extends JComponent {
 		// Zoom the battlefield itself — grids, units, bars and every other field
 		// visual — about the centre of the component, leaving the background (drawn
 		// above) and the overlaid Swing controls unscaled. Mouse input is mapped back
-		// through toFieldPoint so it stays aligned with this scaled drawing.
+		// through toFieldPoint so it stays aligned with this scaled drawing. Any
+		// middle-mouse pan shifts the field in screen space on top of the zoom.
+		g2.translate(panX, panY);
 		if (fieldScale != 1.0) {
 			double cx = getWidth() / 2.0, cy = getHeight() / 2.0;
 			g2.translate(cx, cy);
@@ -1925,26 +1973,27 @@ public class BattleField extends JComponent {
 		drawOverlays(g2);
 		drawStatusApplyVisuals(g2);
 		drawDamageNumbers(g2);
-		if (battleMode)
-			drawMessage(g2);
 
 		if (!battleMode && dragging != null && dragPoint != null)
 			drawUnit(g2, dragging, dragPoint.x, dragPoint.y, 0.7f);
 
 		g2.dispose();
 
-		// The wave counter sits over the field like the other controls, so it is
-		// drawn outside the field zoom.
+		// The wave counter and the message banner beneath it sit over the field like
+		// the other controls, so they are drawn outside the field zoom and pan.
+		int bannerBottom = 0;
 		if (getTotalSubwaveCount() > 1)
-			drawWaveBanner(g);
+			bannerBottom = drawWaveBanner(g);
+		if (battleMode)
+			drawMessage((Graphics2D) g, bannerBottom + 12);
 	}
 
 	/**
 	 * Draws the "Wave N(S) of M" banner centred at the top of the field: the wave
 	 * and its picked subwave fighting in battle, or the subwave shown on the enemy
-	 * side in setup.
+	 * side in setup. Returns the banner's bottom edge (y).
 	 */
-	private void drawWaveBanner(Graphics g) {
+	private int drawWaveBanner(Graphics g) {
 		Graphics2D g2 = (Graphics2D) g.create();
 		g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
 		g2.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING,
@@ -1965,10 +2014,15 @@ public class BattleField extends JComponent {
 		g2.setColor(Color.WHITE);
 		g2.drawString(text, x + padX, ty);
 		g2.dispose();
+		return y + boxH;
 	}
 
-	private void drawGrid(Graphics2D g, Side side) {
+	private void drawGrid(Graphics2D field, Side side) {
+		Graphics2D g = (Graphics2D) field.create();
+		g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+		g.setRenderingHint(RenderingHints.KEY_STROKE_CONTROL, RenderingHints.VALUE_STROKE_PURE);
 		g.setColor(GRID_LINE);
+		g.setStroke(GRID_STROKE);
 		int advanced = rowsAdvanced(side);
 		// The side has shrunk by one row per advance; only the front rows remain.
 		int visible = GridGeometry.ROWS - advanced;
@@ -1999,6 +2053,7 @@ public class BattleField extends JComponent {
 				}
 			}
 		}
+		g.dispose();
 	}
 
 	private void drawTargetable(Graphics2D g) {
@@ -2973,17 +3028,20 @@ public class BattleField extends JComponent {
 		repaint();
 	}
 
-	private void drawMessage(Graphics2D g) {
+	/** Draws the message banner centred at the top of the screen, its top edge at {@code y}. */
+	private void drawMessage(Graphics2D g, int y) {
 		if (message == null || tick >= messageEndTick)
 			return;
 		Graphics2D g2 = (Graphics2D) g.create();
+		g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+		g2.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING,
+				RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
 		g2.setFont(g2.getFont().deriveFont(Font.BOLD, 18f));
 		int tw = g2.getFontMetrics().stringWidth(message);
 		int pad = 12;
 		int boxW = tw + pad * 2;
 		int boxH = g2.getFontMetrics().getHeight() + pad;
 		int x = (getWidth() - boxW) / 2;
-		int y = 70;
 		g2.setColor(new Color(20, 20, 20, 200));
 		g2.fillRoundRect(x, y, boxW, boxH, 12, 12);
 		int ty = y + (boxH - g2.getFontMetrics().getHeight()) / 2 + g2.getFontMetrics().getAscent();

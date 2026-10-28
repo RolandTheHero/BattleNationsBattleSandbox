@@ -56,6 +56,12 @@ public class ArenaPane extends JLayeredPane {
 	private final WavePanel wavePanel;
 	private final JPanel volumePanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 4, 0));
 	private final JSlider volumeSlider = new JSlider(0, 100, 100);
+	/** Battlefield zoom slider (top-right, below the volume slider). */
+	private final FieldScaleSlider scaleSlider;
+	/** Opens the Help window (top-right, below the volume slider). */
+	private final JButton helpButton = new JButton("?");
+	/** Undoes middle-mouse panning of the battlefield (left of the help button). */
+	private final JButton resetViewButton = new JButton("Reset View");
 	private final MusicPlayer music = new MusicPlayer();
 	/** Attack icons loaded during the current battle, cleared when it ends. */
 	private final Map<String, ImageIcon> iconCache = new HashMap<>();
@@ -71,6 +77,7 @@ public class ArenaPane extends JLayeredPane {
 		startButton.addActionListener(e -> setBattleMode(true));
 		styleStartButton();
 		endButton.addActionListener(e -> setBattleMode(false));
+		styleEndButton();
 		endButton.setVisible(false);
 		passButton.addActionListener(e -> field.passTurn());
 		stylePassButton();
@@ -119,6 +126,22 @@ public class ArenaPane extends JLayeredPane {
 		volumePanel.add(volumeSlider);
 		add(volumePanel, JLayeredPane.PALETTE_LAYER);
 
+		// Field-scale slider (top-right, below the volume slider), always visible.
+		scaleSlider = new FieldScaleSlider(field::setFieldScale);
+		add(scaleSlider, JLayeredPane.PALETTE_LAYER);
+
+		// Help button (top-right, below the field-scale slider), always visible.
+		helpButton.setToolTipText("Show sandbox tips");
+		helpButton.addActionListener(e -> HelpDialog.show(this));
+		styleHelpButton();
+		add(helpButton, JLayeredPane.PALETTE_LAYER);
+
+		// Reset View button (left of the help button), always visible.
+		resetViewButton.setToolTipText("Return the battlefield to its default position");
+		resetViewButton.setFocusable(false);
+		resetViewButton.addActionListener(e -> field.resetPan());
+		add(resetViewButton, JLayeredPane.PALETTE_LAYER);
+
 		field.setAttackerSelectedListener(this::showAttacks);
 	}
 
@@ -134,6 +157,7 @@ public class ArenaPane extends JLayeredPane {
 	 */
 	public void refreshLanguage() {
 		stylePassButton();
+		styleEndButton();
 		styleStartButton(); // the fight image may carry a localized label
 		field.refreshAttacker();
 	}
@@ -416,25 +440,38 @@ public class ArenaPane extends JLayeredPane {
 	 * text button, but the label is still set from the loaded text either way.
 	 */
 	private void stylePassButton() {
-		String passText = GameFiles.active().getText("pass");
-		passButton.setText(passText);
+		stylePassImageButton(passButton, GameFiles.active().getText("pass"));
+	}
+
+	/** Gives the End Battle button the same image styling as the Pass button. */
+	private void styleEndButton() {
+		stylePassImageButton(endButton, "End Battle");
+	}
+
+	/**
+	 * Sets {@code button}'s label to {@code text} and, when the
+	 * {@link GameFiles#getPassButton()} image is present, uses it as the button's
+	 * background with the text centred on top and the default chrome removed.
+	 */
+	private void stylePassImageButton(JButton button, String text) {
+		button.setText(text);
 		BufferedImage img = GameFiles.active().getPassButton();
 		if (img == null)
 			return;
-		passButton.setIcon(new ImageIcon(img));
+		button.setIcon(new ImageIcon(img));
 		// Darken the image while the button is held down for press feedback.
-		passButton.setPressedIcon(new ImageIcon(darken(img, 0.7f)));
-		passButton.setHorizontalTextPosition(SwingConstants.CENTER);
-		passButton.setVerticalTextPosition(SwingConstants.CENTER);
-		passButton.setBorderPainted(false);
-		passButton.setContentAreaFilled(false);
-		passButton.setFocusPainted(false);
-		passButton.setBorder(BorderFactory.createEmptyBorder());
-		passButton.setMargin(new Insets(0, 0, 0, 0));
+		button.setPressedIcon(new ImageIcon(darken(img, 0.7f)));
+		button.setHorizontalTextPosition(SwingConstants.CENTER);
+		button.setVerticalTextPosition(SwingConstants.CENTER);
+		button.setBorderPainted(false);
+		button.setContentAreaFilled(false);
+		button.setFocusPainted(false);
+		button.setBorder(BorderFactory.createEmptyBorder());
+		button.setMargin(new Insets(0, 0, 0, 0));
 		// Size the label to fill most of the button face (leaving a margin for the
 		// image's border) rather than using a fixed point size.
-		Font base = passButton.getFont().deriveFont(Font.BOLD);
-		passButton.setFont(fitFont(base, passText,
+		Font base = button.getFont().deriveFont(Font.BOLD);
+		button.setFont(fitFont(base, text,
 				Math.round(img.getWidth() * 0.7f), Math.round(img.getHeight() * 0.5f)));
 	}
 
@@ -518,6 +555,27 @@ public class ArenaPane extends JLayeredPane {
 	}
 
 	/**
+	 * Gives the Help button the same unit-info icon as the weapons box's info
+	 * button, with the button text and chrome removed. Falls back to the plain
+	 * "?" text button if the image is missing.
+	 */
+	private void styleHelpButton() {
+		helpButton.setFocusable(false);
+		BufferedImage img = GameFiles.active().getUnitInfoButton();
+		if (img == null)
+			return;
+		img = scaleToMax(img, 32);
+		helpButton.setText(null);
+		helpButton.setIcon(new ImageIcon(img));
+		helpButton.setPressedIcon(new ImageIcon(darken(img, 0.7f)));
+		helpButton.setBorderPainted(false);
+		helpButton.setContentAreaFilled(false);
+		helpButton.setFocusPainted(false);
+		helpButton.setBorder(BorderFactory.createEmptyBorder());
+		helpButton.setMargin(new Insets(0, 0, 0, 0));
+	}
+
+	/**
 	 * {@code img} scaled down so its largest side is at most {@code maxSize} pixels
 	 * (returned unchanged if it is already that small or smaller).
 	 */
@@ -564,6 +622,17 @@ public class ArenaPane extends JLayeredPane {
 
 		Dimension vol = volumePanel.getPreferredSize();
 		volumePanel.setBounds(w - vol.width - 16, 12, vol.width, vol.height);
+
+		Dimension scale = scaleSlider.getPreferredSize();
+		int scaleY = 12 + vol.height + 4;
+		scaleSlider.setBounds(w - scale.width - 16, scaleY, scale.width, scale.height);
+
+		Dimension help = helpButton.getPreferredSize();
+		int helpY = scaleY + scale.height + 8;
+		helpButton.setBounds(w - help.width - 16, helpY, help.width, help.height);
+		Dimension reset = resetViewButton.getPreferredSize();
+		resetViewButton.setBounds(w - help.width - 16 - 8 - reset.width,
+				helpY + (help.height - reset.height) / 2, reset.width, reset.height);
 
 		// The unit's weapons box: player units anchor it bottom-left, enemy units
 		// bottom-right.

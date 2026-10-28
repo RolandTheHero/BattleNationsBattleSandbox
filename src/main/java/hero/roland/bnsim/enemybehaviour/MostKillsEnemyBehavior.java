@@ -31,7 +31,7 @@ public class MostKillsEnemyBehavior extends HighestDamageEnemyBehavior {
 
 	@Override
 	public String description() {
-		return "Chooses the move that would kill the most units. Can target empty tiles to maximise kills. If no move would kill, uses " + super.name() + " behaviour.";
+		return "Plays the move that would kill the most units. Can target empty tiles to maximise kills. If no move would kill, uses " + super.name() + " behaviour.";
 	}
 
 	private final Random random = new Random();
