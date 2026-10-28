@@ -395,6 +395,13 @@ public class BattleField extends JComponent {
 		};
 		addMouseListener(mouse);
 		addMouseMotionListener(mouse);
+		// Scrolling down steps the selected unit's aim to its next ability, up to its
+		// previous one, wrapping around at either end.
+		addMouseWheelListener(e -> {
+			int rotation = e.getWheelRotation();
+			if (rotation != 0)
+				cycleSelectedAttack(rotation > 0 ? 1 : -1);
+		});
 	}
 
 	// --- Public API --------------------------------------------------------
@@ -1275,27 +1282,70 @@ public class BattleField extends JComponent {
 	private void selectAttacker(PlacedUnit unit) {
 		selectedAttacker = unit;
 		selectHighlightSuppressed = false;
-		// Default the aim to the unit's first usable attack (also computing its
+		// Default the aim to the unit's first ready attack (also computing its
 		// highlighted tiles) so a target can be clicked straight away.
-		setSelectedAttack(firstAttack(unit));
+		setSelectedAttack(nextReadyAttack(unit, null));
 		if (attackerSelectedListener != null)
 			attackerSelectedListener.accept(unit);
 		repaint();
 	}
 
 	/**
-	 * The unit's first usable attack — the first real ability across its weapons —
-	 * or {@code null} if it has none. Used to default the aim when a unit is selected.
+	 * The unit's real attacks — every ability across its weapons — in the order the
+	 * attack panel lists them. Empty if it has none.
 	 */
-	private Unit.Attack firstAttack(PlacedUnit unit) {
+	private static List<Unit.Attack> attacksOf(PlacedUnit unit) {
+		List<Unit.Attack> attacks = new ArrayList<>();
 		for (Unit.Weapon weapon : unit.getUnit().getWeapons()) {
 			if ("none".equals(weapon.getTag()))
 				continue;
 			for (Unit.Attack attack : weapon.getAttacks())
 				if (attack.getAbility() != Ability.NO_ABILITY)
-					return attack;
+					attacks.add(attack);
 		}
-		return null;
+		return attacks;
+	}
+
+	/**
+	 * The first of the unit's attacks that is ready to use (off prep time, cooldown
+	 * and reload, with enough ammo), searching from the one after {@code after} and
+	 * wrapping around — or from the first attack when {@code after} is
+	 * {@code null}. When none is ready, falls back to {@code after} (or the first
+	 * attack). {@code null} if the unit has no attacks.
+	 */
+	private static Unit.Attack nextReadyAttack(PlacedUnit unit, Unit.Attack after) {
+		List<Unit.Attack> attacks = attacksOf(unit);
+		if (attacks.isEmpty())
+			return null;
+		int start = after == null ? 0 : attacks.indexOf(after) + 1;
+		for (int i = 0; i < attacks.size(); i++) {
+			Unit.Attack attack = attacks.get((start + i) % attacks.size());
+			if (unit.isAttackReady(attack))
+				return attack;
+		}
+		return after != null && attacks.contains(after) ? after : attacks.get(0);
+	}
+
+	/**
+	 * Steps the selected unit's aim {@code step} attacks along its list (1 = next,
+	 * -1 = previous), wrapping around. Every attack is stepped through, including
+	 * ones on cooldown — firing those is rejected with a message as usual. Ignored
+	 * while nothing is selected, while a unit is being dragged, and in battle while
+	 * the player lacks control (the aim is dropped as an attack plays out).
+	 */
+	private void cycleSelectedAttack(int step) {
+		if (selectedAttacker == null || dragging != null || draggingTarget
+				|| (battleMode && !isControlPhase()))
+			return;
+		List<Unit.Attack> attacks = attacksOf(selectedAttacker);
+		if (attacks.isEmpty())
+			return;
+		int index = attacks.indexOf(selectedAttack);
+		int next = index < 0
+				? (step > 0 ? 0 : attacks.size() - 1)
+				: Math.floorMod(index + step, attacks.size());
+		setSelectedAttack(attacks.get(next));
+		refreshSelectionInfo(); // highlight the new attack in the box
 	}
 
 	/**
@@ -1755,15 +1805,26 @@ public class BattleField extends JComponent {
 		if (selectedAttacker == null || selectedAttacker.getSide() != side) {
 			if (pending != null && sim.placedUnits().contains(pending.attacker())) {
 				selectAttacker(pending.attacker());
-				setSelectedAttack(pending.attack());
+				setSelectedAttack(restoredAttack(pending));
 				refreshSelectionInfo(); // highlight the restored attack in the box
 			} else if (selectedAttacker != null) {
 				clearSelection(); // the other side's unit can no longer be commanded
 			}
 		} else if (pending != null && selectedAttacker == pending.attacker()
 				&& selectedAttack == null) {
-			setSelectedAttack(pending.attack());
+			setSelectedAttack(restoredAttack(pending));
+			refreshSelectionInfo(); // highlight the restored attack in the box
 		}
+	}
+
+	/**
+	 * The attack to re-aim with once control returns: the one last fired if it is
+	 * still ready, otherwise the next ready attack after it (wrapping around).
+	 */
+	private static Unit.Attack restoredAttack(PendingAim pending) {
+		PlacedUnit unit = pending.attacker();
+		return unit.isAttackReady(pending.attack())
+				? pending.attack() : nextReadyAttack(unit, pending.attack());
 	}
 
 	/**

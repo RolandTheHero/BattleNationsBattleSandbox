@@ -233,7 +233,7 @@ public class ArenaPane extends JLayeredPane {
 				group.add(button);
 				button.addActionListener(e -> field.setSelectedAttack(attack));
 				// Highlight whichever attack the unit is currently aiming (the field
-				// sets this to the first attack when a unit is selected). Reading it
+				// sets this to the first ready attack when a unit is selected). Reading it
 				// rather than re-aiming lets the panel be rebuilt to refresh cooldowns
 				// and ammo without disturbing the aim. An attack on cooldown stays
 				// selectable — firing it is rejected with a message.
