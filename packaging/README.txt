@@ -12,6 +12,7 @@ HOW TO USE
    - Mac: open BattleNationsBattleSandbox.app. The first time, macOS may
      say it cannot verify the app. Click Done, then go to System Settings >
      Privacy & Security, scroll down and click "Open Anyway".
+   - Linux: run BattleNationsBattleSandbox/bin/BattleNationsBattleSandbox.
 2. When prompted, select your Battle Nations game files folder.
 
 A copy of the Battle Nations game files is required. They are NOT

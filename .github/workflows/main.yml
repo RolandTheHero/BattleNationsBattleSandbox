@@ -17,6 +17,8 @@ jobs:
             platform: mac-apple-silicon
           - os: macos-15-intel    # Intel Macs
             platform: mac-intel
+          - os: ubuntu-latest     # x86_64 Linux
+            platform: linux
     runs-on: ${{ matrix.os }}
     defaults:
       run:
@@ -74,10 +76,28 @@ jobs:
           # ditto keeps the launcher's executable bit, which a plain upload would lose.
           ditto -c -k --keepParent "$STAGE" "$STAGE.zip"
 
+      - name: Package and archive (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          jpackage --type app-image --name BattleNationsBattleSandbox --app-version "$VERSION" \
+            --input target/jpkg-input --main-jar "bnbattlesandbox-$VERSION.jar" \
+            --main-class hero.roland.bnsim.Main \
+            --add-modules java.base,java.desktop,java.logging \
+            --jlink-options "--strip-debug --no-man-pages --no-header-files" \
+            --dest target/dist
+          STAGE="BattleNationsBattleSandbox-$VERSION-${{ matrix.platform }}"
+          mkdir "$STAGE"
+          mv target/dist/BattleNationsBattleSandbox "$STAGE/"
+          cp -R packaging/README.txt LICENSE THIRD_PARTY_NOTICES.md licenses "$STAGE/"
+          # tar keeps the launcher's executable bit, which a plain upload would lose.
+          tar -czf "$STAGE.tar.gz" "$STAGE"
+
       - uses: actions/upload-artifact@v4
         with:
           name: BattleNationsBattleSandbox-${{ matrix.platform }}
-          path: BattleNationsBattleSandbox-*.zip
+          path: |
+            BattleNationsBattleSandbox-*.zip
+            BattleNationsBattleSandbox-*.tar.gz
           if-no-files-found: error
 
   release:
@@ -92,4 +112,6 @@ jobs:
           merge-multiple: true
       - uses: softprops/action-gh-release@v2
         with:
-          files: BattleNationsBattleSandbox-*.zip
+          files: |
+            BattleNationsBattleSandbox-*.zip
+            BattleNationsBattleSandbox-*.tar.gz
