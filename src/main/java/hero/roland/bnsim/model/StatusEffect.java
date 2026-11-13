@@ -83,6 +83,10 @@ public class StatusEffect {
      * {@code null} if it does not change resistance for that type. */
     public Double getArmorDamageMod(Ability.DamageType type) { return armorDamageMods.get(type); }
 
+    /** Whether this effect overrides any HP or armor resistance. Such effects age
+     * on the applying side's turns rather than the afflicted unit's own. */
+    public boolean hasDamageMods() { return !damageMods.isEmpty() || !armorDamageMods.isEmpty(); }
+
     public static class Suppression extends StatusEffect {
         public Suppression() {
             duration = 1;

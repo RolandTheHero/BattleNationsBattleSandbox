@@ -507,11 +507,17 @@ public class PlacedUnit {
 	 * Evaluates this unit's status effects as the opposing side's turn ends: each
 	 * effect deals its damage. Effects are not aged here — they stay active through
 	 * the unit's own following turn (so e.g. a freeze blocks that turn's action) and
-	 * age in {@link #ageStatusEffects} as that turn ends. Returns one {@link StatusTick}
-	 * per effect that dealt damage, so the UI can show a floating number and the
-	 * effect's icon.
+	 * age in {@link #ageStatusEffects} as that turn ends. The exception is effects
+	 * that change resistances ({@link ActiveStatusEffect#agesOnOpponentTurn}): they
+	 * age here instead, before evaluating, skipping the turn they were applied in —
+	 * so they last until the end of the applying side's next turn. Returns one
+	 * {@link StatusTick} per effect that dealt damage, so the UI can show a floating
+	 * number and the effect's icon.
 	 */
 	public List<StatusTick> tickStatusEffects() {
+		for (ActiveStatusEffect e : statusEffects)
+			e.onOpponentTurnEnding();
+		statusEffects.removeIf(ActiveStatusEffect::isExpired);
 		List<StatusTick> ticks = new ArrayList<>();
 		for (ActiveStatusEffect e : statusEffects) {
 			StatusEffect def = e.getEffect();

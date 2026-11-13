@@ -81,13 +81,33 @@ public class ActiveStatusEffect {
 		ticks++;
 	}
 
+	/** Whether this effect ages as the opposing (applying) side's turns end rather
+	 * than as the afflicted unit's own turns end: true for effects that change
+	 * resistances, so they last through the applier's next turn. */
+	public boolean agesOnOpponentTurn() {
+		return effect.hasDamageMods();
+	}
+
 	/**
 	 * Records that the unit's turn has ended: ages the effect by one turn. An
 	 * effect that has not been evaluated yet (applied during the unit's own turn)
 	 * is not aged, so it still lasts its full duration from its first evaluation.
+	 * Effects that {@link #agesOnOpponentTurn age on the opponent's turn} are skipped.
 	 */
 	public void onTurnEnded() {
-		if (ticks > 0)
+		if (!agesOnOpponentTurn() && ticks > 0)
+			remaining--;
+	}
+
+	/**
+	 * Records that the opposing side's turn is ending, before this turn's
+	 * evaluation: ages an effect that {@link #agesOnOpponentTurn ages on the
+	 * opponent's turn} by one turn. An effect not yet evaluated (applied during the
+	 * turn that is now ending) is not aged, so it lasts until the end of the
+	 * applier's next turn.
+	 */
+	public void onOpponentTurnEnding() {
+		if (agesOnOpponentTurn() && ticks > 0)
 			remaining--;
 	}
 }
