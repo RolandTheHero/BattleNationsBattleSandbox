@@ -50,12 +50,24 @@ public class Frame {
 	 */
 	private Map<Integer, SoftReference<BufferedImage>> tintCache;
 	private TexturePaint tintTexture;
+	private double tintRes;
+	/**
+	 * Resolution (device pixels per point) {@link #spriteRef} was rendered at, so
+	 * a zoomed or HiDPI field gets a sprite cached at its own pixel density instead
+	 * of a 1x image stretched up. See {@link #resolutionFor}.
+	 */
+	private double spriteRes;
 	/** This frame has no visible polygons, so there is nothing to draw or cache. */
 	private boolean spriteEmpty;
-	/** Frame too large to cache; it falls back to drawing its polygons directly. */
-	private boolean spriteTooBig;
+	/** Lowest resolution at which the frame proved too large to cache; at or above
+	 *  it, the frame falls back to drawing its polygons directly. */
+	private double tooBigRes = Double.POSITIVE_INFINITY;
 	/** Skip caching frames larger than this (~16 MB as ARGB) to bound memory. */
 	private static final long MAX_SPRITE_PIXELS = 4_000_000L;
+	/** Highest resolution sprites are cached at; beyond it they are upscaled. */
+	private static final double MAX_SPRITE_RES = 6;
+	/** Cache resolutions are rounded up to multiples of 1/RES_STEPS. */
+	private static final double RES_STEPS = 4;
 
 	/**
 	 * A frame made of textured quads. Each quad {@code polys[i]} is given in
@@ -119,22 +131,12 @@ public class Frame {
 			TexturePaint texture, double scale) {
 		if (spriteEmpty)
 			return;
-		if (!spriteTooBig) {
-			BufferedImage img = (spriteRef != null) ? spriteRef.get() : null;
-			if (img == null || texture != spriteTexture) {
-				img = renderSprite(texture, scale);
-				if (spriteEmpty)
-					return;
-				if (img != null) {
-					spriteRef = new SoftReference<>(img);
-					spriteTexture = texture;
-				}
-			}
-			if (img != null) {
-				g.drawImage(img, (int) Math.round(x) + spriteOx,
-						(int) Math.round(y) + spriteOy, null);
-				return;
-			}
+		BufferedImage img = cachedSprite(texture, scale, resolutionFor(g));
+		if (spriteEmpty)
+			return;
+		if (img != null) {
+			blit(g, img, x, y, spriteRes);
+			return;
 		}
 		// Frame too large to cache: fall back to drawing its polygons directly.
 		AffineTransform old = g.getTransform();
@@ -145,6 +147,79 @@ public class Frame {
 	}
 
 	/**
+	 * The resolution, in device pixels per point, to cache sprites at for drawing
+	 * through {@code g}: the scale of its transform (field zoom times any HiDPI
+	 * display scale), rounded up to the next {@code 1/RES_STEPS} so small zoom
+	 * changes reuse the cache, and clamped to [1, {@link #MAX_SPRITE_RES}].
+	 * Zoomed-out views keep the 1x cache and are filtered down when blitted.
+	 */
+	public static double resolutionFor(Graphics2D g) {
+		AffineTransform t = g.getTransform();
+		double sx = Math.hypot(t.getScaleX(), t.getShearY());
+		double sy = Math.hypot(t.getShearX(), t.getScaleY());
+		double s = Math.max(sx, sy);
+		if (!(s > 1)) // also catches NaN
+			return 1;
+		return Math.min(MAX_SPRITE_RES, Math.ceil(s * RES_STEPS - 1e-6) / RES_STEPS);
+	}
+
+	/**
+	 * This frame's sprite cached at {@code res}, rendering it if the cache is
+	 * missing, was reclaimed, or is for another texture or resolution. A frame too
+	 * large to cache at {@code res} steps down to the highest resolution that fits;
+	 * {@link #spriteRes} gives the resolution of the returned image. Returns
+	 * {@code null} when the frame is empty (setting {@link #spriteEmpty}) or too
+	 * large to cache even at 1x.
+	 */
+	private BufferedImage cachedSprite(TexturePaint texture, double scale, double res) {
+		while (true) {
+			if (res >= tooBigRes) {
+				if (tooBigRes <= 1)
+					return null;
+				res = Math.max(1, tooBigRes - 1 / RES_STEPS);
+			}
+			BufferedImage img = (spriteRef != null) ? spriteRef.get() : null;
+			if (img != null && texture == spriteTexture && res == spriteRes)
+				return img;
+			img = renderSprite(texture, scale, res);
+			if (img != null) {
+				spriteRef = new SoftReference<>(img);
+				spriteTexture = texture;
+				spriteRes = res;
+				return img;
+			}
+			if (spriteEmpty)
+				return null;
+			// Too big at res (tooBigRes is now res): retry a step lower.
+		}
+	}
+
+	/**
+	 * Draws a cached sprite (rendered at {@code res} device pixels per point) at
+	 * ({@code x}, {@code y}), scaling it back to point size. Filtered, so the
+	 * small down-scale from the rounded-up resolution, or a zoomed-out field,
+	 * stays smooth.
+	 */
+	private void blit(Graphics2D g, BufferedImage img, double x, double y, double res) {
+		Object oldInterp = g.getRenderingHint(RenderingHints.KEY_INTERPOLATION);
+		g.setRenderingHint(RenderingHints.KEY_INTERPOLATION,
+				RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+		if (res == 1) {
+			g.drawImage(img, (int) Math.round(x) + spriteOx,
+					(int) Math.round(y) + spriteOy, null);
+		} else {
+			// Snap the origin to the cache's pixel grid so the sprite stays crisp.
+			AffineTransform at = AffineTransform.getTranslateInstance(
+					(Math.round(x * res) + spriteOx) / res,
+					(Math.round(y * res) + spriteOy) / res);
+			at.scale(1 / res, 1 / res);
+			g.drawImage(img, at, null);
+		}
+		if (oldInterp != null)
+			g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, oldInterp);
+	}
+
+	/**
 	 * Draws this frame recoloured to {@code color} and masked by its own shape, at
 	 * {@code strength} opacity, over ({@code x}, {@code y}) — the same blit
 	 * {@link #drawCached} performs, but tinted, so a unit's sprite itself can pulse
@@ -152,33 +227,28 @@ public class Frame {
 	 */
 	public void drawCachedTinted(Graphics2D g, double x, double y,
 			TexturePaint texture, double scale, Color color, float strength) {
-		if (spriteEmpty || spriteTooBig)
+		if (spriteEmpty)
 			return;
-		BufferedImage base = (spriteRef != null) ? spriteRef.get() : null;
-		if (base == null || texture != spriteTexture) {
-			base = renderSprite(texture, scale);
-			if (base == null) // became empty or too big to cache
-				return;
-			spriteRef = new SoftReference<>(base);
-			spriteTexture = texture;
-		}
-		BufferedImage tint = tintedSprite(base, texture, color);
+		BufferedImage base = cachedSprite(texture, scale, resolutionFor(g));
+		if (base == null) // empty or too big to cache
+			return;
+		BufferedImage tint = tintedSprite(base, texture, spriteRes, color);
 		Composite old = g.getComposite();
 		g.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, strength));
-		g.drawImage(tint, (int) Math.round(x) + spriteOx,
-				(int) Math.round(y) + spriteOy, null);
+		blit(g, tint, x, y, spriteRes);
 		g.setComposite(old);
 	}
 
 	/**
 	 * Returns {@code base} recoloured to {@code color} with its alpha preserved,
-	 * caching one image per colour for the current texture.
+	 * caching one image per colour for the current texture and resolution.
 	 */
 	private BufferedImage tintedSprite(BufferedImage base, TexturePaint texture,
-			Color color) {
-		if (tintCache == null || texture != tintTexture) {
+			double res, Color color) {
+		if (tintCache == null || texture != tintTexture || res != tintRes) {
 			tintCache = new HashMap<>();
 			tintTexture = texture;
+			tintRes = res;
 		}
 		int key = color.getRGB();
 		SoftReference<BufferedImage> ref = tintCache.get(key);
@@ -207,22 +277,24 @@ public class Frame {
 	}
 
 	/**
-	 * Renders this frame's polygons into a fresh image sized to its bounds, also
-	 * recording the offset from the draw origin to the image's top-left. Returns
-	 * {@code null} (and sets {@link #spriteEmpty} or {@link #spriteTooBig}) when
-	 * the frame has nothing to draw or is too large to be worth caching.
+	 * Renders this frame's polygons into a fresh image sized to its bounds at
+	 * {@code res} pixels per point, also recording the offset (in those pixels)
+	 * from the draw origin to the image's top-left. Returns {@code null} (and sets
+	 * {@link #spriteEmpty} or {@link #tooBigRes}) when the frame has nothing to
+	 * draw or is too large to be worth caching at this resolution.
 	 */
-	private BufferedImage renderSprite(TexturePaint texture, double scale) {
+	private BufferedImage renderSprite(TexturePaint texture, double scale, double res) {
 		if (xMax < xMin) { // no visible polygons
 			spriteEmpty = true;
 			return null;
 		}
-		int ox = (int) Math.floor(xMin * scale) - 1;
-		int oy = (int) Math.floor(yMin * scale) - 1;
-		int w = (int) Math.ceil((xMax + 1) * scale) - ox + 1;
-		int h = (int) Math.ceil((yMax + 1) * scale) - oy + 1;
+		double s = scale * res;
+		int ox = (int) Math.floor(xMin * s) - 1;
+		int oy = (int) Math.floor(yMin * s) - 1;
+		int w = (int) Math.ceil((xMax + 1) * s) - ox + 1;
+		int h = (int) Math.ceil((yMax + 1) * s) - oy + 1;
 		if (w <= 0 || h <= 0 || (long) w * h > MAX_SPRITE_PIXELS) {
-			spriteTooBig = true;
+			tooBigRes = Math.min(tooBigRes, res);
 			return null;
 		}
 		BufferedImage img = new BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB);
@@ -230,6 +302,7 @@ public class Frame {
 		g.setRenderingHint(RenderingHints.KEY_ANTIALIASING,
 				RenderingHints.VALUE_ANTIALIAS_ON);
 		g.translate(-ox, -oy);
+		g.scale(res, res);
 		g.setPaint(texture);
 		draw(g);
 		g.dispose();

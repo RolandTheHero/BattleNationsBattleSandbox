@@ -42,6 +42,7 @@ import hero.roland.bnsim.enemybehaviour.RandomEnemyBehavior;
 import hero.roland.bnsim.gamefiles.GameFiles;
 import hero.roland.bnsim.model.Ability;
 import hero.roland.bnsim.model.Animation;
+import hero.roland.bnsim.model.Frame;
 import hero.roland.bnsim.model.StatusEffect;
 import hero.roland.bnsim.model.Unit;
 
@@ -2822,13 +2823,18 @@ public class BattleField extends JComponent {
 		int oy = (int) Math.floor(bounds.y) - margin;
 		int w = (int) Math.ceil(bounds.width) + margin * 2;
 		int h = (int) Math.ceil(bounds.height) + margin * 2;
-		if (w <= 0 || h <= 0 || (long) w * h > 4_000_000L)
+		// Build the ring at the zoomed field's pixel density (the same resolution
+		// the sprite itself is cached at) so it stays sharp when zoomed in.
+		double res = Frame.resolutionFor(g);
+		int pw = (int) Math.ceil(w * res), ph = (int) Math.ceil(h * res);
+		if (w <= 0 || h <= 0 || (long) pw * ph > 4_000_000L)
 			return;
 
-		BufferedImage ring = new BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB);
+		BufferedImage ring = new BufferedImage(pw, ph, BufferedImage.TYPE_INT_ARGB);
 		Graphics2D rg = ring.createGraphics();
 		rg.setRenderingHint(RenderingHints.KEY_ANTIALIASING,
 				RenderingHints.VALUE_ANTIALIAS_ON);
+		rg.scale(res, res);
 		rg.translate(-ox, -oy); // map component coords into the ring image
 		// Stamp the cyan silhouette offset in eight directions: their union is a
 		// filled copy of the sprite grown by the outline thickness.
@@ -2849,7 +2855,11 @@ public class BattleField extends JComponent {
 		Graphics2D g2 = (Graphics2D) g.create();
 		g2.setComposite(AlphaComposite.getInstance(
 				AlphaComposite.SRC_OVER, SELECT_SPRITE_OUTLINE_ALPHA));
-		g2.drawImage(ring, ox, oy, null);
+		g2.setRenderingHint(RenderingHints.KEY_INTERPOLATION,
+				RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+		g2.translate(ox, oy);
+		g2.scale(1 / res, 1 / res);
+		g2.drawImage(ring, 0, 0, null);
 		g2.dispose();
 	}
 
