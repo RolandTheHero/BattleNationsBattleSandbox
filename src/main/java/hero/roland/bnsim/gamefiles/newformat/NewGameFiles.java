@@ -179,7 +179,8 @@ public class NewGameFiles extends AbstractGameFiles {
 	private VorbisSetups vorbisSetups;
 
 	/**
-	 * Reads the Windows build ({@link MacGameFiles} reads the Mac one).
+	 * Reads the Windows build ({@link MacGameFiles} and {@link LinuxGameFiles}
+	 * read the Mac and Linux ones).
 	 *
 	 * @param folder the game's install folder, its {@code BattleNations_Data}
 	 * folder, or the bundle folder itself

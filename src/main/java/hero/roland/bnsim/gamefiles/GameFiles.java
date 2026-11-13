@@ -16,6 +16,7 @@ import java.awt.image.BufferedImage;
 import java.io.File;
 import java.io.IOException;
 
+import hero.roland.bnsim.gamefiles.newformat.LinuxGameFiles;
 import hero.roland.bnsim.gamefiles.newformat.MacGameFiles;
 import hero.roland.bnsim.gamefiles.newformat.NewGameFiles;
 import hero.roland.bnsim.gamefiles.oldformat.OldGameFiles;
@@ -145,6 +146,8 @@ public interface GameFiles {
 		NEW("Madrona (Unity) – Windows"),
 		/** The Madrona (Unity) remaster's Mac build, read with {@link MacGameFiles}. */
 		MAC("Madrona (Unity) – Mac"),
+		/** The Madrona (Unity) remaster's Linux build, read with {@link LinuxGameFiles}. */
+		LINUX("Madrona (Unity) – Linux"),
 		/** The Z2 bundle folder, read with {@link OldGameFiles}. */
 		OLD("Z2 bundle");
 
@@ -162,8 +165,9 @@ public interface GameFiles {
 
 	/**
 	 * Loads the game files in {@code folder} as the given format, makes the
-	 * result the active bundle, and returns it. For {@link Format#NEW} the folder
-	 * may be the install folder, its {@code BattleNations_Data} folder, or the
+	 * result the active bundle, and returns it. For {@link Format#NEW} and
+	 * {@link Format#LINUX} the folder may be the install folder, its
+	 * {@code BattleNations_Data} folder, or the
 	 * bundle folder itself; for {@link Format#MAC}, the folder holding
 	 * {@code BattleNations.app}, the app, its {@code Contents/Resources/Data}
 	 * folder, or the bundle folder itself.
@@ -172,6 +176,7 @@ public interface GameFiles {
 		AbstractGameFiles gf = switch (format) {
 			case NEW -> new NewGameFiles(folder);
 			case MAC -> new MacGameFiles(folder);
+			case LINUX -> new LinuxGameFiles(folder);
 			case OLD -> new OldGameFiles(folder);
 		};
 		gf.loadAll();
